@@ -11,14 +11,14 @@ from netbox.context_managers import event_tracking
 from users.models import User
 from utilities.request import NetBoxFakeRequest
 
-from netbox_iec62443.importers.vloerscan import apply_plan, build_plan
+from netbox_iec62443.importers.observations import apply_plan, build_plan
 
 
 class Command(BaseCommand):
-    help = 'Import zones and conduits from the Vloerscan prototype output (assets.json, flows.json, summary.json)'
+    help = 'Import zones, conduits, Purdue levels and industrial services from observation files (docs/import-format.md)'
 
     def add_arguments(self, parser):
-        parser.add_argument('directory', help='Directory holding assets.json, flows.json and summary.json')
+        parser.add_argument('directory', help='Directory holding assets.json, flows.json and optionally summary.json')
         parser.add_argument('--site', required=True, help='Slug of the site the zones belong to')
         parser.add_argument('--user', help='Username recorded in the change log (default: first superuser)')
         parser.add_argument('--dry-run', action='store_true', help='Show what would change, then roll back')
@@ -34,7 +34,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         src = Path(options['directory'])
         try:
-            data = {name: json.loads((src / f'{name}.json').read_text()) for name in ('assets', 'flows', 'summary')}
+            data = {name: json.loads((src / f'{name}.json').read_text()) for name in ('assets', 'flows')}
+            summary = src / 'summary.json'
+            data['summary'] = json.loads(summary.read_text()) if summary.exists() else {}
         except (OSError, ValueError) as e:
             raise CommandError(f'Cannot read input: {e}')
         try:

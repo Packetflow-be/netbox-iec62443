@@ -45,7 +45,7 @@ docker compose run --rm --no-deps -T -e DEVELOPER=True netbox \
 Importer against a running instance:
 
 ```
-docker cp out/ <netbox container>:/tmp/vloerscan-out
+docker cp observations/ <netbox container>:/tmp/observations
 docker exec <netbox container> /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py \
-  iec62443_import_vloerscan /tmp/vloerscan-out --site <site-slug> [--split "<zone>"] --dry-run
+  iec62443_import /tmp/observations --site <site-slug> [--split "<zone>"] --dry-run
 ```

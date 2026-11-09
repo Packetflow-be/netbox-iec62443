@@ -1,21 +1,17 @@
 """
-Importer for the Vloerscan prototype's analysis output (assets.json, flows.json, summary.json).
+Importer for observation files: what was seen on an OT network, in the plugin's documented import format
+(docs/import-format.md): assets.json, flows.json and optionally summary.json. Any tool can write them:
+a script over Zeek/ICSNPP or Malcolm logs, an asset-discovery export, or a spreadsheet.
 
-It mirrors the prototype's zone logic (analyze.py): each asset carries its zone, assigned per /24
-segment; cross-zone traffic is summarised in summary.json "zone_pairs"; OT requests (S7comm, Modbus)
-are listed in flows.json. From that:
-
-  zones     one per zone name (optionally renamed). A zone that mixes controllers (Purdue 0-1) with
-            supervisory assets (2) or site operations (3+) can be split into one zone per band, e.g.
-            "Z1 Cell A (control)" and "Z1 Cell A (supervisory)", so the paths between them become
-            conduits. Purdue level = the lowest level among the zone's assets; prefixes = the /24
-            segments of its assets. Zones in zone_pairs without assets (outside the scanned floor)
-            become one zone without a Purdue level, named by `outside_zone`. Splitting is opt-in:
-            per zone (`split_zones`) or for every mixed zone (`split_zones=True`).
-  conduits  one per directed zone pair, from zone_pairs and from OT requests between zones;
+  zones     one per zone name in assets.json (optionally renamed). A zone that mixes controllers (Purdue
+            0-1) with supervisory assets (2) or site operations (3+) can be split into one zone per band,
+            e.g. "Cell A (control)" and "Cell A (supervisory)", so the paths between them become conduits.
+            Purdue level = the lowest level among the zone's assets; prefixes = the /24 segments of its
+            assets. Addresses not in assets.json fall into one zone without a Purdue level, named by
+            `outside_zone`. Splitting is opt-in: per zone (`split_zones`) or every mixed zone (True).
+  conduits  one per directed zone pair, from summary.json "zone_pairs" and from OT requests between zones;
             protocols = OT protocols/functions crossing it; via = assets that wrote into another zone;
-            remote_access = such a writer is a router (a supplier's 4G/VPN router); evidence = counts
-            and OT flow lines.
+            remote_access = such a writer is a router; evidence = counts and OT flow lines.
   devices   matched by primary IPv4 address; get the zone membership and their Purdue level.
   services  industrial services per asset: a server for every protocol it answered or listens on
             (well-known OT ports in open_ports), a client for every protocol it sent requests in.
@@ -28,6 +24,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from django.utils.text import slugify
+
+from ..choices import IndustrialProtocolChoices
 
 WRITE_FUNCS = ('Write',)
 # Protocol names in the analysis output (Zeek/ICSNPP, tshark) -> IndustrialProtocolChoices values
@@ -109,7 +107,7 @@ def build_plan(assets, flows, summary, renames=None, outside_zone='Outside', spl
 
     bands = defaultdict(set)
     for a in assets:
-        bands[base_of_ip[a['ip']]].add(_band(a['purdue_level']))
+        bands[base_of_ip[a['ip']]].add(_band(a.get('purdue_level')))
     if split_zones is True:
         wanted = set(bands)
     else:
@@ -119,7 +117,7 @@ def build_plan(assets, flows, summary, renames=None, outside_zone='Outside', spl
     def zone_of(ip):
         if ip not in by_ip:
             return outside_zone
-        base, band = base_of_ip[ip], _band(by_ip[ip]['purdue_level'])
+        base, band = base_of_ip[ip], _band(by_ip[ip].get('purdue_level'))
         return f'{base} ({band})' if base in split and band else base
 
     def base_name(name):
@@ -136,7 +134,7 @@ def build_plan(assets, flows, summary, renames=None, outside_zone='Outside', spl
         if net not in z.prefixes:
             z.prefixes.append(net)
     for z in zones.values():
-        levels = [float(by_ip[ip]['purdue_level']) for ip in z.member_ips if by_ip[ip]['purdue_level'] is not None]
+        levels = [float(by_ip[ip]['purdue_level']) for ip in z.member_ips if by_ip[ip].get('purdue_level') is not None]
         z.purdue_level = _level(min(levels)) if levels else ''
         z.prefixes.sort(key=lambda n: ipaddress.ip_network(n))
     # The most critical part of each split zone gets traffic that can't be pinned to one part
@@ -155,7 +153,7 @@ def build_plan(assets, flows, summary, renames=None, outside_zone='Outside', spl
 
     captures = ', '.join(summary.get('captures', []))
     hours = summary.get('hours')
-    seen_in = f"captures {captures}" + (f" ({hours} h)" if hours else '')
+    seen_in = (f"captures {captures}" if captures else 'the observations') + (f" ({hours} h)" if hours else '')
 
     # OT requests between zones, keyed by (source zone, destination zone)
     ot = defaultdict(list)
@@ -191,17 +189,17 @@ def build_plan(assets, flows, summary, renames=None, outside_zone='Outside', spl
         crossing = ot.get((src, dst), [])
         protocols = defaultdict(list)
         for f in crossing:
-            if f['func'] and f['func'] not in protocols[f['proto']]:
+            if f.get('func') and f['func'] not in protocols[f['proto']]:
                 protocols[f['proto']].append(f['func'])
         writers = []
         for f in crossing:
-            if any(w in (f['func'] or '') for w in WRITE_FUNCS) and f['src'] not in writers:
+            if any(w in (f.get('func') or '') for w in WRITE_FUNCS) and f['src'] not in writers:
                 writers.append(f['src'])
         via = '; '.join(f"{by_ip.get(ip, {}).get('role', 'unknown')} ({ip})" for ip in writers)
         remote = any('router' in by_ip.get(ip, {}).get('role', '').lower() for ip in writers)
         lines = [header] + [
-            f"OT: {f['src']} -> {f['dst']} {f['proto']} {f['func']} x{f['count']}"
-            for f in sorted(crossing, key=lambda f: -f['count'])
+            f"OT: {f['src']} -> {f['dst']} {f['proto']} {f.get('func') or ''} x{f.get('count', 1)}".replace('  ', ' ')
+            for f in sorted(crossing, key=lambda f: -f.get('count', 1))
         ]
         conduits.append(ConduitPlan(
             name=f'{src} -> {dst}', source=src, destination=dst,
@@ -209,7 +207,7 @@ def build_plan(assets, flows, summary, renames=None, outside_zone='Outside', spl
             via=via, remote_access=remote, evidence='\n'.join(lines),
         ))
 
-    asset_levels = {a['ip']: _level(a['purdue_level']) for a in assets if a['purdue_level'] is not None}
+    asset_levels = {a['ip']: _level(a['purdue_level']) for a in assets if a.get('purdue_level') is not None}
     return ImportPlan(zones=zones, conduits=conduits, asset_levels=asset_levels,
                       services=_plan_services(assets, flows, seen_in))
 
@@ -224,10 +222,11 @@ def _plan_services(assets, flows, seen_in):
 
     known = {a['ip'] for a in assets}
     for f in flows:
-        protocol = PROTOCOL_NAMES.get(str(f['proto']).lower())
+        protocol = PROTOCOL_NAMES.get(str(f['proto']).lower()) or (
+            f['proto'] if f['proto'] in IndustrialProtocolChoices.values() else None)
         if not protocol:
             continue
-        what = f"{f['proto']} {f['func']} x{f['count']}".strip()
+        what = f"{f['proto']} {f.get('func') or ''} x{f.get('count', 1)}".replace('  ', ' ').strip()
         if f['dst'] in known:
             add(f['dst'], protocol, 'server', f"Answered {what} from {f['src']} ({seen_in})")
         if f['src'] in known:

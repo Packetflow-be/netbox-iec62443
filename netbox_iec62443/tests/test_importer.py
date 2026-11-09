@@ -11,10 +11,10 @@ from ipam.models import IPAddress, Prefix
 from utilities.testing import create_test_device
 
 from netbox_iec62443.customfields import PURDUE_CF_NAME
-from netbox_iec62443.importers.vloerscan import build_plan
+from netbox_iec62443.importers.observations import build_plan
 from netbox_iec62443.models import Conduit, Zone
 
-# A small excerpt in the shape of the Vloerscan prototype's output (documentation addresses, no real site)
+# A small set of observation files (docs/import-format.md), documentation addresses, no real site
 ASSETS = [
     {'ip': '10.10.10.10', 'role': 'PLC', 'purdue_level': 1, 'zone': 'Z1 Cell A'},
     {'ip': '10.10.10.20', 'role': 'HMI', 'purdue_level': 2, 'zone': 'Z1 Cell A'},
@@ -105,7 +105,7 @@ class ImportCommandTest(TestCase):
             for name, data in (('assets', ASSETS), ('flows', FLOWS), ('summary', SUMMARY)):
                 Path(tmp, f'{name}.json').write_text(json.dumps(data))
             out = StringIO()
-            call_command('iec62443_import_vloerscan', tmp, '--site', 'demo', *extra, stdout=out)
+            call_command('iec62443_import', tmp, '--site', 'demo', *extra, stdout=out)
             return out.getvalue()
 
     def test_dry_run_saves_nothing(self):
@@ -152,3 +152,16 @@ class ImportCommandTest(TestCase):
     def test_split_by_input_name_after_rename(self):
         plan = build_plan(ASSETS, FLOWS, SUMMARY, renames={'Z1 Cell A': 'Cell'}, split_zones=['Z1 Cell A'])
         self.assertIn('Cell (control)', plan.zones)
+
+
+class MinimalInputTest(TestCase):
+
+    def test_only_required_fields(self):
+        """assets need ip + zone, flows need src/dst/proto; everything else is optional"""
+        assets = [{'ip': '10.0.0.1', 'zone': 'Cell'}, {'ip': '10.0.1.1', 'zone': 'Office'}]
+        flows = [{'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'modbus-tcp'}]
+        plan = build_plan(assets, flows, {})
+        self.assertEqual(set(plan.zones), {'Cell', 'Office'})
+        self.assertEqual([(c.source, c.destination) for c in plan.conduits], [('Office', 'Cell')])
+        self.assertEqual({(s.ip, s.protocol, s.role) for s in plan.services},
+                         {('10.0.0.1', 'modbus-tcp', 'server'), ('10.0.1.1', 'modbus-tcp', 'client')})

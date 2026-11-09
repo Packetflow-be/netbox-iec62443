@@ -326,7 +326,7 @@ class IndustrialService(PrimaryModel):
     evidence = models.TextField(
         verbose_name=_('evidence'),
         blank=True,
-        help_text=_('Where this was seen (capture, configuration, walk-through)'),
+        help_text=_('Where this was seen (capture, configuration, site visit)'),
     )
 
     clone_fields = ('device', 'virtual_machine', 'protocol', 'role', 'fieldbus')

@@ -44,7 +44,7 @@ class IndustrialServiceViewSet(NetBoxModelViewSet):
 class AccessMapAPIView(APIView):
     """
     The access map of one site as data: the conduits into zones at Purdue level <= max_level (not allowed
-    first) and the same SVG diagram as the UI. GET ?site_id=<id>[&max_level=<level>]. For report builders.
+    first) and the same SVG diagram as the UI. GET ?site_id=<id>[&max_level=<level>]. For reports and other tools.
     """
     queryset = Conduit.objects.all()  # for NetBox's token permission check (view_conduit)
 
