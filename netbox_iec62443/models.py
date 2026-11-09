@@ -168,6 +168,12 @@ class Conduit(PrimaryModel):
                 'destination_zone': _('A conduit connects two different zones.'),
             })
 
+    @property
+    def evidence_lines(self):
+        """Evidence split into (first line, remaining lines) for compact display."""
+        first, _sep, rest = self.evidence.strip().partition('\n')
+        return first, rest
+
     def get_direction_color(self):
         return ConduitDirectionChoices.colors.get(self.direction)
 

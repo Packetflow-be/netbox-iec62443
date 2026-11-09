@@ -22,7 +22,20 @@ classifiers = [
 include = ["netbox_iec62443*"]
 
 [tool.setuptools.package-data]
-netbox_iec62443 = ["templates/**/*.html"]
+netbox_iec62443 = ["templates/**/*.html", "tests/*.json"]
 
 [tool.ruff]
 line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"netbox_iec62443/migrations/*" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["netbox_iec62443"]
+section-order = ["future", "standard-library", "third-party", "netbox", "first-party", "local-folder"]
+
+[tool.ruff.lint.isort.sections]
+netbox = ["core", "dcim", "extras", "ipam", "netbox", "tenancy", "users", "utilities", "virtualization"]

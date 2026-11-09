@@ -14,7 +14,10 @@ class ZoneFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
 
     @classmethod
     def setUpTestData(cls):
-        cls.sites = (Site.objects.create(name='Site 1', slug='site-1'), Site.objects.create(name='Site 2', slug='site-2'))
+        cls.sites = (
+            Site.objects.create(name='Site 1', slug='site-1'),
+            Site.objects.create(name='Site 2', slug='site-2'),
+        )
         cls.device = create_test_device('plc-1', site=cls.sites[0])
         zones = (
             Zone.objects.create(name='Zone 1', slug='zone-1', site=cls.sites[0], purdue_level='1',

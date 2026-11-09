@@ -1,6 +1,6 @@
-from io import StringIO
 import json
 import tempfile
+from io import StringIO
 from pathlib import Path
 
 from django.core.management import call_command

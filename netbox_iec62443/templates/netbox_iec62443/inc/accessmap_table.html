@@ -34,7 +34,15 @@
               <td>{{ c.via|placeholder }}</td>
               <td>{% checkmark c.remote_access %}</td>
               <td>{% badge c.get_allowed_display bg_color=c.get_allowed_color %}</td>
-              <td class="small">{{ c.evidence|linebreaksbr|placeholder }}</td>
+              <td class="small">
+                {% with lines=c.evidence_lines %}
+                  {% if lines.1 %}
+                    <details><summary>{{ lines.0 }}</summary>{{ lines.1|linebreaksbr }}</details>
+                  {% else %}
+                    {{ lines.0|placeholder }}
+                  {% endif %}
+                {% endwith %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>

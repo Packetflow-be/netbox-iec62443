@@ -24,8 +24,8 @@ class ZoneTable(TenancyColumnsMixin, PrimaryModelTable):
     class Meta(PrimaryModelTable.Meta):
         model = Zone
         fields = (
-            'pk', 'id', 'name', 'slug', 'site', 'purdue_level', 'security_level_target', 'device_count', 'conduit_count',
-            'devices',
+            'pk', 'id', 'name', 'slug', 'site', 'purdue_level', 'security_level_target', 'device_count',
+            'conduit_count', 'devices',
             'virtual_machines', 'prefixes', 'tenant', 'tenant_group', 'description', 'comments', 'tags', 'created',
             'last_updated',
         )

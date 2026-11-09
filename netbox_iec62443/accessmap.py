@@ -67,7 +67,7 @@ def access_map_svg(conduits, zones=()):
     width = LABEL_W + max(len(m) for _l, m in rows) * (BOX_W + GAP_X) + PAD
     height = len(rows) * ROW_H + PAD
     pos = {}
-    out = []
+    out, lines, badges = [], [], []
     for r, (label, members) in enumerate(rows):
         y = PAD + r * ROW_H
         out.append(f'<text x="8" y="{y + BOX_H / 2 + 4}" class="lvl">{escape(label)}</text>')
@@ -99,12 +99,12 @@ def access_map_svg(conduits, zones=()):
             lx, ly = (x1 + x2) / 2, (y1 + y2) / 2
         color = LINE_COLORS.get(c.allowed, '#888')
         dash = ' stroke-dasharray="6 4"' if c.remote_access else ''
-        start = ' marker-start="url(#iec-arrow-start)"' if c.direction == ConduitDirectionChoices.TWO_WAY else ''
-        out.append(
+        start = ' marker-start="url(#iec-arrow)"' if c.direction == ConduitDirectionChoices.TWO_WAY else ''
+        lines.append(
             f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2.5"{dash}{start} '
-            f'marker-end="url(#iec-arrow)" style="color:{color}"><title>{escape(c.name)}</title></path>'
+            f'marker-end="url(#iec-arrow)"><title>{escape(c.name)}</title></path>'
         )
-        out.append(
+        badges.append(
             f'<circle cx="{lx}" cy="{ly}" r="10" fill="{color}"/>'
             f'<text x="{lx}" y="{ly + 4}" text-anchor="middle" class="num">{n}</text>'
         )
@@ -114,15 +114,13 @@ def access_map_svg(conduits, zones=()):
         '<defs>'
         '<marker id="iec-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
         'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>'
-        '<marker id="iec-arrow-start" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
-        'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>'
         '</defs>'
-        '<style>.iec62443-map .zone{fill:rgba(32,107,196,.08);stroke:rgba(32,107,196,.7);stroke-width:1.5}'
+        '<style>.iec62443-map .zone{fill:var(--tblr-bg-surface,#fff);stroke:rgba(32,107,196,.7);stroke-width:1.5}'
         '.iec62443-map .zn{fill:currentColor;font-size:13px;font-weight:600}'
         '.iec62443-map .lvl{fill:currentColor;opacity:.7;font-size:12px}'
         '.iec62443-map .sep{stroke:currentColor;opacity:.12}'
         '.iec62443-map .num{fill:#fff;font-size:11px;font-weight:700}</style>'
-        + ''.join(out) + '</svg>'
+        + ''.join(lines + out + badges) + '</svg>'
     )
     return mark_safe(svg)
 
