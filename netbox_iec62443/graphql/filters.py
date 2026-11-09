@@ -10,7 +10,7 @@ from tenancy.graphql.filter_mixins import TenancyFilterMixin
 
 from .. import models
 
-__all__ = ('ConduitFilter', 'ZoneFilter')
+__all__ = ('ConduitFilter', 'FieldbusFilter', 'IndustrialServiceFilter', 'ZoneFilter')
 
 
 @register_filter(models.Zone, lookups=True)
@@ -38,3 +38,23 @@ class ConduitFilter(PrimaryModelFilter):
     remote_access: FilterLookup[bool] | None = strawberry_django.filter_field()
     protocols: StrFilterLookup[str] | None = strawberry_django.filter_field()
     via: StrFilterLookup[str] | None = strawberry_django.filter_field()
+
+
+@register_filter(models.Fieldbus, lookups=True)
+class FieldbusFilter(PrimaryModelFilter):
+    name: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    site_id: ID | None = strawberry_django.filter_field()
+    zone_id: ID | None = strawberry_django.filter_field()
+    medium: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    protocol: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    gateway_id: ID | None = strawberry_django.filter_field()
+
+
+@register_filter(models.IndustrialService, lookups=True)
+class IndustrialServiceFilter(PrimaryModelFilter):
+    device_id: ID | None = strawberry_django.filter_field()
+    virtual_machine_id: ID | None = strawberry_django.filter_field()
+    protocol: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    role: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    fieldbus_id: ID | None = strawberry_django.filter_field()
+    address: StrFilterLookup[str] | None = strawberry_django.filter_field()

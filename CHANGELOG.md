@@ -10,4 +10,7 @@ First development version, for NetBox 4.7.
 - IEC 62443 panel on device and VM pages.
 - `iec62443_import_vloerscan` management command for passive-capture analysis output, with
   `--rename`, `--outside-zone` and `--split`/`--split-all` (one zone per Purdue band).
+- Industrial services (protocol, role, interface/ports or fieldbus/address) and fieldbuses (medium,
+  protocol, baud rate, frame format, zone, gateway), with UI, API, GraphQL and the device panel;
+  the importer derives services from OT requests and open ports.
 - English only; all strings translatable, so the UI follows NetBox's language once translations exist.

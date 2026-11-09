@@ -30,6 +30,16 @@ menu = PluginMenu(
                 permissions=['netbox_iec62443.view_conduit'], buttons=_buttons('conduit'),
             ),
         )),
+        (_('Industrial systems'), (
+            PluginMenuItem(
+                link='plugins:netbox_iec62443:industrialservice_list', link_text=_('Industrial services'),
+                permissions=['netbox_iec62443.view_industrialservice'], buttons=_buttons('industrialservice'),
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_iec62443:fieldbus_list', link_text=_('Fieldbuses'),
+                permissions=['netbox_iec62443.view_fieldbus'], buttons=_buttons('fieldbus'),
+            ),
+        )),
         (_('Reports'), (
             PluginMenuItem(
                 link='plugins:netbox_iec62443:accessmap', link_text=_('Access map'),

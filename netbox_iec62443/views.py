@@ -12,7 +12,7 @@ from utilities.views import ContentTypePermissionRequiredMixin, ViewTab, registe
 from . import filtersets, forms, tables
 from .accessmap import access_map_conduits, access_map_svg
 from .choices import PurdueLevelChoices
-from .models import Conduit, Zone
+from .models import Conduit, Fieldbus, IndustrialService, Zone
 
 
 def _default_max_level():
@@ -200,6 +200,151 @@ class ConduitBulkDeleteView(generic.BulkDeleteView):
     queryset = Conduit.objects.all()
     filterset = filtersets.ConduitFilterSet
     table = tables.ConduitTable
+
+
+#
+# Fieldbuses
+#
+
+class FieldbusPanel(panels.ObjectAttributesPanel):
+    name = attrs.TextAttr('name')
+    site = attrs.RelatedObjectAttr('site', linkify=True)
+    zone = attrs.RelatedObjectAttr('zone', linkify=True)
+    medium = attrs.ChoiceAttr('medium')
+    protocol = attrs.ChoiceAttr('protocol')
+    baud_rate = attrs.TextAttr('baud_rate', label=_('Baud rate'))
+    frame_format = attrs.TextAttr('frame_format', label=_('Frame format'))
+    gateway = attrs.RelatedObjectAttr('gateway', linkify=True)
+    description = attrs.TextAttr('description')
+
+
+@register_model_view(Fieldbus, 'list', path='', detail=False)
+class FieldbusListView(generic.ObjectListView):
+    queryset = Fieldbus.objects.annotate(service_count=Count('services'))
+    filterset = filtersets.FieldbusFilterSet
+    filterset_form = forms.FieldbusFilterForm
+    table = tables.FieldbusTable
+
+
+@register_model_view(Fieldbus)
+class FieldbusView(generic.ObjectView):
+    queryset = Fieldbus.objects.all()
+    template_name = 'generic/object.html'
+    layout = layout.SimpleLayout(
+        left_panels=[FieldbusPanel(), TagsPanel()],
+        right_panels=[CustomFieldsPanel(), panels.CommentsPanel()],
+        bottom_panels=[
+            panels.ObjectsTablePanel(
+                'netbox_iec62443.industrialservice',
+                filters={'fieldbus_id': lambda ctx: ctx['object'].pk},
+                title=_('Services on this bus'),
+            ),
+        ],
+    )
+
+
+@register_model_view(Fieldbus, 'add', detail=False)
+@register_model_view(Fieldbus, 'edit')
+class FieldbusEditView(generic.ObjectEditView):
+    queryset = Fieldbus.objects.all()
+    form = forms.FieldbusForm
+
+
+@register_model_view(Fieldbus, 'delete')
+class FieldbusDeleteView(generic.ObjectDeleteView):
+    queryset = Fieldbus.objects.all()
+
+
+@register_model_view(Fieldbus, 'bulk_import', path='import', detail=False)
+class FieldbusBulkImportView(generic.BulkImportView):
+    queryset = Fieldbus.objects.all()
+    model_form = forms.FieldbusImportForm
+
+
+@register_model_view(Fieldbus, 'bulk_edit', path='edit', detail=False)
+class FieldbusBulkEditView(generic.BulkEditView):
+    queryset = Fieldbus.objects.all()
+    filterset = filtersets.FieldbusFilterSet
+    table = tables.FieldbusTable
+    form = forms.FieldbusBulkEditForm
+
+
+@register_model_view(Fieldbus, 'bulk_delete', path='delete', detail=False)
+class FieldbusBulkDeleteView(generic.BulkDeleteView):
+    queryset = Fieldbus.objects.all()
+    filterset = filtersets.FieldbusFilterSet
+    table = tables.FieldbusTable
+
+
+#
+# Industrial services
+#
+
+class IndustrialServicePanel(panels.ObjectAttributesPanel):
+    device = attrs.RelatedObjectAttr('device', linkify=True)
+    virtual_machine = attrs.RelatedObjectAttr('virtual_machine', linkify=True, label=_('Virtual machine'))
+    protocol = attrs.ChoiceAttr('protocol')
+    role = attrs.ChoiceAttr('role')
+    interface = attrs.RelatedObjectAttr('interface', linkify=True)
+    ports = attrs.TextAttr('ports_display', label=_('Ports'))
+    fieldbus = attrs.RelatedObjectAttr('fieldbus', linkify=True)
+    address = attrs.TextAttr('address')
+    description = attrs.TextAttr('description')
+
+
+@register_model_view(IndustrialService, 'list', path='', detail=False)
+class IndustrialServiceListView(generic.ObjectListView):
+    queryset = IndustrialService.objects.select_related('device', 'virtual_machine', 'interface', 'fieldbus')
+    filterset = filtersets.IndustrialServiceFilterSet
+    filterset_form = forms.IndustrialServiceFilterForm
+    table = tables.IndustrialServiceTable
+
+
+@register_model_view(IndustrialService)
+class IndustrialServiceView(generic.ObjectView):
+    queryset = IndustrialService.objects.all()
+    template_name = 'generic/object.html'
+    layout = layout.SimpleLayout(
+        left_panels=[IndustrialServicePanel(), TagsPanel()],
+        right_panels=[
+            panels.TextCodePanel('evidence', title=_('Evidence')),
+            CustomFieldsPanel(),
+            panels.CommentsPanel(),
+        ],
+    )
+
+
+@register_model_view(IndustrialService, 'add', detail=False)
+@register_model_view(IndustrialService, 'edit')
+class IndustrialServiceEditView(generic.ObjectEditView):
+    queryset = IndustrialService.objects.all()
+    form = forms.IndustrialServiceForm
+
+
+@register_model_view(IndustrialService, 'delete')
+class IndustrialServiceDeleteView(generic.ObjectDeleteView):
+    queryset = IndustrialService.objects.all()
+
+
+@register_model_view(IndustrialService, 'bulk_import', path='import', detail=False)
+class IndustrialServiceBulkImportView(generic.BulkImportView):
+    queryset = IndustrialService.objects.all()
+    model_form = forms.IndustrialServiceImportForm
+
+
+@register_model_view(IndustrialService, 'bulk_edit', path='edit', detail=False)
+class IndustrialServiceBulkEditView(generic.BulkEditView):
+    queryset = IndustrialService.objects.all()
+    filterset = filtersets.IndustrialServiceFilterSet
+    table = tables.IndustrialServiceTable
+    form = forms.IndustrialServiceBulkEditForm
+
+
+@register_model_view(IndustrialService, 'bulk_delete', path='delete', detail=False)
+class IndustrialServiceBulkDeleteView(generic.BulkDeleteView):
+    queryset = IndustrialService.objects.all()
+    filterset = filtersets.IndustrialServiceFilterSet
+    table = tables.IndustrialServiceTable
 
 
 #

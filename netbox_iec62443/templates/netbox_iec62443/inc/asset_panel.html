@@ -17,6 +17,32 @@
       </td>
     </tr>
   </table>
+  {% if services or bridges %}
+    <table class="table table-hover">
+      <thead>
+        <tr><th>{% trans "Industrial service" %}</th><th>{% trans "Role" %}</th><th>{% trans "Ports / bus" %}</th></tr>
+      </thead>
+      <tbody>
+        {% for svc in services %}
+          <tr>
+            <td><a href="{{ svc.get_absolute_url }}">{{ svc.get_protocol_display }}</a></td>
+            <td>{% badge svc.get_role_display bg_color=svc.get_role_color %}</td>
+            <td>
+              {% if svc.fieldbus %}{{ svc.fieldbus|linkify }}{% if svc.address %} <span class="text-muted">{{ svc.address }}</span>{% endif %}
+              {% else %}{{ svc.ports_display|placeholder }}{% if svc.interface %} <span class="text-muted">{% trans "on" %} {{ svc.interface }}</span>{% endif %}{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        {% for bus in bridges %}
+          <tr>
+            <td>{% trans "Gateway for" %} {{ bus|linkify }}</td>
+            <td>{{ bus.get_medium_display }}</td>
+            <td>{{ bus.get_protocol_display|placeholder }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
   {% if conduits %}
     <table class="table table-hover">
       <thead>

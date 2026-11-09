@@ -66,6 +66,11 @@ class BuildPlanTest(TestCase):
         self.assertEqual(office.via, '')
         hmi = pairs[(SUPERVISORY, CONTROL)]
         self.assertIn('Read Variable x500', hmi.evidence)
+        services = {(sp.ip, sp.protocol, sp.role) for sp in plan.services}
+        self.assertEqual(services, {
+            ('10.10.10.10', 's7comm', 'server'), ('10.10.10.20', 's7comm', 'client'),
+            ('192.168.1.10', 's7comm', 'client'),
+        })
         self.assertEqual(plan.asset_levels['10.10.10.20'], '2')
 
     def test_no_split_by_default(self):
@@ -120,6 +125,10 @@ class ImportCommandTest(TestCase):
         self.assertTrue(control.prefixes.filter(prefix='10.10.10.0/24').exists())
         hmi = Zone.objects.get(name=SUPERVISORY).devices.get(name='dev-10.10.10.20')
         self.assertEqual(hmi.custom_field_data[PURDUE_CF_NAME], '2')
+        from netbox_iec62443.models import IndustrialService
+        plc_s7 = IndustrialService.objects.get(device__name='dev-10.10.10.10', protocol='s7comm')
+        self.assertEqual((plc_s7.role, plc_s7.ports, plc_s7.interface.name), ('server', [102], 'eth0'))
+        self.assertEqual(IndustrialService.objects.count(), 3)
 
         # A human decision survives a re-import
         conduit = Conduit.objects.get(source_zone__name='Z4 External')
@@ -127,6 +136,7 @@ class ImportCommandTest(TestCase):
         conduit.save()
         out = self._run('--split', 'Z1 Cell A')
         self.assertIn('conduits unchanged: 4', out)
+        self.assertIn('services unchanged: 3', out)
         conduit.refresh_from_db()
         self.assertEqual(conduit.allowed, 'no')
         self.assertEqual(Zone.objects.count(), 5)

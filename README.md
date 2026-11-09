@@ -55,6 +55,26 @@ development you can mount the source and set `PYTHONPATH` instead (see `docs/dev
 
 Permissions: users who view conduits also need view permission on zones (a conduit shows its zones).
 
+## Industrial systems and protocols
+
+- **Industrial services**: which industrial protocol a device or VM speaks, and as what: server
+  (slave, outstation), client (master), both, publisher or subscriber. Over the network the service
+  sits on an interface and ports (filled in from the protocol's usual ports when left empty: 502
+  for Modbus TCP, 102 for S7comm, 44818 for EtherNet/IP, 4840 for OPC UA, ...). On a serial bus it
+  sits on a fieldbus at an address (Modbus unit ID, PROFIBUS station, rack/slot).
+- **Fieldbuses**: RS-485/422/232, PROFIBUS, CAN, HART, AS-i, IO-Link segments, with the protocol, baud
+  rate and frame format (`8E1`), the zone they belong to and the gateway that bridges them to
+  Ethernet (a serial device server or protocol gateway). A passive network capture can't see these,
+  so they are usually entered during a walk-through.
+- Protocols: Modbus TCP/RTU/ASCII, S7comm(-plus), PROFINET IO, PROFIBUS DP, EtherNet/IP (CIP),
+  OPC UA/DA, DNP3, IEC 60870-5-101/104, IEC 61850 MMS/GOOSE, BACnet/IP and MS/TP, KNXnet/IP, MQTT,
+  HART-IP, EtherCAT, CANopen, Omron FINS, MELSEC.
+- Both have the usual list/detail/edit/bulk views, filters (by protocol, role, port, zone, site,
+  fieldbus), REST API (`/api/plugins/iec62443/industrial-services/`, `/fieldbuses/`) and GraphQL. The
+  device and VM panel lists an asset's services and the buses it is gateway for.
+- The importer creates services from the analysis: a server for every protocol an asset answered or
+  listens on (well-known OT ports), a client for every protocol it sent requests in.
+
 ## Design choices
 
 - **Zone members are plain many-to-many fields** (`devices`, `virtual_machines`, `prefixes`) rather

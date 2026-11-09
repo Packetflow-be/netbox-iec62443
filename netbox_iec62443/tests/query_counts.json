@@ -1,6 +1,10 @@
 {
   "conduit:api_list_objects": 12,
   "conduit:list_objects_with_permission": 16,
+  "fieldbus:api_list_objects": 12,
+  "fieldbus:list_objects_with_permission": 17,
+  "industrialservice:api_list_objects": 12,
+  "industrialservice:list_objects_with_permission": 16,
   "zone:api_list_objects": 16,
   "zone:list_objects_with_permission": 18
 }

@@ -17,6 +17,8 @@ are listed in flows.json. From that:
             remote_access = such a writer is a router (a supplier's 4G/VPN router); evidence = counts
             and OT flow lines.
   devices   matched by primary IPv4 address; get the zone membership and their Purdue level.
+  services  industrial services per asset: a server for every protocol it answered or listens on
+            (well-known OT ports in open_ports), a client for every protocol it sent requests in.
 
 Re-running is safe: it adds members and refreshes evidence, but never overwrites a human decision
 (a conduit's "allowed", a zone's or device's Purdue level once set).
@@ -28,6 +30,16 @@ from dataclasses import dataclass, field
 from django.utils.text import slugify
 
 WRITE_FUNCS = ('Write',)
+# Protocol names in the analysis output (Zeek/ICSNPP, tshark) -> IndustrialProtocolChoices values
+PROTOCOL_NAMES = {
+    's7comm': 's7comm', 's7comm-plus': 's7comm-plus', 's7comm_plus': 's7comm-plus', 'modbus': 'modbus-tcp',
+    'modbus/tcp': 'modbus-tcp', 'enip': 'ethernet-ip', 'ethernet/ip': 'ethernet-ip', 'cip': 'ethernet-ip',
+    'dnp3': 'dnp3', 'bacnet': 'bacnet-ip', 'opcua': 'opc-ua', 'opc ua': 'opc-ua', 'iec104': 'iec-104',
+    'iec-104': 'iec-104', 'profinet': 'profinet', 'mqtt': 'mqtt', 'hart-ip': 'hart-ip', 'omron fins': 'omron-fins',
+}
+# Well-known OT ports -> protocol (a listening port is a server; 102 is taken as S7comm)
+OT_PORTS = {502: 'modbus-tcp', 102: 's7comm', 44818: 'ethernet-ip', 4840: 'opc-ua', 47808: 'bacnet-ip',
+            20000: 'dnp3', 2404: 'iec-104', 5094: 'hart-ip', 9600: 'omron-fins'}
 BANDS = ('control', 'supervisory', 'operations')
 
 
@@ -53,10 +65,19 @@ class ConduitPlan:
 
 
 @dataclass
+class ServicePlan:
+    ip: str
+    protocol: str
+    role: str
+    evidence: list = field(default_factory=list)
+
+
+@dataclass
 class ImportPlan:
     zones: dict
     conduits: list
     asset_levels: dict  # ip -> Purdue level string
+    services: list = field(default_factory=list)
 
 
 def _level(value):
@@ -189,7 +210,34 @@ def build_plan(assets, flows, summary, renames=None, outside_zone='Outside', spl
         ))
 
     asset_levels = {a['ip']: _level(a['purdue_level']) for a in assets if a['purdue_level'] is not None}
-    return ImportPlan(zones=zones, conduits=conduits, asset_levels=asset_levels)
+    return ImportPlan(zones=zones, conduits=conduits, asset_levels=asset_levels,
+                      services=_plan_services(assets, flows, seen_in))
+
+
+def _plan_services(assets, flows, seen_in):
+    services = {}
+
+    def add(ip, protocol, role, line):
+        sp = services.setdefault((ip, protocol, role), ServicePlan(ip=ip, protocol=protocol, role=role))
+        if line not in sp.evidence:
+            sp.evidence.append(line)
+
+    known = {a['ip'] for a in assets}
+    for f in flows:
+        protocol = PROTOCOL_NAMES.get(str(f['proto']).lower())
+        if not protocol:
+            continue
+        what = f"{f['proto']} {f['func']} x{f['count']}".strip()
+        if f['dst'] in known:
+            add(f['dst'], protocol, 'server', f"Answered {what} from {f['src']} ({seen_in})")
+        if f['src'] in known:
+            add(f['src'], protocol, 'client', f"Sent {what} to {f['dst']} ({seen_in})")
+    for a in assets:
+        for port in a.get('open_ports') or []:
+            protocol = OT_PORTS.get(port)
+            if protocol:
+                add(a['ip'], protocol, 'server', f"Port {port} open ({seen_in})")
+    return sorted(services.values(), key=lambda s: (ipaddress.ip_address(s.ip), s.protocol, s.role))
 
 
 def apply_plan(plan, site, log=print):
@@ -200,7 +248,7 @@ def apply_plan(plan, site, log=print):
     from virtualization.models import VirtualMachine
 
     from ..customfields import PURDUE_CF_NAME
-    from ..models import Conduit, Zone
+    from ..models import Conduit, IndustrialService, Zone
 
     stats = defaultdict(int)
     has_cf = CustomField.objects.filter(name=PURDUE_CF_NAME).exists()
@@ -275,4 +323,28 @@ def apply_plan(plan, site, log=print):
         conduit.save()
         stats['conduits created' if created else 'conduits updated'] += 1
         log(f"conduit {'created' if created else 'updated'}: {cp.name}")
+    for sp in plan.services:
+        asset = (Device.objects.filter(primary_ip4__address__net_host=sp.ip).first()
+                 or VirtualMachine.objects.filter(primary_ip4__address__net_host=sp.ip).first())
+        if asset is None:
+            continue
+        is_device = isinstance(asset, Device)
+        lookup = {'device': asset} if is_device else {'virtual_machine': asset}
+        service = IndustrialService.objects.filter(protocol=sp.protocol, role=sp.role, **lookup).first()
+        evidence = '\n'.join(sp.evidence)
+        if service is None:
+            service = IndustrialService(protocol=sp.protocol, role=sp.role, evidence=evidence, **lookup)
+            if is_device and asset.primary_ip4 and asset.primary_ip4.assigned_object_type.model == 'interface':
+                service.interface_id = asset.primary_ip4.assigned_object_id
+            service.full_clean()
+            service.save()
+            stats['services created'] += 1
+        elif service.evidence != evidence:
+            service.snapshot()
+            service.evidence = evidence
+            service.full_clean()
+            service.save()
+            stats['services updated'] += 1
+        else:
+            stats['services unchanged'] += 1
     return dict(stats)

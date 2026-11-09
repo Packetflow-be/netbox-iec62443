@@ -1,4 +1,6 @@
-from dcim.api.serializers import DeviceSerializer, SiteSerializer
+from rest_framework import serializers
+
+from dcim.api.serializers import DeviceSerializer, InterfaceSerializer, SiteSerializer
 from dcim.models import Device
 from ipam.api.serializers import PrefixSerializer
 from ipam.models import Prefix
@@ -8,10 +10,18 @@ from tenancy.api.serializers import TenantSerializer
 from virtualization.api.serializers import VirtualMachineSerializer
 from virtualization.models import VirtualMachine
 
-from ..choices import ConduitAllowedChoices, ConduitDirectionChoices, PurdueLevelChoices, SecurityLevelChoices
-from ..models import Conduit, Zone
+from ..choices import (
+    ConduitAllowedChoices,
+    ConduitDirectionChoices,
+    FieldbusMediumChoices,
+    IndustrialProtocolChoices,
+    PurdueLevelChoices,
+    SecurityLevelChoices,
+    ServiceRoleChoices,
+)
+from ..models import Conduit, Fieldbus, IndustrialService, Zone
 
-__all__ = ('ConduitSerializer', 'ZoneSerializer')
+__all__ = ('ConduitSerializer', 'FieldbusSerializer', 'IndustrialServiceSerializer', 'ZoneSerializer')
 
 
 class StringChoiceField(ChoiceField):
@@ -69,3 +79,41 @@ class ConduitSerializer(PrimaryModelSerializer):
             'tags', 'custom_fields', 'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'name', 'allowed', 'description')
+
+
+class FieldbusSerializer(PrimaryModelSerializer):
+    site = SiteSerializer(nested=True, required=False, allow_null=True)
+    zone = ZoneSerializer(nested=True, required=False, allow_null=True)
+    medium = ChoiceField(choices=FieldbusMediumChoices)
+    protocol = ChoiceField(choices=IndustrialProtocolChoices, allow_blank=True, required=False)
+    gateway = DeviceSerializer(nested=True, required=False, allow_null=True)
+
+    class Meta:
+        model = Fieldbus
+        fields = (
+            'id', 'url', 'display_url', 'display', 'name', 'site', 'zone', 'medium', 'protocol', 'baud_rate',
+            'frame_format', 'gateway', 'description', 'owner', 'comments', 'tags', 'custom_fields', 'created',
+            'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'name', 'medium', 'description')
+
+
+class IndustrialServiceSerializer(PrimaryModelSerializer):
+    device = DeviceSerializer(nested=True, required=False, allow_null=True)
+    virtual_machine = VirtualMachineSerializer(nested=True, required=False, allow_null=True)
+    protocol = ChoiceField(choices=IndustrialProtocolChoices)
+    role = ChoiceField(choices=ServiceRoleChoices, required=False)
+    interface = InterfaceSerializer(nested=True, required=False, allow_null=True)
+    ports = serializers.ListField(
+        child=serializers.IntegerField(min_value=1, max_value=65535), required=False,
+    )
+    fieldbus = FieldbusSerializer(nested=True, required=False, allow_null=True)
+
+    class Meta:
+        model = IndustrialService
+        fields = (
+            'id', 'url', 'display_url', 'display', 'device', 'virtual_machine', 'protocol', 'role', 'interface',
+            'ports', 'fieldbus', 'address', 'evidence', 'description', 'owner', 'comments', 'tags',
+            'custom_fields', 'created', 'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'protocol', 'role', 'description')

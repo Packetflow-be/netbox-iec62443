@@ -5,5 +5,7 @@ from . import views
 router = NetBoxRouter()
 router.register('zones', views.ZoneViewSet)
 router.register('conduits', views.ConduitViewSet)
+router.register('fieldbuses', views.FieldbusViewSet)
+router.register('industrial-services', views.IndustrialServiceViewSet)
 
 urlpatterns = router.urls

@@ -9,5 +9,9 @@ urlpatterns = [
     path('zones/<int:pk>/', include(get_model_urls('netbox_iec62443', 'zone'))),
     path('conduits/', include(get_model_urls('netbox_iec62443', 'conduit', detail=False))),
     path('conduits/<int:pk>/', include(get_model_urls('netbox_iec62443', 'conduit'))),
+    path('fieldbuses/', include(get_model_urls('netbox_iec62443', 'fieldbus', detail=False))),
+    path('fieldbuses/<int:pk>/', include(get_model_urls('netbox_iec62443', 'fieldbus'))),
+    path('industrial-services/', include(get_model_urls('netbox_iec62443', 'industrialservice', detail=False))),
+    path('industrial-services/<int:pk>/', include(get_model_urls('netbox_iec62443', 'industrialservice'))),
     path('access-map/', views.AccessMapView.as_view(), name='accessmap'),
 ]
