@@ -47,5 +47,5 @@ Importer against a running instance:
 ```
 docker cp out/ <netbox container>:/tmp/vloerscan-out
 docker exec <netbox container> /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py \
-  iec62443_import_vloerscan /tmp/vloerscan-out --site <site-slug> --dry-run
+  iec62443_import_vloerscan /tmp/vloerscan-out --site <site-slug> [--split "<zone>"] --dry-run
 ```

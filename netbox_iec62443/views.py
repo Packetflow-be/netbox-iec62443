@@ -47,7 +47,7 @@ class ConduitPanel(panels.ObjectAttributesPanel):
 
 
 class ConduitAccessPanel(panels.ObjectAttributesPanel):
-    allowed = attrs.ChoiceAttr('allowed', label=_('Allowed ("Mag dat?")'))
+    allowed = attrs.ChoiceAttr('allowed', label=_('Allowed'))
     protocols = attrs.TextAttr('protocols', label=_('Protocols / ports'))
     remote_access = attrs.BooleanAttr('remote_access', label=_('Remote access'))
     via = attrs.TextAttr('via')
@@ -203,7 +203,7 @@ class ConduitBulkDeleteView(generic.BulkDeleteView):
 
 
 #
-# Access map ("toegangskaart")
+# Access map
 #
 
 def _access_map_context(request, site, max_level):

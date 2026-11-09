@@ -8,4 +8,6 @@ First development version, for NetBox 4.7.
 - Purdue level custom field on devices and virtual machines, created after migrate.
 - Access map per site (table and diagram), as a site tab and as a standalone page.
 - IEC 62443 panel on device and VM pages.
-- `iec62443_import_vloerscan` management command for passive-capture analysis output.
+- `iec62443_import_vloerscan` management command for passive-capture analysis output, with
+  `--rename`, `--outside-zone` and `--split`/`--split-all` (one zone per Purdue band).
+- English only; all strings translatable, so the UI follows NetBox's language once translations exist.

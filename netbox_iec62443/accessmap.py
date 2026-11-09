@@ -1,10 +1,11 @@
 """
-The access map ("toegangskaart"): every conduit into a zone at Purdue level <= N (default 2), i.e. every
+The access map: every conduit into a zone at Purdue level <= N (default 2), i.e. every
 path to the controllers, with its "allowed?" verdict. Plus a small server-rendered SVG of the same.
 """
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
+from django.utils.translation import gettext as _
 
 from .choices import ConduitAllowedChoices, ConduitDirectionChoices, PurdueLevelChoices
 from .models import Conduit, Zone
@@ -45,7 +46,7 @@ BOX_W, BOX_H, GAP_X, ROW_H, LABEL_W, PAD = 190, 46, 40, 96, 150, 16
 def _level_rows(zones):
     order = [None] + [value for value, _label in reversed(PurdueLevelChoices.CHOICES)]
     labels = {value: str(label).split(' (')[0] for value, label in PurdueLevelChoices.CHOICES}
-    labels[None] = 'No level'
+    labels[None] = str(_('No level'))
     rows = []
     for level in order:
         members = sorted((z for z in zones if (z.purdue_level or None) == level), key=lambda z: z.name)
@@ -108,9 +109,10 @@ def access_map_svg(conduits, zones=()):
             f'<circle cx="{lx}" cy="{ly}" r="10" fill="{color}"/>'
             f'<text x="{lx}" y="{ly + 4}" text-anchor="middle" class="num">{n}</text>'
         )
+    aria = escape(_('Access map diagram'))
     svg = (
         f'<svg viewBox="0 0 {width} {height}" width="100%" style="max-width:{width}px" role="img" '
-        f'aria-label="Access map diagram" class="iec62443-map">'
+        f'aria-label="{aria}" class="iec62443-map">'
         '<defs>'
         '<marker id="iec-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
         'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>'

@@ -93,7 +93,7 @@ class Zone(PrimaryModel):
 class Conduit(PrimaryModel):
     """
     An IEC 62443 conduit: a communication path between two zones.
-    `allowed` is the access map's "Mag dat?" (is that allowed?) column.
+    `allowed` is the access map's verdict: is this path allowed?
     """
     name = models.CharField(verbose_name=_('name'), max_length=100, db_collation='natural_sort')
     source_zone = models.ForeignKey(
@@ -119,7 +119,7 @@ class Conduit(PrimaryModel):
         max_length=20,
         choices=ConduitAllowedChoices,
         default=ConduitAllowedChoices.UNKNOWN,
-        help_text=_('Is this path allowed? (the access map\'s "Mag dat?" column)'),
+        help_text=_('Is this path allowed? Shown as the verdict on the access map'),
     )
     protocols = models.CharField(
         verbose_name=_('protocols / ports'),

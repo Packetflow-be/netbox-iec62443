@@ -16,11 +16,11 @@ from netbox_iec62443.models import Conduit, Zone
 
 # A small excerpt in the shape of the Vloerscan prototype's output (documentation addresses, no real site)
 ASSETS = [
-    {'ip': '10.10.10.10', 'role': 'PLC', 'purdue_level': 1, 'zone': 'Z1 Cel A'},
-    {'ip': '10.10.10.20', 'role': 'HMI', 'purdue_level': 2, 'zone': 'Z1 Cel A'},
-    {'ip': '192.168.1.10', 'role': 'Router van buitenaf (schrijft naar PLC)', 'purdue_level': 3,
-     'zone': 'Z4 Van buitenaf'},
-    {'ip': '192.168.2.42', 'role': 'Laptop', 'purdue_level': 4, 'zone': 'Z5 Kantoor'},
+    {'ip': '10.10.10.10', 'role': 'PLC', 'purdue_level': 1, 'zone': 'Z1 Cell A'},
+    {'ip': '10.10.10.20', 'role': 'HMI', 'purdue_level': 2, 'zone': 'Z1 Cell A'},
+    {'ip': '192.168.1.10', 'role': 'Router from outside (writes to PLC)', 'purdue_level': 3,
+     'zone': 'Z4 External'},
+    {'ip': '192.168.2.42', 'role': 'Laptop', 'purdue_level': 4, 'zone': 'Z5 Office'},
 ]
 FLOWS = [
     {'src': '10.10.10.20', 'dst': '10.10.10.10', 'proto': 'S7comm', 'func': 'Read Variable', 'count': 500},
@@ -30,31 +30,57 @@ FLOWS = [
 SUMMARY = {
     'captures': ['cap1'], 'hours': 2.0,
     'zone_pairs': [
-        {'from': 'Z4 Van buitenaf', 'to': 'Z1 Cel A', 'count': 12},
-        {'from': 'Z5 Kantoor', 'to': 'Z1 Cel A', 'count': 300},
-        {'from': 'Z5 Kantoor', 'to': 'Onbekend', 'count': 40},
+        {'from': 'Z4 External', 'to': 'Z1 Cell A', 'count': 12},
+        {'from': 'Z5 Office', 'to': 'Z1 Cell A', 'count': 300},
+        {'from': 'Z5 Office', 'to': 'Elsewhere', 'count': 40},
     ],
 }
+CONTROL, SUPERVISORY = 'Z1 Cell A (control)', 'Z1 Cell A (supervisory)'
 
 
 class BuildPlanTest(TestCase):
 
-    def test_plan(self):
-        plan = build_plan(ASSETS, FLOWS, SUMMARY)
-        self.assertEqual(set(plan.zones), {'Z1 Cel A', 'Z4 Van buitenaf', 'Z5 Kantoor', 'Onbekend'})
-        cell = plan.zones['Z1 Cel A']
-        self.assertEqual(cell.purdue_level, '1')  # lowest level of its members
-        self.assertEqual(cell.prefixes, ['10.10.10.0/24'])
-        self.assertEqual(plan.zones['Onbekend'].purdue_level, '')
-        remote = next(c for c in plan.conduits if c.source == 'Z4 Van buitenaf')
+    def test_plan_splits_mixed_zone(self):
+        plan = build_plan(ASSETS, FLOWS, SUMMARY, split_zones=['Z1 Cell A'])
+        self.assertEqual(set(plan.zones), {CONTROL, SUPERVISORY, 'Z4 External', 'Z5 Office', 'Outside'})
+        self.assertEqual(plan.zones[CONTROL].member_ips, ['10.10.10.10'])
+        self.assertEqual(plan.zones[CONTROL].purdue_level, '1')
+        self.assertEqual(plan.zones[SUPERVISORY].purdue_level, '2')
+        self.assertEqual(plan.zones[CONTROL].prefixes, ['10.10.10.0/24'])
+        self.assertEqual(plan.zones['Outside'].purdue_level, '')
+        pairs = {(c.source, c.destination): c for c in plan.conduits}
+        self.assertEqual(set(pairs), {
+            ('Z4 External', CONTROL),  # pinned to the PLC by its OT requests
+            ('Z5 Office', CONTROL),  # no OT requests: the most critical part
+            ('Z5 Office', 'Outside'),
+            (SUPERVISORY, CONTROL),  # inside the old zone, now a conduit
+        })
+        remote = pairs[('Z4 External', CONTROL)]
         self.assertTrue(remote.remote_access)
         self.assertIn('192.168.1.10', remote.via)
         self.assertIn('S7comm', remote.protocols)
         self.assertIn('Write Variable x12', remote.evidence)
-        office = next(c for c in plan.conduits if c.source == 'Z5 Kantoor' and c.destination == 'Z1 Cel A')
+        self.assertIn('12 connection(s) from Z4 External to Z1 Cell A', remote.evidence)
+        office = pairs[('Z5 Office', CONTROL)]
         self.assertFalse(office.remote_access)
         self.assertEqual(office.via, '')
+        hmi = pairs[(SUPERVISORY, CONTROL)]
+        self.assertIn('Read Variable x500', hmi.evidence)
         self.assertEqual(plan.asset_levels['10.10.10.20'], '2')
+
+    def test_no_split_by_default(self):
+        plan = build_plan(ASSETS, FLOWS, SUMMARY)
+        self.assertEqual(set(plan.zones), {'Z1 Cell A', 'Z4 External', 'Z5 Office', 'Outside'})
+        self.assertEqual(plan.zones['Z1 Cell A'].purdue_level, '1')
+        self.assertEqual(len(plan.conduits), 3)
+
+    def test_rename_and_outside_name(self):
+        plan = build_plan(ASSETS, FLOWS, SUMMARY, renames={'Z4 External': 'Z4 Remote'}, outside_zone='Internet',
+                          split_zones=True)
+        self.assertIn('Z4 Remote', plan.zones)
+        self.assertNotIn('Z4 External', plan.zones)
+        self.assertIn('Internet', plan.zones)
+        self.assertTrue(any(c.source == 'Z4 Remote' and c.remote_access for c in plan.conduits))
 
 
 class ImportCommandTest(TestCase):
@@ -86,22 +112,33 @@ class ImportCommandTest(TestCase):
     def test_import_and_rerun(self):
         from users.models import User
         User.objects.create_superuser('admin')
-        self._run()
-        self.assertEqual(Zone.objects.filter(site=self.site).count(), 4)
-        self.assertEqual(Conduit.objects.count(), 3)
-        cell = Zone.objects.get(name='Z1 Cel A')
-        self.assertEqual(cell.devices.count(), 2)
-        self.assertTrue(cell.prefixes.filter(prefix='10.10.10.0/24').exists())
-        hmi = cell.devices.get(name='dev-10.10.10.20')
+        self._run('--split', 'Z1 Cell A')
+        self.assertEqual(Zone.objects.filter(site=self.site).count(), 5)
+        self.assertEqual(Conduit.objects.count(), 4)
+        control = Zone.objects.get(name=CONTROL)
+        self.assertEqual(list(control.devices.values_list('name', flat=True)), ['dev-10.10.10.10'])
+        self.assertTrue(control.prefixes.filter(prefix='10.10.10.0/24').exists())
+        hmi = Zone.objects.get(name=SUPERVISORY).devices.get(name='dev-10.10.10.20')
         self.assertEqual(hmi.custom_field_data[PURDUE_CF_NAME], '2')
 
         # A human decision survives a re-import
-        conduit = Conduit.objects.get(source_zone__name='Z4 Van buitenaf')
+        conduit = Conduit.objects.get(source_zone__name='Z4 External')
         conduit.allowed = 'no'
         conduit.save()
-        out = self._run()
-        self.assertIn('conduits unchanged: 3', out)
+        out = self._run('--split', 'Z1 Cell A')
+        self.assertIn('conduits unchanged: 4', out)
         conduit.refresh_from_db()
         self.assertEqual(conduit.allowed, 'no')
-        self.assertEqual(Zone.objects.count(), 4)
+        self.assertEqual(Zone.objects.count(), 5)
         self.assertEqual(Prefix.objects.filter(prefix='10.10.10.0/24').count(), 1)
+
+    def test_rename_option(self):
+        from users.models import User
+        User.objects.create_superuser('admin')
+        self._run('--rename', 'Z5 Office=Office')
+        self.assertTrue(Zone.objects.filter(name='Office').exists())
+        self.assertTrue(Zone.objects.filter(name='Z1 Cell A').exists())
+
+    def test_split_by_input_name_after_rename(self):
+        plan = build_plan(ASSETS, FLOWS, SUMMARY, renames={'Z1 Cell A': 'Cell'}, split_zones=['Z1 Cell A'])
+        self.assertIn('Cell (control)', plan.zones)

@@ -75,7 +75,10 @@ Permissions: users who view conduits also need view permission on zones (a condu
 
 ## Importer: passive capture analysis
 
-`manage.py iec62443_import_vloerscan <dir> --site <slug> [--user <name>] [--dry-run]`
+```
+manage.py iec62443_import_vloerscan <dir> --site <slug> [--user <name>] [--dry-run]
+    [--rename "OLD=NEW" ...] [--outside-zone NAME] [--split ZONE ... | --split-all]
+```
 
 Reads `assets.json`, `flows.json` and `summary.json` as written by the Vloerscan prototype
 (Zeek + CISA ICSNPP parsers + tshark, summarised per /24 segment) and creates:
@@ -87,6 +90,16 @@ Reads `assets.json`, `flows.json` and `summary.json` as written by the Vloerscan
   zone writes into a controller;
 - the Purdue level custom field on the matched assets (only where it is still empty).
 
+Options:
+
+- `--rename "OLD=NEW"` renames a zone from the input (repeatable), e.g. to translate segment names.
+- `--outside-zone NAME` names the zone for addresses outside the scanned floor (default `Outside`).
+- `--split ZONE` splits a zone that mixes Purdue bands into one zone per band, named
+  `ZONE (control)` (levels 0-1), `ZONE (supervisory)` (2) and `ZONE (operations)` (3 and up), so the
+  paths between them become conduits (e.g. an engineering laptop writing to a PLC in the same cell).
+  Traffic counted for the whole zone goes to the part its OT requests point at, else to the most
+  critical part. `--split-all` does this for every mixed zone.
+
 Re-running refreshes evidence but never overwrites a conduit's "allowed" or a level someone set.
 Changes are recorded in the change log under `--user` (default: the first superuser).
 
@@ -96,6 +109,14 @@ and `apply_plan()` writes any plan to NetBox. A Malcolm or plain Zeek importer o
 `build_plan`: aggregate `conn.log` (and the ICSNPP protocol logs) by NetBox prefix or zone instead of
 by /24, and reuse `apply_plan()` unchanged. Malcolm already creates devices and prefixes in NetBox, so
 such an importer could start from Malcolm's NetBox data and only add zones and conduits.
+
+## Language
+
+The plugin is written in English and every user-facing string goes through Django's translation
+functions, so it follows the language of the NetBox install (`LANGUAGE_CODE`, or each user's
+language preference) as soon as a translation exists. No translations ship yet; they would go in
+`netbox_iec62443/locale/<lang>/LC_MESSAGES/django.po` (`manage.py makemessages -l <lang>` in the
+plugin directory).
 
 ## Development
 

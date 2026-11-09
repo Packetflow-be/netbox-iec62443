@@ -22,6 +22,14 @@ class Command(BaseCommand):
         parser.add_argument('--site', required=True, help='Slug of the site the zones belong to')
         parser.add_argument('--user', help='Username recorded in the change log (default: first superuser)')
         parser.add_argument('--dry-run', action='store_true', help='Show what would change, then roll back')
+        parser.add_argument('--rename', action='append', default=[], metavar='OLD=NEW',
+                            help='Rename a zone from the input (repeatable), e.g. "Z5 Kantoor=Z5 Office"')
+        parser.add_argument('--outside-zone', default='Outside',
+                            help='Name of the zone for addresses outside the scanned floor (default: Outside)')
+        parser.add_argument('--split', action='append', default=[], metavar='ZONE',
+                            help='Split this zone per Purdue band: control (0-1), supervisory (2), operations (3+) '
+                                 '(repeatable; input or renamed name)')
+        parser.add_argument('--split-all', action='store_true', help='Split every zone that mixes Purdue bands')
 
     def handle(self, *args, **options):
         src = Path(options['directory'])
@@ -39,7 +47,15 @@ class Command(BaseCommand):
         if user is None:
             raise CommandError('No user for the change log (use --user)')
 
-        plan = build_plan(data['assets'], data['flows'], data['summary'])
+        renames = {}
+        for item in options['rename']:
+            old, sep, new = item.partition('=')
+            if not sep or not old.strip() or not new.strip():
+                raise CommandError(f'--rename expects OLD=NEW, got {item!r}')
+            renames[old.strip()] = new.strip()
+        plan = build_plan(data['assets'], data['flows'], data['summary'], renames=renames,
+                          outside_zone=options['outside_zone'],
+                          split_zones=True if options['split_all'] else options['split'])
         self.stdout.write(f'Plan: {len(plan.zones)} zones, {len(plan.conduits)} conduits, '
                           f'{len(plan.asset_levels)} assets with a Purdue level')
 

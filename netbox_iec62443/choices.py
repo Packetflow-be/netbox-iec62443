@@ -58,7 +58,7 @@ class ConduitDirectionChoices(ChoiceSet):
 
 
 class ConduitAllowedChoices(ChoiceSet):
-    """Is this path allowed? The "Mag dat?" column of the access map."""
+    """Is this path allowed? The verdict column of the access map."""
     YES = 'yes'
     NO = 'no'
     UNKNOWN = 'unknown'
