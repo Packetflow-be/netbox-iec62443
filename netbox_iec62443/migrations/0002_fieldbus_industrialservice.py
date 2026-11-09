@@ -11,9 +11,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    # Pinned to the NetBox 4.7.0 migrations so every 4.7.x release can install the plugin.
     dependencies = [
-        ('dcim', '0251_fix_ltree_cascade_triggers'),
-        ('extras', '0145_taggeditem_object_id_bigint'),
+        ('dcim', '0250_cooling_infrastructure'),
+        ('extras', '0144_customfield_status'),
         ('netbox_iec62443', '0001_initial'),
         ('users', '0016_default_ordering_indexes'),
         ('virtualization', '0060_consolidate_unique_constraints'),
