@@ -11,11 +11,13 @@ remote access over 4G routers, TeamViewer or VPN), and decide per path whether t
 also records industrial services (Modbus, S7comm, PROFINET, EtherNet/IP, OPC UA, DNP3, ...) and serial
 fieldbuses.
 
-Status: early development (0.1.0.dev0), tested on NetBox 4.7.4 only.
+Status: early development (0.1.0.dev0), tested on NetBox 4.7.2 and 4.7.4.
 
 ![Access map tab on a site](docs/access-map.png)
 
 ![A zone with its conduits, devices and prefixes](docs/zone.png)
+
+![Industrial services: protocol, role, ports or fieldbus per device](docs/industrial-services.png)
 
 ## What you get
 
@@ -34,13 +36,19 @@ Status: early development (0.1.0.dev0), tested on NetBox 4.7.4 only.
   (`iec62443_zone_list`, `iec62443_conduit_list`).
 - An **importer** for passive-capture analysis output (see below).
 
-## Install
+## Setup
 
-```
-pip install netbox-iec62443          # not on PyPI yet: pip install /path/to/netbox-iec62443
+Requires NetBox 4.7.x.
+
+**NetBox installed from source** (`/opt/netbox`):
+
+```bash
+cd /opt/netbox
+echo "netbox-iec62443 @ git+https://github.com/Packetflow-be/netbox-iec62443.git" | sudo tee -a local_requirements.txt
+sudo venv/bin/pip install "netbox-iec62443 @ git+https://github.com/Packetflow-be/netbox-iec62443.git"
 ```
 
-`configuration.py`:
+Add to `/opt/netbox/netbox/netbox/configuration.py`:
 
 ```python
 PLUGINS = ["netbox_iec62443"]
@@ -52,11 +60,42 @@ PLUGINS_CONFIG = {
 }
 ```
 
-Then `manage.py migrate`. With [netbox-docker](https://github.com/netbox-community/netbox-docker),
-add the package to `plugin_requirements.txt` and build a custom image as described in its wiki; for
-development you can mount the source and set `PYTHONPATH` instead (see `docs/development.md`).
+```bash
+sudo venv/bin/python netbox/manage.py migrate
+sudo venv/bin/python netbox/manage.py collectstatic --no-input
+sudo systemctl restart netbox netbox-rq
+```
+
+**[netbox-docker](https://github.com/netbox-community/netbox-docker)** (custom image, see its wiki on plugins):
+
+```bash
+echo "netbox-iec62443 @ git+https://github.com/Packetflow-be/netbox-iec62443.git" >> plugin_requirements.txt
+cat >> configuration/plugins.py <<'PY'
+PLUGINS = ["netbox_iec62443"]
+PLUGINS_CONFIG = {"netbox_iec62443": {}}
+PY
+docker compose build --no-cache
+docker compose up -d
+```
+
+**Check:**
+
+```bash
+curl -s -H "Authorization: Token $TOKEN" https://netbox.example.com/api/status/ | grep netbox_iec62443
+```
+
+**Import observations** (format in [docs/import-format.md](docs/import-format.md)):
+
+```bash
+sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_import ./observations --site <site-slug> --dry-run
+sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_import ./observations --site <site-slug>
+```
+
+**Remove:** take `netbox_iec62443` out of `PLUGINS`, restart, then
+`pip uninstall netbox-iec62443`. The plugin's tables stay until you drop them.
 
 Permissions: users who view conduits also need view permission on zones (a conduit shows its zones).
+For development against netbox-docker, see [docs/development.md](docs/development.md).
 
 ## Access map API
 
