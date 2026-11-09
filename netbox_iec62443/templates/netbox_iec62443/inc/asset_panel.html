@@ -1,0 +1,39 @@
+{% load i18n %}
+<div class="card">
+  <h2 class="card-header">IEC 62443</h2>
+  <table class="table table-hover attr-table">
+    <tr>
+      <th scope="row">{% trans "Purdue level" %}</th>
+      <td>{% if purdue_level %}{% badge purdue_level_label bg_color=purdue_level_color %}{% else %}{{ ''|placeholder }}{% endif %}</td>
+    </tr>
+    <tr>
+      <th scope="row">{% trans "Zones" %}</th>
+      <td>
+        {% for zone in zones %}
+          {{ zone|linkify }}{% if zone.purdue_level %} {% badge zone.purdue_level bg_color=zone.get_purdue_level_color %}{% endif %}{% if zone.security_level_target is not None %} <span class="text-muted small">SL-T {{ zone.security_level_target }}</span>{% endif %}{% if not forloop.last %}<br>{% endif %}
+        {% empty %}
+          {{ ''|placeholder }}
+        {% endfor %}
+      </td>
+    </tr>
+  </table>
+  {% if conduits %}
+    <table class="table table-hover">
+      <thead>
+        <tr><th>{% trans "Conduit" %}</th><th>{% trans "From" %}</th><th>{% trans "To" %}</th><th>{% trans "Allowed" %}</th></tr>
+      </thead>
+      <tbody>
+        {% for c in conduits %}
+          <tr>
+            <td>{{ c|linkify }}{% if c.remote_access %} <i class="mdi mdi-earth" title="{% trans 'Remote access' %}"></i>{% endif %}</td>
+            <td>{{ c.source_zone|linkify }}</td>
+            <td>{% if c.direction == 'two-way' %}<i class="mdi mdi-swap-horizontal"></i> {% endif %}{{ c.destination_zone|linkify }}</td>
+            <td>{% badge c.get_allowed_display bg_color=c.get_allowed_color %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% elif zones %}
+    <div class="card-body text-muted small">{% trans "No conduits recorded for these zones." %}</div>
+  {% endif %}
+</div>

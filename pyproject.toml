@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netbox-iec62443"
+version = "0.1.0.dev0"
+description = "IEC 62443 zones and conduits, Purdue levels and an access map for NetBox"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Packetflow" }]
+requires-python = ">=3.12"
+keywords = ["netbox", "netbox-plugin", "iec62443", "ot", "ics", "purdue"]
+classifiers = [
+    "Framework :: Django",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Networking",
+]
+
+[tool.setuptools.packages.find]
+include = ["netbox_iec62443*"]
+
+[tool.setuptools.package-data]
+netbox_iec62443 = ["templates/**/*.html"]
+
+[tool.ruff]
+line-length = 120

@@ -1,0 +1,13 @@
+from django.urls import include, path
+
+from utilities.urls import get_model_urls
+
+from . import views
+
+urlpatterns = [
+    path('zones/', include(get_model_urls('netbox_iec62443', 'zone', detail=False))),
+    path('zones/<int:pk>/', include(get_model_urls('netbox_iec62443', 'zone'))),
+    path('conduits/', include(get_model_urls('netbox_iec62443', 'conduit', detail=False))),
+    path('conduits/<int:pk>/', include(get_model_urls('netbox_iec62443', 'conduit'))),
+    path('access-map/', views.AccessMapView.as_view(), name='accessmap'),
+]
