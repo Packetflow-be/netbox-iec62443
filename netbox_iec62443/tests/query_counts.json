@@ -1,0 +1,6 @@
+{
+  "conduit:api_list_objects": 12,
+  "conduit:list_objects_with_permission": 16,
+  "zone:api_list_objects": 16,
+  "zone:list_objects_with_permission": 18
+}
