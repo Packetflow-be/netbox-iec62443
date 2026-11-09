@@ -13,4 +13,5 @@ First development version, for NetBox 4.7.
 - Industrial services (protocol, role, interface/ports or fieldbus/address) and fieldbuses (medium,
   protocol, baud rate, frame format, zone, gateway), with UI, API, GraphQL and the device panel;
   the importer derives services from OT requests and open ports.
+- REST endpoint `access-map/` (conduits + SVG per site) for report builders.
 - English only; all strings translatable, so the UI follows NetBox's language once translations exist.

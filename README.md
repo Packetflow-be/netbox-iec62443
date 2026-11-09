@@ -55,6 +55,12 @@ development you can mount the source and set `PYTHONPATH` instead (see `docs/dev
 
 Permissions: users who view conduits also need view permission on zones (a conduit shows its zones).
 
+## Access map API
+
+`GET /api/plugins/iec62443/access-map/?site_id=<id>[&max_level=<level>]` returns the site's access map as
+data, for report builders: the conduits into zones at that Purdue level or below (not allowed first, as
+full conduit objects) and the same SVG diagram as the UI. Needs `view_conduit` and view access to the site.
+
 ## Industrial systems and protocols
 
 - **Industrial services**: which industrial protocol a device or VM speaks, and as what: server

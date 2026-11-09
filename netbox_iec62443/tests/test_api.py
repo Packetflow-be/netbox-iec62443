@@ -89,3 +89,34 @@ class ConduitValidationAPITest(APITestCase):
         response = self.client.post(url, {'name': 'Z', 'slug': 'z', 'purdue_level': 1}, format='json', **self.header)
         self.assertHttpStatus(response, status.HTTP_201_CREATED)
         self.assertEqual(Zone.objects.get(slug='z').purdue_level, '1')
+
+
+class AccessMapAPITest(APITestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.site = Site.objects.create(name='Site 1', slug='site-1')
+        office = Zone.objects.create(name='Office', slug='office', site=self.site, purdue_level='4')
+        cell = Zone.objects.create(name='Cell', slug='cell', site=self.site, purdue_level='1')
+        Conduit.objects.create(name='office to cell', source_zone=office, destination_zone=cell, allowed='no')
+        Conduit.objects.create(name='cell to office', source_zone=cell, destination_zone=office, allowed='yes')
+        self.url = reverse('plugins-api:netbox_iec62443-api:accessmap')
+
+    def test_access_map(self):
+        self.add_permissions('netbox_iec62443.view_conduit', 'netbox_iec62443.view_zone', 'dcim.view_site')
+        response = self.client.get(f'{self.url}?site_id={self.site.pk}', **self.header)
+        self.assertHttpStatus(response, status.HTTP_200_OK)
+        self.assertEqual([c['name'] for c in response.data['conduits']], ['office to cell'])
+        self.assertEqual(response.data['conduits'][0]['allowed']['value'], 'no')
+        self.assertTrue(response.data['svg'].startswith('<svg'))
+        response = self.client.get(f'{self.url}?site_id={self.site.pk}&max_level=4', **self.header)
+        self.assertEqual(len(response.data['conduits']), 2)
+
+    def test_access_map_needs_permission_and_site(self):
+        response = self.client.get(f'{self.url}?site_id={self.site.pk}', **self.header)
+        self.assertHttpStatus(response, status.HTTP_403_FORBIDDEN)
+        self.add_permissions('netbox_iec62443.view_conduit', 'dcim.view_site')
+        response = self.client.get(self.url, **self.header)
+        self.assertHttpStatus(response, status.HTTP_400_BAD_REQUEST)
+        response = self.client.get(f'{self.url}?site_id={self.site.pk}&max_level=9', **self.header)
+        self.assertHttpStatus(response, status.HTTP_400_BAD_REQUEST)
