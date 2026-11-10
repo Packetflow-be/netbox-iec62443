@@ -17,6 +17,7 @@ from .choices import PurdueLevelChoices
 from .customfields import get_sl_capability
 from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
 from .register import build_register, register_csv
+from .rules import build_rules, rules_csv
 
 
 def _default_max_level():
@@ -773,6 +774,14 @@ class SiteRegisterView(generic.ObjectView):
 
     def get(self, request, **kwargs):
         table = request.GET.get('export')
+        if table == 'rules':
+            site = self.get_object(**kwargs)
+            flows = Flow.objects.restrict(request.user, 'view').filter(
+                Q(source_zone__site=site) | Q(destination_zone__site=site))
+            rules, _skipped = build_rules(flows, include_denied=request.GET.get('include_denied') == 'true')
+            response = HttpResponse(rules_csv(rules), content_type='text/csv; charset=utf-8')
+            response['Content-Disposition'] = f'attachment; filename="{site.slug}-iec62443-firewall-rules.csv"'
+            return response
         if table in ('zones', 'conduits', 'flows'):
             site = self.get_object(**kwargs)
             data = register_csv(build_register(site, user=request.user), table)

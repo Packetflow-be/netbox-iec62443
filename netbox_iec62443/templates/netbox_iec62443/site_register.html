@@ -6,6 +6,7 @@
     <a href="?export=zones" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-download"></i> {% trans "Zones (CSV)" %}</a>
     <a href="?export=conduits" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-download"></i> {% trans "Conduits (CSV)" %}</a>
     <a href="?export=flows" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-download"></i> {% trans "Flows (CSV)" %}</a>
+    <a href="?export=rules" class="btn btn-sm btn-outline-primary" title="{% trans 'Vendor-neutral rules from the allowed flows' %}"><i class="mdi mdi-wall-fire"></i> {% trans "Firewall rules (CSV)" %}</a>
     <a href="{% url 'plugins-api:netbox_iec62443-api:register' %}?site_id={{ object.pk }}" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-code-json"></i> JSON</a>
     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="mdi mdi-printer"></i> {% trans "Print" %}</button>
   </div>

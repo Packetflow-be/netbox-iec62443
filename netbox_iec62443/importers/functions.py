@@ -63,7 +63,8 @@ S7COMM = _table(
     write=('Write Var', 'Write Variable'),
     control=('PLC Control', 'PLC Stop', 'PI-Service', 'PI Service'),
     program=('Request Download', 'Download Block', 'Download Ended', 'Download', 'Delete Block', 'Insert Block'),
-    other=('Setup Communication', 'Setup Comm', 'Userdata', 'Ack', 'Ack Data', 'Job', 'CPU Services', 'Time Functions'),
+    other=('Setup Communication', 'Setup Comm', 'Userdata', 'Ack', 'Ack Data', 'Job', 'CPU Services', 'CPU Functions',
+           'Time Functions'),
 )
 
 # S7comm-plus opcodes and functions
@@ -159,23 +160,28 @@ OPC_UA = _table(
            'Hello', 'Acknowledge'),
 )
 
-# BACnet services (Zeek/ICSNPP bacnet.log pdu_service)
+# BACnet services (ICSNPP bacnet.log and bacnet_property.log pdu_service, with or without -Request)
 BACNET = _table(
     read=(
         'Read-Property', 'Read-Property-Multiple', 'Read-Range', 'Atomic-Read-File', 'Who-Is', 'I-Am', 'Who-Has',
-        'I-Have', 'Subscribe-COV', 'Subscribe-COV-Property', 'Get-Alarm-Summary', 'Get-Event-Information',
-        'Get-Enrollment-Summary',
+        'I-Have', 'Subscribe-COV', 'Subscribe-COV-Property', 'Subscribe-COV-Property-Multiple', 'Get-Alarm-Summary',
+        'Get-Event-Information', 'Get-Enrollment-Summary', 'Read-Property-Request', 'Read-Property-Multiple-Request',
+        'Read-Range-Request', 'Who-Is-Router-To-Network', 'I-Am-Router-To-Network', 'Who-Am-I',
     ),
     write=(
         'Write-Property', 'Write-Property-Multiple', 'Create-Object', 'Delete-Object', 'Add-List-Element',
-        'Remove-List-Element', 'Write-Group',
+        'Remove-List-Element', 'Write-Group', 'Write-Property-Request', 'Write-Property-Multiple-Request',
+        'You-Are',
     ),
-    control=('Device-Communication-Control', 'Reinitialize-Device'),
+    control=('Device-Communication-Control', 'Reinitialize-Device', 'Life-Safety-Operation', 'VT-Open', 'VT-Data',
+             'VT-Close'),
     program=('Atomic-Write-File',),
     other=(
         'Time-Synchronization', 'UTC-Time-Synchronization', 'Confirmed-Private-Transfer',
         'Unconfirmed-Private-Transfer', 'Acknowledge-Alarm', 'Confirmed-COV-Notification',
-        'Unconfirmed-COV-Notification', 'Confirmed-Event-Notification', 'Unconfirmed-Event-Notification',
+        'Confirmed-COV-Notification-Multiple', 'Unconfirmed-COV-Notification', 'Unconfirmed-COV-Notification-Multiple',
+        'Confirmed-Event-Notification', 'Unconfirmed-Event-Notification', 'Unconfirmed-Text-Message',
+        'Confirmed-Text-Message', 'Read-Property-Ack', 'Abort', 'Reject', 'Error', 'Simple-Ack', 'Complex-Ack',
     ),
 )
 

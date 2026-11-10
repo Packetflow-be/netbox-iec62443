@@ -58,7 +58,10 @@ Status: early development (0.1.0.dev0), tested on NetBox 4.7.2 and 4.7.4.
 - The usual NetBox plumbing: list/detail/edit/delete, bulk import/edit/delete, filters, global search,
   change log, journal, REST API (`/api/plugins/iec62443/zones/`, `/conduits/`, `/flows/`, `/flow-hops/`),
   GraphQL (`iec62443_zone_list`, `iec62443_conduit_list`, `iec62443_flow_list`, ...).
-- An **importer** for passive-capture analysis output (see below).
+- An **importer** for passive captures: **Zeek logs** directly (with or without the CISA ICSNPP parsers) or
+  observation files any tool can write, with a report of the **hosts NetBox does not know** (see below).
+- A **vendor-neutral firewall rule export** from the allowed flows: per site or per enforcing firewall, as CSV
+  or JSON.
 
 ### Mapping a remote-access path
 
@@ -162,6 +165,20 @@ flows. Grant permissions on the new *conduit* and *flow hop* models, and rebuild
 data, for reports and other tools: the flows into zones at that Purdue level or below, in access-map order,
 as full flow objects with their hops. Needs `view_flow` and view access to the site.
 
+## Firewall rules
+
+The flows a person allowed become vendor-neutral firewall rules: source and destination zone with their
+networks (the zone's prefixes, else its members' addresses), transport, ports, the protocol, what the requests
+do, and the devices that enforce the conduit. One rule per flow and transport. Flows without a verdict are
+not exported; not-allowed and expired flows become deny rules on request. Ports the capture did not show are
+filled in from the protocol's defaults and flagged; a layer-2 protocol (GOOSE, EtherCAT) is flagged as not
+enforceable by a routed firewall. The plugin writes no vendor syntax and reads no vendor configuration.
+
+- *Firewall rules (CSV)* on a site's Zone register tab.
+- `GET /api/plugins/iec62443/firewall-rules/?site_id=<id>[&device_id=<id>][&include_denied=true]`.
+- `manage.py iec62443_rules [--site <slug>] [--device <firewall>] [--include-denied] [--format csv|json]
+  [--output FILE]`.
+
 ## Checks and register API
 
 - `GET /api/plugins/iec62443/checks/?site_id=<id>[&severity=error,warning][&check=<id>,...]`: the consistency
@@ -236,16 +253,20 @@ as full flow objects with their hops. Needs `view_flow` and view access to the s
   assessments cannot be deleted.
 - Zone and conduit names are unique per site (and globally for those without a site).
 
-## Importer: observation files
+## Importer: Zeek logs and observation files
 
 ```
 manage.py iec62443_import <dir> --site <slug> [--vrf <name or RD>] [--user <name>] [--dry-run]
+    [--format auto|zeek|observations] [--zone-map CSV] [--unknown-report CSV]
     [--outside-zone NAME] [--split ZONE ... | --split-all]
 ```
 
-Reads observation files in the format described in [docs/import-format.md](docs/import-format.md)
-(`assets.json`, `flows.json`, optionally `summary.json`): what was seen on the network, for example
-from Zeek with the CISA ICSNPP parsers, Malcolm or an asset-discovery export.
+Reads either a directory of **Zeek logs** (`conn.log` plus the protocol logs of Zeek and the CISA ICSNPP
+parsers, TSV or JSON, as Zeek or Malcolm write them; see [docs/zeek.md](docs/zeek.md)), or **observation
+files** in the format described in [docs/import-format.md](docs/import-format.md) (`assets.json`,
+`flows.json`, optionally `summary.json`) that any other tool or a spreadsheet can produce. For Zeek logs the
+zones come from NetBox (zone prefixes and members), plus an optional `--zone-map` for zones NetBox does not
+have yet.
 
 One import covers **one site and one routing domain**. The same machine network (say 192.168.0.0/24
 behind every OEM machine) is normal in OT, so the importer only matches devices, VMs and prefixes at
@@ -269,6 +290,10 @@ It creates:
   with that port (found or created on the asset);
 - the Purdue level custom field on the matched assets (only where it is still empty).
 
+Every import ends with the **observed hosts that match no device or VM** in NetBox at the site, hosts inside
+a zone first, and `--unknown-report FILE.csv` writes them all with what was seen of them: finding these is
+the point of passive discovery. Flows out of an external zone are marked as remote access.
+
 Options:
 
 - `--vrf NAME_OR_RD` matches devices, VMs and prefixes in this VRF instead of the global table.
@@ -283,11 +308,11 @@ Re-running adds ports and access classes, widens first/last seen and refreshes e
 touches a flow's verdict, conduit or hops, or a level someone set. Changes are recorded in the change log
 under `--user` (default: the first superuser).
 
-**Other sources (not built yet).** The importer is split in two: `build_plan()` turns input files
-into an `ImportPlan` (zones with member IPs, flows with evidence, services, per-asset levels), and
-`apply_plan()` writes any plan to NetBox, resolving addresses to devices, VMs and prefixes within the
-site and VRF. A Malcolm or plain Zeek importer only needs its own `build_plan`: aggregate `conn.log`
-(and the ICSNPP protocol logs) by zone, and reuse `apply_plan()` unchanged.
+**Other sources.** The importer is split in two: `build_plan()` turns observations into an `ImportPlan`
+(zones with member IPs, flows with evidence, services, per-asset levels, observed hosts), and `apply_plan()`
+writes any plan to NetBox, resolving addresses to devices, VMs and prefixes within the site and VRF. The Zeek
+adapter (`importers/zeek.py`) only turns logs into observations; another source needs the same and nothing
+else.
 
 ## Language
 
