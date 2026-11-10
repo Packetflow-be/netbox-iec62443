@@ -1,26 +1,42 @@
+import datetime
+
 import django_filters
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.translation import gettext as _
 
-from dcim.models import Device, Interface, Site
-from ipam.models import Prefix
+from dcim.models import Device, Site
+from ipam.models import Prefix, Service
 from netbox.filtersets import PrimaryModelFilterSet
 from tenancy.filtersets import TenancyFilterSet
+from tenancy.models import Contact
 from utilities.filtersets import register_filterset
 from virtualization.models import VirtualMachine
+from vpn.models import Tunnel
 
 from .choices import (
-    ConduitAllowedChoices,
-    ConduitDirectionChoices,
+    AccessChoices,
     FieldbusMediumChoices,
+    FlowAllowedChoices,
+    FlowProtocolChoices,
     IndustrialProtocolChoices,
     PurdueLevelChoices,
     SecurityLevelChoices,
     ServiceRoleChoices,
+    ZoneTypeChoices,
 )
-from .models import Conduit, Fieldbus, IndustrialService, Zone
+from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, Zone, stale_after_days
 
-__all__ = ('ConduitFilterSet', 'FieldbusFilterSet', 'IndustrialServiceFilterSet', 'ZoneFilterSet')
+__all__ = (
+    'ConduitFilterSet', 'FieldbusFilterSet', 'FlowFilterSet', 'FlowHopFilterSet', 'IndustrialServiceFilterSet',
+    'ZoneFilterSet',
+)
+
+
+def port_mappings_q(field, port):
+    """Q matching a port number (any transport) in a port_mappings array at `field`."""
+    from ipam.choices import ServiceProtocolChoices
+    return Q(**{f'{field}__overlap': [f'{proto}/{int(port)}' for proto in ServiceProtocolChoices.values()]})
 
 
 @register_filterset
@@ -37,6 +53,7 @@ class ZoneFilterSet(PrimaryModelFilterSet, TenancyFilterSet):
         to_field_name='slug',
         label=_('Site (slug)'),
     )
+    zone_type = django_filters.MultipleChoiceFilter(choices=ZoneTypeChoices, distinct=False)
     purdue_level = django_filters.MultipleChoiceFilter(choices=PurdueLevelChoices, distinct=False)
     security_level_target = django_filters.MultipleChoiceFilter(choices=SecurityLevelChoices, distinct=False)
     device_id = django_filters.ModelMultipleChoiceFilter(
@@ -53,6 +70,11 @@ class ZoneFilterSet(PrimaryModelFilterSet, TenancyFilterSet):
         field_name='prefixes',
         queryset=Prefix.objects.all(),
         label=_('Prefix (ID)'),
+    )
+    conduit_id = django_filters.ModelMultipleChoiceFilter(
+        field_name='conduits',
+        queryset=Conduit.objects.all(),
+        label=_('Conduit (ID)'),
     )
 
     class Meta:
@@ -72,6 +94,59 @@ class ZoneFilterSet(PrimaryModelFilterSet, TenancyFilterSet):
 
 @register_filterset
 class ConduitFilterSet(PrimaryModelFilterSet):
+    site_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Site.objects.all(),
+        distinct=False,
+        label=_('Site (ID)'),
+    )
+    site = django_filters.ModelMultipleChoiceFilter(
+        field_name='site__slug',
+        queryset=Site.objects.all(),
+        distinct=False,
+        to_field_name='slug',
+        label=_('Site (slug)'),
+    )
+    zone_id = django_filters.ModelMultipleChoiceFilter(
+        field_name='zones',
+        queryset=Zone.objects.all(),
+        label=_('Zone (ID)'),
+    )
+    security_level_target = django_filters.MultipleChoiceFilter(choices=SecurityLevelChoices, distinct=False)
+    enforcing_device_id = django_filters.ModelMultipleChoiceFilter(
+        field_name='enforcing_devices',
+        queryset=Device.objects.all(),
+        label=_('Enforcing device (ID)'),
+    )
+    enforcing_virtual_machine_id = django_filters.ModelMultipleChoiceFilter(
+        field_name='enforcing_virtual_machines',
+        queryset=VirtualMachine.objects.all(),
+        label=_('Enforcing virtual machine (ID)'),
+    )
+
+    class Meta:
+        model = Conduit
+        fields = ('id', 'name', 'description')
+
+    def search(self, queryset, name, value):
+        if not value.strip():
+            return queryset
+        return queryset.filter(
+            Q(name__icontains=value) |
+            Q(description__icontains=value) |
+            Q(comments__icontains=value)
+        )
+
+
+@register_filterset
+class FlowFilterSet(PrimaryModelFilterSet):
+    conduit_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Conduit.objects.all(),
+        distinct=False,
+        label=_('Conduit (ID)'),
+    )
+    has_conduit = django_filters.BooleanFilter(
+        field_name='conduit', lookup_expr='isnull', exclude=True, label=_('Has a conduit'),
+    )
     source_zone_id = django_filters.ModelMultipleChoiceFilter(
         queryset=Zone.objects.all(),
         distinct=False,
@@ -92,21 +167,47 @@ class ConduitFilterSet(PrimaryModelFilterSet):
         method='filter_site',
         label=_('Site (ID) of either zone'),
     )
-    direction = django_filters.MultipleChoiceFilter(choices=ConduitDirectionChoices, distinct=False)
-    allowed = django_filters.MultipleChoiceFilter(choices=ConduitAllowedChoices, distinct=False)
+    protocol = django_filters.MultipleChoiceFilter(choices=FlowProtocolChoices, distinct=False)
+    port = django_filters.NumberFilter(method='filter_port', label=_('Port'))
+    access = django_filters.MultipleChoiceFilter(
+        choices=AccessChoices, method='filter_access', label=_('Access (any of)'),
+    )
+    modifying = django_filters.BooleanFilter(method='filter_modifying', label=_('Writes, controls or programs'))
+    allowed = django_filters.MultipleChoiceFilter(choices=FlowAllowedChoices, distinct=False)
     remote_access = django_filters.BooleanFilter()
+    decided_by_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Contact.objects.all(),
+        distinct=False,
+        label=_('Decided by (ID)'),
+    )
+    expired = django_filters.BooleanFilter(method='filter_expired', label=_('Allowed, but expired'))
+    review_due = django_filters.BooleanFilter(method='filter_review_due', label=_('Review due'))
+    stale = django_filters.BooleanFilter(method='filter_stale', label=_('Not seen recently'))
+    hop_device_id = django_filters.ModelMultipleChoiceFilter(
+        field_name='hops__device',
+        queryset=Device.objects.all(),
+        label=_('Runs through device (ID)'),
+    )
+    hop_virtual_machine_id = django_filters.ModelMultipleChoiceFilter(
+        field_name='hops__virtual_machine',
+        queryset=VirtualMachine.objects.all(),
+        label=_('Runs through virtual machine (ID)'),
+    )
+    hop_tunnel_id = django_filters.ModelMultipleChoiceFilter(
+        field_name='hops__tunnel',
+        queryset=Tunnel.objects.all(),
+        label=_('Runs through tunnel (ID)'),
+    )
 
     class Meta:
-        model = Conduit
-        fields = ('id', 'name', 'protocols', 'via', 'description')
+        model = Flow
+        fields = ('id', 'name', 'decided_on', 'review_by', 'expires', 'first_seen', 'last_seen', 'description')
 
     def search(self, queryset, name, value):
         if not value.strip():
             return queryset
         return queryset.filter(
             Q(name__icontains=value) |
-            Q(protocols__icontains=value) |
-            Q(via__icontains=value) |
             Q(evidence__icontains=value) |
             Q(description__icontains=value) |
             Q(comments__icontains=value)
@@ -121,6 +222,79 @@ class ConduitFilterSet(PrimaryModelFilterSet):
         if not value:
             return queryset
         return queryset.filter(Q(source_zone__site__in=value) | Q(destination_zone__site__in=value))
+
+    def filter_port(self, queryset, name, value):
+        if value is None:
+            return queryset
+        return queryset.filter(port_mappings_q('port_mappings', value))
+
+    def filter_access(self, queryset, name, value):
+        if not value:
+            return queryset
+        return queryset.filter(access__overlap=list(value))
+
+    def filter_modifying(self, queryset, name, value):
+        if value is None:
+            return queryset
+        q = Q(access__overlap=list(AccessChoices.MODIFYING))
+        return queryset.filter(q) if value else queryset.exclude(q)
+
+    def filter_expired(self, queryset, name, value):
+        if value is None:
+            return queryset
+        q = Q(allowed=FlowAllowedChoices.YES, expires__lt=timezone.localdate())
+        return queryset.filter(q) if value else queryset.exclude(q)
+
+    def filter_review_due(self, queryset, name, value):
+        if value is None:
+            return queryset
+        q = Q(review_by__lte=timezone.localdate())
+        return queryset.filter(q) if value else queryset.exclude(q)
+
+    def filter_stale(self, queryset, name, value):
+        if value is None:
+            return queryset
+        q = Q(last_seen__lt=timezone.now() - datetime.timedelta(days=stale_after_days()))
+        return queryset.filter(q) if value else queryset.exclude(q)
+
+
+@register_filterset
+class FlowHopFilterSet(PrimaryModelFilterSet):
+    flow_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Flow.objects.all(),
+        distinct=False,
+        label=_('Flow (ID)'),
+    )
+    device_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Device.objects.all(),
+        distinct=False,
+        label=_('Device (ID)'),
+    )
+    virtual_machine_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=VirtualMachine.objects.all(),
+        distinct=False,
+        label=_('Virtual machine (ID)'),
+    )
+    tunnel_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Tunnel.objects.all(),
+        distinct=False,
+        label=_('Tunnel (ID)'),
+    )
+
+    class Meta:
+        model = FlowHop
+        fields = ('id', 'position', 'description')
+
+    def search(self, queryset, name, value):
+        if not value.strip():
+            return queryset
+        return queryset.filter(
+            Q(flow__name__icontains=value) |
+            Q(device__name__icontains=value) |
+            Q(virtual_machine__name__icontains=value) |
+            Q(tunnel__name__icontains=value) |
+            Q(description__icontains=value)
+        )
 
 
 @register_filterset
@@ -176,10 +350,10 @@ class IndustrialServiceFilterSet(PrimaryModelFilterSet):
         distinct=False,
         label=_('Virtual machine (ID)'),
     )
-    interface_id = django_filters.ModelMultipleChoiceFilter(
-        queryset=Interface.objects.all(),
+    service_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Service.objects.all(),
         distinct=False,
-        label=_('Interface (ID)'),
+        label=_('Application service (ID)'),
     )
     fieldbus_id = django_filters.ModelMultipleChoiceFilter(
         queryset=Fieldbus.objects.all(),
@@ -198,8 +372,7 @@ class IndustrialServiceFilterSet(PrimaryModelFilterSet):
     )
     protocol = django_filters.MultipleChoiceFilter(choices=IndustrialProtocolChoices, distinct=False)
     role = django_filters.MultipleChoiceFilter(choices=ServiceRoleChoices, distinct=False)
-    port = django_filters.NumberFilter(field_name='ports', lookup_expr='contains', method='filter_port',
-                                       label=_('Port'))
+    port = django_filters.NumberFilter(method='filter_port', label=_('Port'))
 
     class Meta:
         model = IndustrialService
@@ -219,7 +392,7 @@ class IndustrialServiceFilterSet(PrimaryModelFilterSet):
     def filter_port(self, queryset, name, value):
         if value is None:
             return queryset
-        return queryset.filter(ports__contains=[int(value)])
+        return queryset.filter(port_mappings_q('service__port_mappings', value))
 
     def filter_site(self, queryset, name, value):
         if not value:

@@ -38,4 +38,4 @@ known-first-party = ["netbox_iec62443"]
 section-order = ["future", "standard-library", "third-party", "netbox", "first-party", "local-folder"]
 
 [tool.ruff.lint.isort.sections]
-netbox = ["core", "dcim", "extras", "ipam", "netbox", "tenancy", "users", "utilities", "virtualization"]
+netbox = ["core", "dcim", "extras", "ipam", "netbox", "tenancy", "users", "utilities", "virtualization", "vpn"]

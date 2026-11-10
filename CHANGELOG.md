@@ -4,23 +4,44 @@
 
 First development version, for NetBox 4.7.
 
-- Zone and Conduit models with UI views, bulk import/edit/delete, filters, search, REST API and GraphQL.
-- Purdue level custom field on devices and virtual machines, created after migrate.
-- Access map per site (table and diagram), as a site tab and as a standalone page.
-- IEC 62443 panel on device and VM pages.
+- Zone, Conduit, Flow and Flow hop models with UI views, bulk import/edit/delete, filters, search, REST API
+  and GraphQL.
+  - Zones have a type: OT, safety (SIS), DMZ, enterprise, external/supplier.
+  - A conduit is the IEC 62443-3-2 object: it joins two or more zones, has its own SL-T and names the
+    devices and VMs that enforce it.
+  - A flow is one directed path from a source zone into a destination zone: protocol, ports (`tcp/102`),
+    access (read, write, control, program), remote access, the ordered hops it runs through (devices, VMs,
+    tunnels), the conduit that carries it, first/last seen and evidence.
+  - A flow's verdict (allowed yes/no/unknown) records who decided it (a contact) and when, and can have a
+    review date and an expiry date.
+- Purdue level custom field on devices and virtual machines, created after migrate. A zone's Purdue level is
+  its most critical (lowest) level.
+- Access map per site (table and diagram) on flows, as a site tab and as a standalone page: not allowed first,
+  then allowed but expired, unknown, allowed. It lists what needs attention: expired access, verdicts due
+  for review, flows not seen for `stale_after_days` (default 90), flows outside any conduit.
+- IEC 62443 panel on device and VM pages: zones, their flows, conduits the asset enforces, flows through it.
+- REST endpoint `access-map/` (the site's access-map flows) for reports and other tools.
 - `iec62443_import` management command for observation files in a documented format
-  (docs/import-format.md), with
-  `--vrf`, `--outside-zone` and `--split`/`--split-all` (one zone per Purdue band). Devices, VMs and
-  prefixes are matched only at the import's site and in its VRF; ambiguous matches are skipped and
-  reported. The importer links existing prefixes and never creates them.
-- OT requests are classified as read, write, control or program by an explicit table per protocol
-  (Modbus, S7comm, S7comm-plus, EtherNet/IP, DNP3, IEC 104, IEC 61850 MMS, OPC UA, BACnet, Omron FINS),
-  or by the flow's own `access` field. Remote access comes from the asset's `remote_access` field.
-- An open port alone creates no industrial service; protocols come from decoded traffic or the asset's
-  `services` field. Unexplained open OT ports are listed in the import output.
-- Deleting a zone that still has conduits is refused, so verdicts and evidence are never lost.
-- Industrial services (protocol, role, interface/ports or fieldbus/address) and fieldbuses (medium,
-  protocol, zone, gateway), with UI, API, GraphQL and the device panel;
-  the importer derives services from OT requests and open ports.
-- REST endpoint `access-map/` (conduits + SVG per site) for reports and other tools.
+  (docs/import-format.md), with `--vrf`, `--outside-zone` and `--split`/`--split-all` (one zone per Purdue
+  band).
+  - Devices, VMs and prefixes are matched only at the import's site and in its VRF; ambiguous matches are
+    skipped and reported. The importer links existing prefixes and never creates them.
+  - It creates one flow per zone pair and protocol, with the ports, times and access classes from the
+    input, and puts a flow in a conduit only when exactly one conduit joins both zones.
+  - OT requests are classified as read, write, control or program by an explicit table per protocol
+    (Modbus, S7comm, S7comm-plus, EtherNet/IP, DNP3, IEC 104, IEC 61850 MMS, OPC UA, BACnet, Omron FINS),
+    or by the flow's own `access` field. Remote access comes from the asset's `remote_access` field.
+  - An open port alone creates no industrial service; protocols come from decoded traffic or the asset's
+    `services` field. Unexplained open OT ports are listed in the import output.
+- Deleting a zone that still has flows is refused, so verdicts and evidence are never lost.
+- Industrial services (protocol, role, NetBox application service with the ports, or fieldbus/address) and
+  fieldbuses (medium, protocol, zone, gateway), with UI, API, GraphQL and the device panel.
 - English only; all strings translatable, so the UI follows NetBox's language once translations exist.
+
+### Upgrading from an earlier 0.1.0.dev0 build
+
+The old conduit model (a directed zone pair with a verdict) becomes the flow model; migrations 0004-0007
+move the data and delete nothing. See "Upgrading from an earlier 0.1.0.dev0 build" in the README for what
+happens to two-way conduits, free-text protocols and via, and industrial service ports. The data migration
+writes no change-log entries. Afterwards grant permissions on conduits and flow hops and run
+`manage.py reindex netbox_iec62443`.

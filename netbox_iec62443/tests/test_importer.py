@@ -8,13 +8,13 @@ from django.core.management.base import CommandError
 from django.test import SimpleTestCase, TestCase
 
 from dcim.models import Interface, Region, Site
-from ipam.models import VRF, IPAddress, Prefix
+from ipam.models import VRF, IPAddress, Prefix, Service
 from utilities.testing import create_test_device
 
 from netbox_iec62443.customfields import PURDUE_CF_NAME
 from netbox_iec62443.importers import functions
 from netbox_iec62443.importers.observations import apply_plan, build_plan
-from netbox_iec62443.models import Conduit, IndustrialService, Zone
+from netbox_iec62443.models import Conduit, Flow, IndustrialService, Zone
 
 # A small set of observation files (docs/import-format.md), documentation addresses, no real site
 ASSETS = [
@@ -83,6 +83,9 @@ class ClassifyTest(SimpleTestCase):
 
 class BuildPlanTest(SimpleTestCase):
 
+    def _flows(self, plan):
+        return {(f.source, f.destination, f.protocol): f for f in plan.flows}
+
     def test_plan_splits_mixed_zone(self):
         plan = build_plan(ASSETS, FLOWS, SUMMARY, split_zones=['Z1 Cell A'])
         self.assertEqual(set(plan.zones), {CONTROL, SUPERVISORY, 'Z4 External', 'Z5 Office', 'Outside'})
@@ -90,25 +93,32 @@ class BuildPlanTest(SimpleTestCase):
         self.assertEqual(plan.zones[CONTROL].purdue_level, '1')
         self.assertEqual(plan.zones[SUPERVISORY].purdue_level, '2')
         self.assertEqual(plan.zones['Outside'].purdue_level, '')
-        pairs = {(c.source, c.destination): c for c in plan.conduits}
-        self.assertEqual(set(pairs), {
-            ('Z4 External', CONTROL),  # pinned to the PLC by its OT requests
-            ('Z5 Office', CONTROL),  # no OT requests: the most critical part
-            ('Z5 Office', 'Outside'),
-            (SUPERVISORY, CONTROL),  # inside the old zone, now a conduit
+        self.assertEqual(plan.zones['Outside'].zone_type, 'external')
+        self.assertEqual(plan.zones['Z5 Office'].zone_type, 'enterprise')
+        self.assertEqual(plan.zones[CONTROL].zone_type, 'ot')
+        flows = self._flows(plan)
+        self.assertEqual(set(flows), {
+            ('Z4 External', CONTROL, 's7comm'),  # pinned to the PLC by its OT requests
+            ('Z5 Office', CONTROL, ''),  # no OT requests: the most critical part, protocol unidentified
+            ('Z5 Office', 'Outside', ''),
+            (SUPERVISORY, CONTROL, 's7comm'),  # inside the old zone, now a flow
         })
-        remote = pairs[('Z4 External', CONTROL)]
+        remote = flows[('Z4 External', CONTROL, 's7comm')]
+        self.assertEqual(remote.name, 'Z4 External -> Z1 Cell A (control) S7comm')
         self.assertTrue(remote.remote_access)
-        self.assertIn('192.168.1.10', remote.via)
-        self.assertIn('S7comm', remote.protocols)
+        self.assertEqual(remote.access, ['read', 'write'])
+        self.assertEqual(remote.port_mappings, [])  # the input gave no port, none is assumed
         self.assertIn('Write Variable x12 [write]', remote.evidence)
+        self.assertIn('Changes the destination (write/control/program): Supplier 4G gateway (192.168.1.10)',
+                      remote.evidence)
         self.assertIn('12 connection(s) from Z4 External to Z1 Cell A', remote.evidence)
-        office = pairs[('Z5 Office', CONTROL)]
+        office = flows[('Z5 Office', CONTROL, '')]
+        self.assertEqual(office.name, 'Z5 Office -> Z1 Cell A (control) (unidentified)')
         self.assertFalse(office.remote_access)
-        self.assertEqual(office.via, '')
-        hmi = pairs[(SUPERVISORY, CONTROL)]
+        self.assertEqual(office.access, [])
+        hmi = flows[(SUPERVISORY, CONTROL, 's7comm')]
         self.assertIn('Read Variable x500 [read]', hmi.evidence)
-        self.assertEqual(hmi.via, '')  # reads only
+        self.assertEqual(hmi.access, ['read'])
         services = {(sp.ip, sp.protocol, sp.role) for sp in plan.services}
         self.assertEqual(services, {
             ('10.10.10.10', 's7comm', 'server'), ('10.10.10.20', 's7comm', 'client'),
@@ -120,13 +130,45 @@ class BuildPlanTest(SimpleTestCase):
         plan = build_plan(ASSETS, FLOWS, SUMMARY)
         self.assertEqual(set(plan.zones), {'Z1 Cell A', 'Z4 External', 'Z5 Office', 'Outside'})
         self.assertEqual(plan.zones['Z1 Cell A'].purdue_level, '1')
-        self.assertEqual(len(plan.conduits), 3)
+        self.assertEqual(len(plan.flows), 3)
 
-    def test_outside_name_and_split_all(self):
-        plan = build_plan(ASSETS, FLOWS, SUMMARY, outside_zone='Internet', split_zones=True)
+    def test_outside_name_split_all_and_declared_types(self):
+        summary = dict(SUMMARY, zones=[{'name': 'Z4 External', 'type': 'external'},
+                                       {'name': 'Z1 Cell A', 'type': 'safety'}])
+        plan = build_plan(ASSETS, FLOWS, summary, outside_zone='Internet', split_zones=True)
         self.assertIn('Internet', plan.zones)
         self.assertIn(CONTROL, plan.zones)
         self.assertEqual(plan.zones['Internet'].description, 'Addresses not listed in the observations')
+        self.assertEqual(plan.zones['Z4 External'].zone_type, 'external')  # level 3, but declared
+        self.assertEqual(plan.zones[CONTROL].zone_type, 'safety')  # a split part takes its zone's type
+
+    def test_ports_and_times_come_from_the_input(self):
+        assets = [{'ip': '10.0.0.1', 'zone': 'Cell'}, {'ip': '10.0.1.1', 'zone': 'Office'}]
+        flows = [
+            {'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'modbus', 'port': 1502, 'func': 'Read Coils',
+             'first_seen': '2026-10-01T08:00:00Z', 'last_seen': '2026-10-02T08:00:00Z'},
+            {'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'modbus', 'port': 502, 'func': 'Write Single Coil',
+             'last_seen': '2026-10-05T08:00:00Z'},
+            {'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'BACnet', 'port': 47808},
+        ]
+        summary = {'start': '2026-09-30T00:00:00Z', 'end': '2026-10-06T00:00:00Z'}
+        flows_by_protocol = {f.protocol: f for f in build_plan(assets, flows, summary).flows}
+        modbus = flows_by_protocol['modbus-tcp']
+        self.assertEqual(modbus.port_mappings, ['tcp/1502', 'tcp/502'])
+        self.assertEqual(modbus.access, ['read', 'write'])
+        self.assertEqual(modbus.first_seen.isoformat(), '2026-09-30T00:00:00+00:00')  # second request: window
+        self.assertEqual(modbus.last_seen.isoformat(), '2026-10-05T08:00:00+00:00')
+        self.assertEqual(flows_by_protocol['bacnet-ip'].port_mappings, ['udp/47808'])  # BACnet/IP runs over UDP
+        server = {(sp.ip, sp.protocol, sp.role): sp for sp in build_plan(assets, flows, summary).services}
+        self.assertEqual(server[('10.0.0.1', 'modbus-tcp', 'server')].port_mappings, ['tcp/1502', 'tcp/502'])
+
+    def test_it_protocols_make_flows_but_no_industrial_services(self):
+        assets = [{'ip': '10.0.0.1', 'zone': 'Cell'}, {'ip': '10.0.9.9', 'zone': 'MSP', 'remote_access': True}]
+        flows = [{'src': '10.0.9.9', 'dst': '10.0.0.1', 'proto': 'RDP', 'port': 3389}]
+        plan = build_plan(assets, flows, {})
+        self.assertEqual([(f.protocol, f.remote_access, f.port_mappings) for f in plan.flows],
+                         [('rdp', True, ['tcp/3389'])])
+        self.assertEqual(plan.services, [])
 
     def test_remote_access_is_explicit_not_guessed_from_role(self):
         assets = [
@@ -138,12 +180,12 @@ class BuildPlanTest(SimpleTestCase):
             {'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'modbus', 'func': 'Write Single Register'},
             {'src': '10.0.2.1', 'dst': '10.0.0.1', 'proto': 'modbus', 'func': 'Read Holding Registers'},
         ]
-        pairs = {(c.source, c.destination): c for c in build_plan(assets, flows, {}).conduits}
-        office, jump = pairs[('Office', 'Cell')], pairs[('Jump', 'Cell')]
+        flows_by_pair = {(f.source, f.destination): f for f in build_plan(assets, flows, {}).flows}
+        office, jump = flows_by_pair[('Office', 'Cell')], flows_by_pair[('Jump', 'Cell')]
         self.assertFalse(office.remote_access)
-        self.assertEqual(office.via, 'Core router (10.0.1.1)')  # it writes
+        self.assertEqual(office.access, ['write'])
         self.assertTrue(jump.remote_access)  # remote access even though it only reads
-        self.assertEqual(jump.via, 'Jump host (10.0.2.1)')
+        self.assertEqual(jump.access, ['read'])
 
     def test_modifying_functions_without_write_in_the_name(self):
         assets = [{'ip': '10.0.0.1', 'zone': 'Cell'}, {'ip': '10.0.1.1', 'zone': 'Eng', 'role': 'ES'},
@@ -153,22 +195,27 @@ class BuildPlanTest(SimpleTestCase):
             {'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'S7comm', 'func': 'Request download'},
             {'src': '10.0.2.1', 'dst': '10.0.0.1', 'proto': 'modbus', 'func': 'Force Single Coil'},
         ]
-        pairs = {(c.source, c.destination): c for c in build_plan(assets, flows, {}).conduits}
-        self.assertEqual(pairs[('Eng', 'Cell')].via, 'ES (10.0.1.1)')
-        self.assertIn('PLC Stop x1 [control]', pairs[('Eng', 'Cell')].evidence)
-        self.assertIn('Request download x1 [program]', pairs[('Eng', 'Cell')].evidence)
-        self.assertEqual(pairs[('Other', 'Cell')].via, 'Box (10.0.2.1)')
+        flows_by_pair = {(f.source, f.destination): f for f in build_plan(assets, flows, {}).flows}
+        eng = flows_by_pair[('Eng', 'Cell')]
+        self.assertEqual(eng.access, ['control', 'program'])
+        self.assertIn('PLC Stop x1 [control]', eng.evidence)
+        self.assertIn('Request download x1 [program]', eng.evidence)
+        self.assertIn('ES (10.0.1.1)', eng.evidence)
+        self.assertEqual(flows_by_pair[('Other', 'Cell')].access, ['write'])
 
     def test_declared_access_wins_and_unclassified_is_shown(self):
         assets = [{'ip': '10.0.0.1', 'zone': 'Cell'}, {'ip': '10.0.1.1', 'zone': 'Eng', 'role': 'ES'}]
         flows = [
             {'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'S7comm', 'func': 'Vendor thing'},
             {'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'S7comm', 'func': 'Odd one', 'access': 'program'},
+            {'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'VendorProto'},
         ]
-        conduit = build_plan(assets, flows, {}).conduits[0]
-        self.assertIn('Vendor thing x1 [unclassified]', conduit.evidence)
-        self.assertIn('Odd one x1 [program]', conduit.evidence)
-        self.assertEqual(conduit.via, 'ES (10.0.1.1)')
+        flows_by_protocol = {f.protocol: f for f in build_plan(assets, flows, {}).flows}
+        s7 = flows_by_protocol['s7comm']
+        self.assertIn('Vendor thing x1 [unclassified]', s7.evidence)
+        self.assertIn('Odd one x1 [program]', s7.evidence)
+        self.assertEqual(s7.access, ['program'])  # unclassified adds no class
+        self.assertIn('Protocol not recognised: VendorProto', flows_by_protocol[''].evidence)
 
     def test_open_port_alone_creates_no_service(self):
         assets = [
@@ -182,7 +229,7 @@ class BuildPlanTest(SimpleTestCase):
         services = {(sp.ip, sp.protocol, sp.role): sp for sp in plan.services}
         self.assertNotIn('10.0.0.1', {ip for ip, _p, _r in services})  # port 102 open says nothing definite
         mms = services[('10.0.0.2', 'iec-61850-mms', 'server')]
-        self.assertEqual(mms.ports, [102])
+        self.assertEqual(mms.port_mappings, ['tcp/102'])
         self.assertIn('Identified as iec-61850-mms on port 102', mms.evidence[0])
         self.assertIn(('10.0.0.3', 's7comm', 'server'), services)  # it answered S7comm
         unidentified = {(op.ip, op.port): op.candidates for op in plan.unidentified_ports}
@@ -200,6 +247,10 @@ class BuildPlanTest(SimpleTestCase):
             ([{'ip': '10.0.0.1', 'zone': 'A', 'services': [{'proto': 'nope'}]}], [], {}, 'known protocol'),
             ([], [{'src': '10.0.0.1', 'dst': '10.0.0.2', 'proto': 'modbus', 'access': 'maybe'}], {}, 'access'),
             ([], [{'src': '10.0.0.1', 'proto': 'modbus'}], {}, 'required'),
+            ([], [{'src': '10.0.0.1', 'dst': '10.0.0.2', 'proto': 'modbus', 'port': 70000}], {}, 'port'),
+            ([], [{'src': '10.0.0.1', 'dst': '10.0.0.2', 'proto': 'modbus', 'last_seen': 'yesterday'}], {},
+             'ISO 8601'),
+            ([], [], {'zones': [{'name': 'A', 'type': 'office'}]}, 'type'),
         ]
         for assets, flows, summary, message in bad:
             with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
@@ -211,7 +262,7 @@ class BuildPlanTest(SimpleTestCase):
         flows = [{'src': '10.0.1.1', 'dst': '10.0.0.1', 'proto': 'modbus-tcp'}]
         plan = build_plan(assets, flows, {})
         self.assertEqual(set(plan.zones), {'Cell', 'Office'})
-        self.assertEqual([(c.source, c.destination) for c in plan.conduits], [('Office', 'Cell')])
+        self.assertEqual([(f.source, f.destination) for f in plan.flows], [('Office', 'Cell')])
         self.assertEqual({(s.ip, s.protocol, s.role) for s in plan.services},
                          {('10.0.0.1', 'modbus-tcp', 'server'), ('10.0.1.1', 'modbus-tcp', 'client')})
 
@@ -242,16 +293,19 @@ class ImportCommandTest(TestCase):
         for net in ('10.10.10.0/24', '192.168.1.0/24', '192.168.2.0/24'):
             Prefix.objects.create(prefix=net, scope=cls.site)
 
-    def _run(self, *extra, assets=ASSETS):
+    def _run_dir(self, directory, *extra):
         from users.models import User
         if not User.objects.filter(is_superuser=True).exists():
             User.objects.create_superuser('admin')
+        out = StringIO()
+        call_command('iec62443_import', directory, '--site', 'demo', *extra, stdout=out)
+        return out.getvalue()
+
+    def _run(self, *extra, assets=ASSETS):
         with tempfile.TemporaryDirectory() as tmp:
             for name, data in (('assets', assets), ('flows', FLOWS), ('summary', SUMMARY)):
                 Path(tmp, f'{name}.json').write_text(json.dumps(data))
-            out = StringIO()
-            call_command('iec62443_import', tmp, '--site', 'demo', *extra, stdout=out)
-            return out.getvalue()
+            return self._run_dir(tmp, *extra)
 
     def test_dry_run_saves_nothing(self):
         self._run('--dry-run')
@@ -261,7 +315,8 @@ class ImportCommandTest(TestCase):
         prefixes_before = Prefix.objects.count()
         out = self._run('--split', 'Z1 Cell A')
         self.assertEqual(Zone.objects.filter(site=self.site).count(), 5)
-        self.assertEqual(Conduit.objects.count(), 4)
+        self.assertEqual(Flow.objects.count(), 4)
+        self.assertEqual(Zone.objects.get(name='Outside').zone_type, 'external')
         control = Zone.objects.get(name=CONTROL)
         self.assertEqual(list(control.devices.values_list('name', flat=True)), ['dev-10.10.10.10'])
         # The /24 holds both halves of the split zone, so it is linked to neither
@@ -273,21 +328,43 @@ class ImportCommandTest(TestCase):
         hmi = Zone.objects.get(name=SUPERVISORY).devices.get(name='dev-10.10.10.20')
         self.assertEqual(hmi.custom_field_data[PURDUE_CF_NAME], '2')
         plc_s7 = IndustrialService.objects.get(device__name='dev-10.10.10.10', protocol='s7comm')
-        self.assertEqual((plc_s7.role, plc_s7.ports, plc_s7.interface.name), ('server', [102], 'eth0'))
+        self.assertEqual(plc_s7.role, 'server')
+        self.assertIsNone(plc_s7.service)  # no port in the input: no application service
         self.assertEqual(IndustrialService.objects.count(), 3)
         self.assertIn('10.10.10.10 port 502: modbus-tcp?', out)  # open, not identified, no service
 
         # A human decision survives a re-import
-        conduit = Conduit.objects.get(source_zone__name='Z4 External')
-        self.assertTrue(conduit.remote_access)
-        conduit.allowed = 'no'
-        conduit.save()
+        flow = Flow.objects.get(source_zone__name='Z4 External')
+        self.assertTrue(flow.remote_access)
+        self.assertEqual(flow.access, ['read', 'write'])
+        flow.allowed = 'no'
+        flow.save()
         out = self._run('--split', 'Z1 Cell A')
-        self.assertIn('conduits unchanged: 4', out)
+        self.assertIn('flows unchanged: 4', out)
         self.assertIn('services unchanged: 3', out)
-        conduit.refresh_from_db()
-        self.assertEqual(conduit.allowed, 'no')
+        flow.refresh_from_db()
+        self.assertEqual(flow.allowed, 'no')
         self.assertEqual(Zone.objects.count(), 5)
+
+    def test_flows_join_the_only_conduit_and_servers_get_ports(self):
+        cell = Zone.objects.create(name='Z1 Cell A', slug='z1-cell-a', site=self.site, purdue_level='1')
+        external = Zone.objects.create(name='Z4 External', slug='z4-external', site=self.site, zone_type='external')
+        conduit = Conduit.objects.create(name='Supplier access', site=self.site)
+        conduit.zones.set([cell, external])
+        flows = [dict(f, port=102) for f in FLOWS]
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, data in (('assets', ASSETS), ('flows', flows), ('summary', SUMMARY)):
+                Path(tmp, f'{name}.json').write_text(json.dumps(data))
+            self._run_dir(tmp)
+        flow = Flow.objects.get(source_zone=external, destination_zone=cell)
+        self.assertEqual(flow.conduit, conduit)
+        self.assertEqual(flow.port_mappings, ['tcp/102'])
+        self.assertIsNone(Flow.objects.get(source_zone__name='Z5 Office', destination_zone=cell).conduit)
+        plc_s7 = IndustrialService.objects.get(device__name='dev-10.10.10.10', protocol='s7comm')
+        self.assertEqual(plc_s7.service.port_mappings, ['tcp/102'])
+        self.assertEqual([str(ip) for ip in plc_s7.service.ipaddresses.all()], ['10.10.10.10/24'])
+        self.assertEqual(Service.objects.count(), 1)
+        self.assertEqual(Zone.objects.get(pk=external.pk).zone_type, 'external')  # existing zones keep their type
 
     def test_unsplit_zone_gets_its_prefix(self):
         self._run()

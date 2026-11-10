@@ -1,15 +1,22 @@
+import datetime
+
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from dcim.models import Site
 from extras.models import CustomField
+from tenancy.models import Contact
+from utilities.testing import create_test_device
 
-from netbox_iec62443.accessmap import access_map_conduits, access_map_svg
-from netbox_iec62443.choices import ConduitAllowedChoices, ConduitDirectionChoices, PurdueLevelChoices
+from netbox_iec62443.accessmap import access_map_flows, access_map_svg, attention
+from netbox_iec62443.choices import FlowAllowedChoices, PurdueLevelChoices, ZoneTypeChoices
 from netbox_iec62443.customfields import PURDUE_CF_NAME
-from netbox_iec62443.models import Conduit, Zone
+from netbox_iec62443.models import Conduit, Flow, FlowHop, Zone
+
+TODAY = timezone.localdate()
 
 
 class PurdueLevelChoicesTest(TestCase):
@@ -38,57 +45,142 @@ class ZoneTest(TestCase):
         with self.assertRaises(IntegrityError), transaction.atomic():
             Zone.objects.create(name='Internet', slug='internet-2')
 
-    def test_str_and_color(self):
+    def test_str_color_and_type(self):
         zone = Zone(name='Cell A', slug='cell-a', purdue_level=PurdueLevelChoices.LEVEL_1)
         self.assertEqual(str(zone), 'Cell A')
         self.assertEqual(zone.get_purdue_level_color(), 'red')
+        self.assertEqual(zone.zone_type, ZoneTypeChoices.OT)
 
 
-class ConduitTest(TestCase):
+class FlowTest(TestCase):
 
     @classmethod
     def setUpTestData(cls):
         cls.site = Site.objects.create(name='Site 1', slug='site-1')
-        cls.office = Zone.objects.create(name='Office', slug='office', site=cls.site, purdue_level='4')
+        cls.office = Zone.objects.create(name='Office', slug='office', site=cls.site, purdue_level='4',
+                                         zone_type='enterprise')
         cls.cell = Zone.objects.create(name='Cell', slug='cell', site=cls.site, purdue_level='1')
-        cls.dmz = Zone.objects.create(name='DMZ', slug='dmz', site=cls.site, purdue_level='3.5')
+        cls.dmz = Zone.objects.create(name='DMZ', slug='dmz', site=cls.site, purdue_level='3.5', zone_type='dmz')
+        cls.conduit = Conduit.objects.create(name='Office - Cell', site=cls.site)
+        cls.conduit.zones.set([cls.office, cls.cell])
+        cls.contact = Contact.objects.create(name='Plant manager')
 
     def test_same_zone_rejected(self):
         with self.assertRaises(ValidationError):
-            Conduit(name='loop', source_zone=self.cell, destination_zone=self.cell).full_clean()
+            Flow(source_zone=self.cell, destination_zone=self.cell).full_clean()
 
-    def test_zone_with_conduits_cannot_be_deleted(self):
-        """Deleting a zone must not silently delete the verdicts and evidence on its conduits."""
-        Conduit.objects.create(name='c', source_zone=self.office, destination_zone=self.cell, allowed='no',
-                               evidence='seen')
+    def test_conduit_must_join_both_zones(self):
+        Flow(source_zone=self.office, destination_zone=self.cell, conduit=self.conduit).full_clean()
+        with self.assertRaisesRegex(ValidationError, 'does not join'):
+            Flow(source_zone=self.dmz, destination_zone=self.cell, conduit=self.conduit).full_clean()
+
+    def test_port_mappings_validated_and_normalised(self):
+        flow = Flow(source_zone=self.office, destination_zone=self.cell, port_mappings=['TCP/0102'])
+        flow.full_clean()
+        self.assertEqual(flow.port_mappings, ['tcp/102'])
+        with self.assertRaises(ValidationError):
+            Flow(source_zone=self.office, destination_zone=self.cell, port_mappings=['tcp/99999']).full_clean()
+
+    def test_defaults_and_name(self):
+        flow = Flow.objects.create(source_zone=self.office, destination_zone=self.cell, protocol='s7comm',
+                                   access=['write', 'read', 'write'])
+        self.assertEqual(flow.name, 'Office -> Cell S7comm')
+        self.assertEqual(flow.allowed, FlowAllowedChoices.UNKNOWN)
+        self.assertEqual(flow.access, ['read', 'write'])  # de-duplicated, in class order
+        self.assertTrue(flow.is_modifying)
+        self.assertIsNone(flow.decided_on)
+        self.assertEqual(set(self.cell.flows), {flow})
+
+    def test_verdict_is_dated_and_cleared(self):
+        flow = Flow.objects.create(source_zone=self.office, destination_zone=self.cell, allowed='no',
+                                   decided_by=self.contact)
+        self.assertEqual(flow.decided_on, TODAY)  # dated when decided
+        flow.allowed, flow.decided_on = 'yes', datetime.date(2026, 1, 5)
+        flow.save()
+        self.assertEqual(flow.decided_on, datetime.date(2026, 1, 5))  # a given date wins
+        flow.allowed = 'no'
+        flow.save()
+        self.assertEqual(flow.decided_on, TODAY)  # verdict changed, date not: today
+        flow.description = 'edited'
+        flow.decided_on = datetime.date(2026, 2, 1)
+        flow.save()
+        self.assertEqual(flow.decided_on, datetime.date(2026, 2, 1))  # no verdict change: left alone
+        flow.allowed = 'unknown'
+        flow.save()
+        self.assertEqual((flow.decided_on, flow.decided_by), (None, None))  # nobody decided "unknown"
+
+    def test_expiry_review_and_stale(self):
+        flow = Flow(source_zone=self.office, destination_zone=self.cell, allowed='yes',
+                    expires=TODAY - datetime.timedelta(days=1), review_by=TODAY,
+                    last_seen=timezone.now() - datetime.timedelta(days=200))
+        self.assertTrue(flow.is_expired)
+        self.assertTrue(flow.is_review_due)
+        self.assertTrue(flow.is_stale)
+        flow.allowed = 'no'
+        self.assertFalse(flow.is_expired)  # only an allowed flow expires
+        with override_settings(PLUGINS_CONFIG={'netbox_iec62443': {'stale_after_days': 365}}):
+            self.assertFalse(flow.is_stale)
+
+    def test_zone_with_flows_cannot_be_deleted(self):
+        """Deleting a zone must not silently delete the verdicts and evidence on its flows."""
+        Flow.objects.create(name='f', source_zone=self.office, destination_zone=self.cell, allowed='no',
+                            evidence='seen')
         for zone in (self.office, self.cell):
             with self.assertRaises(ProtectedError), transaction.atomic():
                 zone.delete()
-        self.assertEqual(Conduit.objects.get(name='c').allowed, 'no')
-        self.dmz.delete()  # a zone without conduits still deletes
+        self.assertEqual(Flow.objects.get(name='f').allowed, 'no')
+        self.dmz.delete()  # a zone without flows still deletes
 
-    def test_defaults(self):
-        c = Conduit.objects.create(name='c', source_zone=self.office, destination_zone=self.cell)
-        self.assertEqual(c.allowed, ConduitAllowedChoices.UNKNOWN)
-        self.assertEqual(c.direction, ConduitDirectionChoices.ONE_WAY)
-        self.assertFalse(c.remote_access)
-        self.assertEqual(set(self.cell.conduits), {c})
+    def test_deleting_a_conduit_keeps_its_flows(self):
+        flow = Flow.objects.create(source_zone=self.office, destination_zone=self.cell, conduit=self.conduit,
+                                   allowed='no')
+        self.conduit.delete()
+        flow.refresh_from_db()
+        self.assertIsNone(flow.conduit)
+        self.assertEqual(flow.allowed, 'no')
 
     def test_access_map(self):
-        into_cell = Conduit.objects.create(name='office to cell', source_zone=self.office, destination_zone=self.cell,
-                                           allowed='yes')
-        into_dmz = Conduit.objects.create(name='office to dmz', source_zone=self.office, destination_zone=self.dmz)
-        two_way = Conduit.objects.create(name='cell and dmz', source_zone=self.cell, destination_zone=self.dmz,
-                                         direction='two-way', allowed='no')
-        result = list(access_map_conduits(site=self.site, max_level='2'))
-        # "no" before "yes"; the two-way conduit counts from its level-1 end; DMZ (3.5) is above 2
-        self.assertEqual(result, [two_way, into_cell])
-        self.assertIn(into_dmz, access_map_conduits(site=self.site, max_level='3.5'))
+        into_cell = Flow.objects.create(name='office to cell', source_zone=self.office, destination_zone=self.cell,
+                                        allowed='yes')
+        into_dmz = Flow.objects.create(name='office to dmz', source_zone=self.office, destination_zone=self.dmz)
+        blocked = Flow.objects.create(name='dmz to cell', source_zone=self.dmz, destination_zone=self.cell,
+                                      allowed='no')
+        expired = Flow.objects.create(name='expired', source_zone=self.dmz, destination_zone=self.cell,
+                                      allowed='yes', expires=TODAY - datetime.timedelta(days=1))
+        unknown = Flow.objects.create(name='unknown', source_zone=self.office, destination_zone=self.cell,
+                                      protocol='rdp', remote_access=True)
+        result = list(access_map_flows(site=self.site, max_level='2'))
+        # not allowed, expired, unknown, allowed; the DMZ (3.5) is above level 2
+        self.assertEqual(result, [blocked, expired, unknown, into_cell])
+        self.assertIn(into_dmz, access_map_flows(site=self.site, max_level='3.5'))
         other = Site.objects.create(name='Site 2', slug='site-2')
-        self.assertEqual(list(access_map_conduits(site=other)), [])
+        self.assertEqual(list(access_map_flows(site=other)), [])
         svg = access_map_svg(result, Zone.objects.filter(site=self.site))
         self.assertIn('<svg', svg)
         self.assertIn('Office', svg)
+        self.assertIn('stroke-dasharray', svg)  # the remote access pair is dashed
+        counts = attention(Flow.objects.all())
+        self.assertEqual((counts['expired'], counts['no_conduit']), (1, 5))
+
+
+class FlowHopTest(TestCase):
+
+    def test_exactly_one_target(self):
+        site = Site.objects.create(name='Site 1', slug='site-1')
+        a = Zone.objects.create(name='MSP', slug='msp', zone_type='external')
+        b = Zone.objects.create(name='Cell', slug='cell', site=site, purdue_level='1')
+        flow = Flow.objects.create(source_zone=a, destination_zone=b, protocol='rdp', remote_access=True)
+        jump = create_test_device('jump-1', site=site)
+        fw = create_test_device('fw-1', site=site)
+        with self.assertRaises(ValidationError):
+            FlowHop(flow=flow, position=1).full_clean()
+        hops = [FlowHop(flow=flow, position=2, device=fw), FlowHop(flow=flow, position=1, device=jump)]
+        for hop in hops:
+            hop.full_clean()
+            hop.save()
+        self.assertEqual([str(h) for h in flow.hops.all()], ['1. jump-1', '2. fw-1'])
+        with self.assertRaises(ValidationError):
+            FlowHop(flow=flow, position=1, device=fw).full_clean()  # position taken
 
 
 class CustomFieldTest(TestCase):

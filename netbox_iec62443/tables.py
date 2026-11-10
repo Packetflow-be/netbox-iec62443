@@ -4,18 +4,33 @@ from django.utils.translation import gettext_lazy as _
 from netbox.tables import PrimaryModelTable, columns
 from tenancy.tables import TenancyColumnsMixin
 
-from .models import Conduit, Fieldbus, IndustrialService, Zone
+from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, Zone
 
-__all__ = ('ConduitTable', 'FieldbusTable', 'IndustrialServiceTable', 'ZoneTable')
+__all__ = ('ConduitTable', 'FieldbusTable', 'FlowHopTable', 'FlowTable', 'IndustrialServiceTable', 'ZoneTable')
+
+ACCESS_BADGES = """
+{% for value, label, color in record.get_access_display %}{% badge label bg_color=color %} {% endfor %}
+"""
+HOPS = """
+{% for hop in record.hops.all %}{{ hop.hop|linkify }}{% if not forloop.last %} &rarr; {% endif %}
+{% empty %}{{ ''|placeholder }}{% endfor %}
+"""
+VERDICT = """{% load i18n %}
+{% badge record.get_allowed_display bg_color=record.get_allowed_color %}
+{% if record.is_expired %}<span class="badge text-bg-danger">{% trans "expired" %}</span>{% endif %}
+{% if record.is_review_due %}<span class="badge text-bg-warning">{% trans "review due" %}</span>{% endif %}
+"""
 
 
 class ZoneTable(TenancyColumnsMixin, PrimaryModelTable):
     name = tables.Column(verbose_name=_('Name'), linkify=True)
     site = tables.Column(verbose_name=_('Site'), linkify=True)
+    zone_type = columns.ChoiceFieldColumn(verbose_name=_('Type'))
     purdue_level = columns.ChoiceFieldColumn(verbose_name=_('Purdue level'))
     security_level_target = tables.Column(verbose_name=_('SL-T'))
     device_count = tables.Column(verbose_name=_('Device count'))
-    conduit_count = tables.Column(verbose_name=_('Conduits'))
+    flow_count = tables.Column(verbose_name=_('Flows'))
+    conduits = columns.ManyToManyColumn(verbose_name=_('Conduits'), linkify_item=True)
     devices = columns.ManyToManyColumn(verbose_name=_('Devices'), linkify_item=True)
     virtual_machines = columns.ManyToManyColumn(verbose_name=_('Virtual machines'), linkify_item=True)
     prefixes = columns.ManyToManyColumn(verbose_name=_('Prefixes'), linkify_item=True)
@@ -24,35 +39,77 @@ class ZoneTable(TenancyColumnsMixin, PrimaryModelTable):
     class Meta(PrimaryModelTable.Meta):
         model = Zone
         fields = (
-            'pk', 'id', 'name', 'slug', 'site', 'purdue_level', 'security_level_target', 'device_count',
-            'conduit_count', 'devices',
-            'virtual_machines', 'prefixes', 'tenant', 'tenant_group', 'description', 'comments', 'tags', 'created',
-            'last_updated',
+            'pk', 'id', 'name', 'slug', 'site', 'zone_type', 'purdue_level', 'security_level_target', 'device_count',
+            'flow_count', 'conduits', 'devices', 'virtual_machines', 'prefixes', 'tenant', 'tenant_group',
+            'description', 'comments', 'tags', 'created', 'last_updated',
         )
         default_columns = (
-            'pk', 'name', 'site', 'purdue_level', 'security_level_target', 'device_count', 'conduit_count', 'prefixes',
+            'pk', 'name', 'site', 'zone_type', 'purdue_level', 'security_level_target', 'device_count', 'flow_count',
+            'prefixes',
         )
 
 
 class ConduitTable(PrimaryModelTable):
     name = tables.Column(verbose_name=_('Name'), linkify=True)
-    source_zone = tables.Column(verbose_name=_('From zone'), linkify=True)
-    destination_zone = tables.Column(verbose_name=_('To zone'), linkify=True)
-    direction = columns.ChoiceFieldColumn(verbose_name=_('Direction'))
-    allowed = columns.ChoiceFieldColumn(verbose_name=_('Allowed'))
-    remote_access = columns.BooleanColumn(verbose_name=_('Remote access'))
+    site = tables.Column(verbose_name=_('Site'), linkify=True)
+    zones = columns.ManyToManyColumn(verbose_name=_('Zones'), linkify_item=True)
+    security_level_target = tables.Column(verbose_name=_('SL-T'))
+    enforcing_devices = columns.ManyToManyColumn(verbose_name=_('Enforcing devices'), linkify_item=True)
+    enforcing_virtual_machines = columns.ManyToManyColumn(verbose_name=_('Enforcing VMs'), linkify_item=True)
+    flow_count = tables.Column(verbose_name=_('Flows'))
     tags = columns.TagColumn(url_name='plugins:netbox_iec62443:conduit_list')
 
     class Meta(PrimaryModelTable.Meta):
         model = Conduit
         fields = (
-            'pk', 'id', 'name', 'source_zone', 'destination_zone', 'direction', 'allowed', 'protocols',
-            'remote_access', 'via', 'evidence', 'description', 'comments', 'tags', 'created', 'last_updated',
+            'pk', 'id', 'name', 'site', 'zones', 'security_level_target', 'enforcing_devices',
+            'enforcing_virtual_machines', 'flow_count', 'description', 'comments', 'tags', 'created', 'last_updated',
+        )
+        default_columns = ('pk', 'name', 'site', 'zones', 'security_level_target', 'enforcing_devices', 'flow_count')
+
+
+class FlowTable(PrimaryModelTable):
+    name = tables.Column(verbose_name=_('Name'), linkify=True)
+    conduit = tables.Column(verbose_name=_('Conduit'), linkify=True)
+    source_zone = tables.Column(verbose_name=_('From zone'), linkify=True)
+    destination_zone = tables.Column(verbose_name=_('To zone'), linkify=True)
+    protocol = columns.ChoiceFieldColumn(verbose_name=_('Protocol'))
+    ports = tables.Column(verbose_name=_('Ports'), accessor=tables.A('ports_display'), orderable=False)
+    access = columns.TemplateColumn(verbose_name=_('Access'), template_code=ACCESS_BADGES, orderable=False)
+    remote_access = columns.BooleanColumn(verbose_name=_('Remote access'))
+    hops = columns.TemplateColumn(verbose_name=_('Through'), template_code=HOPS, orderable=False)
+    allowed = columns.TemplateColumn(verbose_name=_('Allowed'), template_code=VERDICT, order_by=('allowed',))
+    decided_by = tables.Column(verbose_name=_('Decided by'), linkify=True)
+    decided_on = columns.DateColumn(verbose_name=_('Decided on'))
+    review_by = columns.DateColumn(verbose_name=_('Review by'))
+    expires = columns.DateColumn(verbose_name=_('Expires'))
+    first_seen = columns.DateTimeColumn(verbose_name=_('First seen'))
+    last_seen = columns.DateTimeColumn(verbose_name=_('Last seen'))
+    tags = columns.TagColumn(url_name='plugins:netbox_iec62443:flow_list')
+
+    class Meta(PrimaryModelTable.Meta):
+        model = Flow
+        fields = (
+            'pk', 'id', 'name', 'conduit', 'source_zone', 'destination_zone', 'protocol', 'ports', 'access',
+            'remote_access', 'hops', 'allowed', 'decided_by', 'decided_on', 'review_by', 'expires', 'first_seen',
+            'last_seen', 'evidence', 'description', 'comments', 'tags', 'created', 'last_updated',
         )
         default_columns = (
-            'pk', 'name', 'source_zone', 'destination_zone', 'direction', 'protocols', 'remote_access', 'via',
-            'allowed',
+            'pk', 'name', 'source_zone', 'destination_zone', 'protocol', 'ports', 'access', 'remote_access', 'hops',
+            'allowed', 'last_seen',
         )
+
+
+class FlowHopTable(PrimaryModelTable):
+    flow = tables.Column(verbose_name=_('Flow'), linkify=True)
+    position = tables.Column(verbose_name=_('Position'), linkify=True)
+    hop = tables.Column(verbose_name=_('Runs through'), linkify=True, orderable=False)
+    tags = columns.TagColumn(url_name='plugins:netbox_iec62443:flowhop_list')
+
+    class Meta(PrimaryModelTable.Meta):
+        model = FlowHop
+        fields = ('pk', 'id', 'flow', 'position', 'hop', 'description', 'comments', 'tags', 'created', 'last_updated')
+        default_columns = ('pk', 'flow', 'position', 'hop', 'description')
 
 
 class FieldbusTable(PrimaryModelTable):
@@ -82,15 +139,15 @@ class IndustrialServiceTable(PrimaryModelTable):
                                                                                'virtual_machine__name'))
     protocol = columns.ChoiceFieldColumn(verbose_name=_('Protocol'), linkify=True)
     role = columns.ChoiceFieldColumn(verbose_name=_('Role'))
-    interface = tables.Column(verbose_name=_('Interface'), linkify=True)
-    ports = columns.ArrayColumn(verbose_name=_('Ports'))
+    service = tables.Column(verbose_name=_('Application service'), linkify=True)
+    ports = tables.Column(verbose_name=_('Ports'), accessor=tables.A('ports_display'), orderable=False)
     fieldbus = tables.Column(verbose_name=_('Fieldbus'), linkify=True)
     tags = columns.TagColumn(url_name='plugins:netbox_iec62443:industrialservice_list')
 
     class Meta(PrimaryModelTable.Meta):
         model = IndustrialService
         fields = (
-            'pk', 'id', 'parent', 'protocol', 'role', 'interface', 'ports', 'fieldbus', 'address', 'evidence',
+            'pk', 'id', 'parent', 'protocol', 'role', 'service', 'ports', 'fieldbus', 'address', 'evidence',
             'description', 'comments', 'tags', 'created', 'last_updated',
         )
-        default_columns = ('pk', 'parent', 'protocol', 'role', 'interface', 'ports', 'fieldbus', 'address')
+        default_columns = ('pk', 'parent', 'protocol', 'role', 'service', 'ports', 'fieldbus', 'address')

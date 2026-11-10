@@ -1,23 +1,32 @@
+import datetime
+
+from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
-from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from netbox.models import PrimaryModel
 
 from .choices import (
-    ConduitAllowedChoices,
-    ConduitDirectionChoices,
+    AccessChoices,
     FieldbusMediumChoices,
+    FlowAllowedChoices,
+    FlowProtocolChoices,
     IndustrialProtocolChoices,
     PurdueLevelChoices,
     SecurityLevelChoices,
     ServiceRoleChoices,
+    ZoneTypeChoices,
 )
 
-__all__ = ('Conduit', 'Fieldbus', 'IndustrialService', 'Zone')
+__all__ = ('Conduit', 'Fieldbus', 'Flow', 'FlowHop', 'IndustrialService', 'Zone')
+
+
+def stale_after_days():
+    return int(settings.PLUGINS_CONFIG.get('netbox_iec62443', {}).get('stale_after_days', 90))
 
 
 class Zone(PrimaryModel):
@@ -41,11 +50,19 @@ class Zone(PrimaryModel):
         blank=True,
         null=True,
     )
+    zone_type = models.CharField(
+        verbose_name=_('zone type'),
+        max_length=20,
+        choices=ZoneTypeChoices,
+        default=ZoneTypeChoices.OT,
+        help_text=_('An MSP or supplier is an external zone'),
+    )
     purdue_level = models.CharField(
         verbose_name=_('Purdue level'),
         max_length=10,
         choices=PurdueLevelChoices,
         blank=True,
+        help_text=_('The most critical (lowest) level in the zone; the access map counts the zone by it'),
     )
     security_level_target = models.PositiveSmallIntegerField(
         verbose_name=_('security level target (SL-T)'),
@@ -69,7 +86,7 @@ class Zone(PrimaryModel):
         blank=True,
     )
 
-    clone_fields = ('site', 'tenant', 'purdue_level', 'security_level_target')
+    clone_fields = ('site', 'tenant', 'zone_type', 'purdue_level', 'security_level_target')
 
     class Meta:
         ordering = ('site', 'name')
@@ -94,89 +111,232 @@ class Zone(PrimaryModel):
     def get_purdue_level_color(self):
         return PurdueLevelChoices.colors.get(self.purdue_level)
 
+    def get_zone_type_color(self):
+        return ZoneTypeChoices.colors.get(self.zone_type)
+
     @property
-    def conduits(self):
-        """All conduits that start or end in this zone."""
-        return Conduit.objects.filter(Q(source_zone=self) | Q(destination_zone=self))
+    def flows(self):
+        """All flows that start or end in this zone."""
+        return Flow.objects.filter(Q(source_zone=self) | Q(destination_zone=self))
 
 
 class Conduit(PrimaryModel):
     """
-    An IEC 62443 conduit: a communication path between two zones.
-    `allowed` is the access map's verdict: is this path allowed?
+    An IEC 62443-3-2 conduit: the communication channels between two or more zones, grouped because they share
+    security requirements. It has its own SL-T and names the devices that enforce it (firewalls, data diodes,
+    gateways). What actually runs through it is recorded as flows.
     """
     name = models.CharField(verbose_name=_('name'), max_length=100, db_collation='natural_sort')
-    source_zone = models.ForeignKey(
-        to=Zone,
+    site = models.ForeignKey(
+        to='dcim.Site',
         on_delete=models.PROTECT,
-        related_name='conduits_out',
-        verbose_name=_('source zone'),
+        related_name='iec62443_conduits',
+        blank=True,
+        null=True,
     )
-    destination_zone = models.ForeignKey(
+    zones = models.ManyToManyField(
         to=Zone,
-        on_delete=models.PROTECT,
-        related_name='conduits_in',
-        verbose_name=_('destination zone'),
+        related_name='conduits',
+        verbose_name=_('zones'),
+        help_text=_('The zones this conduit joins (two or more)'),
     )
-    direction = models.CharField(
-        verbose_name=_('direction'),
-        max_length=20,
-        choices=ConduitDirectionChoices,
-        default=ConduitDirectionChoices.ONE_WAY,
-    )
-    allowed = models.CharField(
-        verbose_name=_('allowed'),
-        max_length=20,
-        choices=ConduitAllowedChoices,
-        default=ConduitAllowedChoices.UNKNOWN,
-        help_text=_('Is this path allowed? Shown as the verdict on the access map'),
-    )
-    protocols = models.CharField(
-        verbose_name=_('protocols / ports'),
-        max_length=200,
+    security_level_target = models.PositiveSmallIntegerField(
+        verbose_name=_('security level target (SL-T)'),
+        choices=SecurityLevelChoices,
         blank=True,
-        help_text=_('Free text, e.g. "S7comm (TCP/102) read+write, Modbus/TCP 502"'),
+        null=True,
     )
-    remote_access = models.BooleanField(
-        verbose_name=_('remote access'),
-        default=False,
-        help_text=_('Access from outside the site (supplier 4G router, VPN, TeamViewer, ...)'),
-    )
-    via = models.CharField(
-        verbose_name=_('via'),
-        max_length=200,
+    enforcing_devices = models.ManyToManyField(
+        to='dcim.Device',
+        related_name='iec62443_enforced_conduits',
+        verbose_name=_('enforcing devices'),
         blank=True,
-        help_text=_('How the path runs, e.g. "4G router of supplier X", "firewall FW01"'),
+        help_text=_('Firewalls, data diodes, gateways that enforce this conduit'),
     )
-    evidence = models.TextField(
-        verbose_name=_('evidence'),
+    enforcing_virtual_machines = models.ManyToManyField(
+        to='virtualization.VirtualMachine',
+        related_name='iec62443_enforced_conduits',
+        verbose_name=_('enforcing virtual machines'),
         blank=True,
-        help_text=_('Where this path was seen (capture, interview, configuration)'),
     )
 
-    clone_fields = ('source_zone', 'destination_zone', 'direction', 'allowed', 'protocols', 'remote_access', 'via')
+    clone_fields = ('site', 'security_level_target')
 
     class Meta:
-        ordering = ('source_zone', 'destination_zone', 'name')
+        ordering = ('site', 'name')
         verbose_name = _('conduit')
         verbose_name_plural = _('conduits')
         constraints = (
-            models.UniqueConstraint(
-                fields=('source_zone', 'destination_zone', 'name'),
-                name='%(app_label)s_%(class)s_unique_zones_name',
-                violation_error_message=_('A conduit with this name already exists between these zones.'),
-            ),
+            models.UniqueConstraint(fields=('site', 'name'), name='%(app_label)s_%(class)s_unique_site_name',
+                                    violation_error_message=_('Conduit name must be unique per site.')),
+            models.UniqueConstraint(fields=('name',), condition=Q(site__isnull=True),
+                                    name='%(app_label)s_%(class)s_unique_name',
+                                    violation_error_message=_('Conduit name must be unique (no site).')),
         )
 
     def __str__(self):
         return self.name
 
+
+class Flow(PrimaryModel):
+    """
+    A directed communication path from one zone into another: protocol and ports, what the requests do, the ordered
+    hops it runs through, and the verdict (is it allowed?) with who decided it and until when. Tools supply the
+    evidence and the first/last seen times; a person decides. A flow belongs to the conduit that carries it.
+    """
+    name = models.CharField(
+        verbose_name=_('name'),
+        max_length=100,
+        db_collation='natural_sort',
+        blank=True,
+        help_text=_('Left empty, it is made from the zones and the protocol'),
+    )
+    conduit = models.ForeignKey(
+        to=Conduit,
+        on_delete=models.SET_NULL,
+        related_name='flows',
+        verbose_name=_('conduit'),
+        blank=True,
+        null=True,
+        help_text=_('The conduit that carries this flow; empty means no documented conduit'),
+    )
+    source_zone = models.ForeignKey(
+        to=Zone,
+        on_delete=models.PROTECT,
+        related_name='flows_out',
+        verbose_name=_('source zone'),
+    )
+    destination_zone = models.ForeignKey(
+        to=Zone,
+        on_delete=models.PROTECT,
+        related_name='flows_in',
+        verbose_name=_('destination zone'),
+    )
+    protocol = models.CharField(
+        verbose_name=_('protocol'),
+        max_length=30,
+        choices=FlowProtocolChoices,
+        blank=True,
+    )
+    port_mappings = ArrayField(
+        base_field=models.CharField(max_length=63),
+        verbose_name=_('ports'),
+        blank=True,
+        default=list,
+        help_text=_('Destination ports as protocol/port, e.g. tcp/102; empty for layer-2 protocols'),
+    )
+    access = ArrayField(
+        base_field=models.CharField(max_length=20, choices=AccessChoices),
+        verbose_name=_('access'),
+        blank=True,
+        default=list,
+        help_text=_('What the requests do to the destination: read, write, control, program'),
+    )
+    remote_access = models.BooleanField(
+        verbose_name=_('remote access'),
+        default=False,
+        help_text=_('Access from outside the site (supplier 4G router, VPN, TeamViewer, MSP, ...)'),
+    )
+    allowed = models.CharField(
+        verbose_name=_('allowed'),
+        max_length=20,
+        choices=FlowAllowedChoices,
+        default=FlowAllowedChoices.UNKNOWN,
+        help_text=_('Is this flow allowed? Shown as the verdict on the access map'),
+    )
+    decided_by = models.ForeignKey(
+        to='tenancy.Contact',
+        on_delete=models.PROTECT,
+        related_name='iec62443_flow_verdicts',
+        verbose_name=_('decided by'),
+        blank=True,
+        null=True,
+    )
+    decided_on = models.DateField(
+        verbose_name=_('decided on'),
+        blank=True,
+        null=True,
+        help_text=_('Filled in with today when the verdict changes and no date is given'),
+    )
+    review_by = models.DateField(
+        verbose_name=_('review by'),
+        blank=True,
+        null=True,
+        help_text=_('Date by which the verdict should be reviewed'),
+    )
+    expires = models.DateField(
+        verbose_name=_('expires'),
+        blank=True,
+        null=True,
+        help_text=_('An allowed flow is no longer allowed after this date (e.g. temporary supplier access)'),
+    )
+    first_seen = models.DateTimeField(verbose_name=_('first seen'), blank=True, null=True)
+    last_seen = models.DateTimeField(verbose_name=_('last seen'), blank=True, null=True)
+    evidence = models.TextField(
+        verbose_name=_('evidence'),
+        blank=True,
+        help_text=_('Where this flow was seen (capture, interview, configuration)'),
+    )
+
+    clone_fields = (
+        'conduit', 'source_zone', 'destination_zone', 'protocol', 'port_mappings', 'access', 'remote_access',
+    )
+
+    class Meta:
+        ordering = ('source_zone', 'destination_zone', 'name')
+        verbose_name = _('flow')
+        verbose_name_plural = _('flows')
+        constraints = (
+            models.UniqueConstraint(
+                fields=('source_zone', 'destination_zone', 'name'),
+                name='%(app_label)s_%(class)s_unique_zones_name',
+                violation_error_message=_('A flow with this name already exists between these zones.'),
+            ),
+        )
+
+    def __str__(self):
+        return self.name or self.default_name()
+
+    def default_name(self):
+        parts = [f'{self.source_zone} -> {self.destination_zone}'] if self.source_zone_id and \
+            self.destination_zone_id else []
+        if self.protocol:
+            parts.append(str(self.get_protocol_display()))
+        return ' '.join(parts)[:100]
+
     def clean(self):
         super().clean()
+        from ipam.validators import validate_port_mappings
+
         if self.source_zone_id and self.source_zone_id == self.destination_zone_id:
-            raise ValidationError({
-                'destination_zone': _('A conduit connects two different zones.'),
-            })
+            raise ValidationError({'destination_zone': _('A flow runs between two different zones.')})
+        try:
+            self.port_mappings = validate_port_mappings(self.port_mappings or [])
+        except ValidationError as e:
+            raise ValidationError({'port_mappings': e.messages})
+        if self.conduit_id and self.source_zone_id and self.destination_zone_id:
+            joined = set(self.conduit.zones.values_list('pk', flat=True))
+            if not {self.source_zone_id, self.destination_zone_id} <= joined:
+                raise ValidationError({'conduit': _('The conduit does not join both zones of this flow.')})
+        if self.first_seen and self.last_seen and self.first_seen > self.last_seen:
+            raise ValidationError({'last_seen': _('Last seen is before first seen.')})
+
+    def save(self, *args, **kwargs):
+        if not self.name:
+            self.name = self.default_name()
+        self.access = sorted(set(self.access or []), key=AccessChoices.values().index)
+        # Who decided and when go with the verdict: an unknown verdict has neither, and a verdict that changes
+        # without a new date given is dated today.
+        if self.allowed == FlowAllowedChoices.UNKNOWN:
+            self.decided_on = None
+            self.decided_by = None
+        else:
+            before = Flow.objects.filter(pk=self.pk).values('allowed', 'decided_on').first() if self.pk else None
+            if before is None:
+                self.decided_on = self.decided_on or timezone.localdate()
+            elif before['allowed'] != self.allowed and before['decided_on'] == self.decided_on:
+                self.decided_on = timezone.localdate()
+        super().save(*args, **kwargs)
 
     @property
     def evidence_lines(self):
@@ -184,11 +344,91 @@ class Conduit(PrimaryModel):
         first, _sep, rest = self.evidence.strip().partition('\n')
         return first, rest
 
-    def get_direction_color(self):
-        return ConduitDirectionChoices.colors.get(self.direction)
+    @property
+    def ports_display(self):
+        return ', '.join(m.upper() for m in self.port_mappings)
+
+    @property
+    def is_modifying(self):
+        return any(a in AccessChoices.MODIFYING for a in self.access)
+
+    @property
+    def is_expired(self):
+        return self.allowed == FlowAllowedChoices.YES and bool(self.expires) and self.expires < timezone.localdate()
+
+    @property
+    def is_review_due(self):
+        return bool(self.review_by) and self.review_by <= timezone.localdate()
+
+    @property
+    def is_stale(self):
+        """Not seen for `stale_after_days` (plugin setting, default 90). Flows never observed are not stale."""
+        return bool(self.last_seen) and self.last_seen < timezone.now() - datetime.timedelta(days=stale_after_days())
 
     def get_allowed_color(self):
-        return ConduitAllowedChoices.colors.get(self.allowed)
+        return FlowAllowedChoices.colors.get(self.allowed)
+
+    def get_access_display(self):
+        labels = dict(AccessChoices.CHOICES)
+        return [(a, labels.get(a, a), AccessChoices.colors.get(a)) for a in self.access]
+
+
+class FlowHop(PrimaryModel):
+    """One step on a flow's path, in order: a device (firewall, jump host, gateway), a VM or a tunnel."""
+    flow = models.ForeignKey(
+        to=Flow,
+        on_delete=models.CASCADE,
+        related_name='hops',
+        verbose_name=_('flow'),
+    )
+    position = models.PositiveSmallIntegerField(
+        verbose_name=_('position'),
+        help_text=_('Order along the path, from the source (1) to the destination'),
+    )
+    device = models.ForeignKey(
+        to='dcim.Device',
+        on_delete=models.CASCADE,
+        related_name='iec62443_flow_hops',
+        blank=True,
+        null=True,
+    )
+    virtual_machine = models.ForeignKey(
+        to='virtualization.VirtualMachine',
+        on_delete=models.CASCADE,
+        related_name='iec62443_flow_hops',
+        blank=True,
+        null=True,
+    )
+    tunnel = models.ForeignKey(
+        to='vpn.Tunnel',
+        on_delete=models.CASCADE,
+        related_name='iec62443_flow_hops',
+        blank=True,
+        null=True,
+    )
+
+    clone_fields = ('flow',)
+
+    class Meta:
+        ordering = ('flow', 'position')
+        verbose_name = _('flow hop')
+        verbose_name_plural = _('flow hops')
+        constraints = (
+            models.UniqueConstraint(fields=('flow', 'position'), name='%(app_label)s_%(class)s_unique_flow_position',
+                                    violation_error_message=_('This flow already has a hop at this position.')),
+        )
+
+    def __str__(self):
+        return f'{self.position}. {self.hop}'
+
+    @property
+    def hop(self):
+        return self.device or self.virtual_machine or self.tunnel
+
+    def clean(self):
+        super().clean()
+        if sum(bool(x) for x in (self.device_id, self.virtual_machine_id, self.tunnel_id)) != 1:
+            raise ValidationError(_('A hop is exactly one device, virtual machine or tunnel.'))
 
 
 class Fieldbus(PrimaryModel):
@@ -255,7 +495,8 @@ class Fieldbus(PrimaryModel):
 class IndustrialService(PrimaryModel):
     """
     An industrial protocol spoken by a device or virtual machine: as server (slave, outstation) or client
-    (master), over an interface and ports, or on a fieldbus at a station address.
+    (master). Over the network its ports are those of a NetBox application service; on a serial bus it sits on a
+    fieldbus at a station address.
     """
     device = models.ForeignKey(
         to='dcim.Device',
@@ -282,20 +523,14 @@ class IndustrialService(PrimaryModel):
         choices=ServiceRoleChoices,
         default=ServiceRoleChoices.SERVER,
     )
-    interface = models.ForeignKey(
-        to='dcim.Interface',
+    service = models.ForeignKey(
+        to='ipam.Service',
         on_delete=models.SET_NULL,
-        related_name='iec62443_services',
-        verbose_name=_('interface'),
+        related_name='iec62443_industrial_services',
+        verbose_name=_('application service'),
         blank=True,
         null=True,
-    )
-    ports = ArrayField(
-        base_field=models.PositiveIntegerField(validators=[MinValueValidator(1), MaxValueValidator(65535)]),
-        verbose_name=_('ports'),
-        blank=True,
-        default=list,
-        help_text=_('TCP/UDP ports; left empty, the protocol\'s usual ports are filled in'),
+        help_text=_('The NetBox application service that holds the ports and IP addresses'),
     )
     fieldbus = models.ForeignKey(
         to=Fieldbus,
@@ -333,7 +568,7 @@ class IndustrialService(PrimaryModel):
 
     @property
     def ports_display(self):
-        return ', '.join(str(p) for p in self.ports)
+        return self.service.port_mappings_list if self.service_id else ''
 
     @property
     def is_serial(self):
@@ -343,18 +578,13 @@ class IndustrialService(PrimaryModel):
         super().clean()
         if bool(self.device_id) == bool(self.virtual_machine_id):
             raise ValidationError(_('An industrial service belongs to either a device or a virtual machine.'))
-        if self.interface_id and self.interface.device_id != self.device_id:
-            raise ValidationError({'interface': _('The interface belongs to another device.')})
-        if self.is_serial:
-            if self.ports:
-                raise ValidationError({'ports': _('A serial protocol has no TCP/UDP ports.')})
-        elif self.fieldbus_id and self.protocol != IndustrialProtocolChoices.OTHER:
+        if self.service_id:
+            if self.is_serial:
+                raise ValidationError({'service': _('A serial protocol has no application service (no ports).')})
+            if self.service.parent != self.parent:
+                raise ValidationError({'service': _('The application service belongs to another device or VM.')})
+        if not self.is_serial and self.fieldbus_id and self.protocol != IndustrialProtocolChoices.OTHER:
             raise ValidationError({'fieldbus': _('Only serial or fieldbus protocols sit on a fieldbus.')})
-
-    def save(self, *args, **kwargs):
-        if not self.ports and not self.is_serial:
-            self.ports = list(IndustrialProtocolChoices.DEFAULT_PORTS.get(self.protocol, []))
-        super().save(*args, **kwargs)
 
     def get_role_color(self):
         return ServiceRoleChoices.colors.get(self.role)

@@ -8,10 +8,19 @@ from dcim.models import Site
 from netbox.api.viewsets import NetBoxModelViewSet
 
 from .. import filtersets
-from ..accessmap import access_map_conduits, access_map_svg
+from ..accessmap import access_map_flows
 from ..choices import PurdueLevelChoices
-from ..models import Conduit, Fieldbus, IndustrialService, Zone
-from .serializers import ConduitSerializer, FieldbusSerializer, IndustrialServiceSerializer, ZoneSerializer
+from ..models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, Zone
+from .serializers import (
+    ConduitSerializer,
+    FieldbusSerializer,
+    FlowHopSerializer,
+    FlowSerializer,
+    IndustrialServiceSerializer,
+    ZoneSerializer,
+)
+
+FLOW_HOPS = ('hops__device', 'hops__virtual_machine', 'hops__tunnel')
 
 
 class ZoneViewSet(NetBoxModelViewSet):
@@ -21,9 +30,22 @@ class ZoneViewSet(NetBoxModelViewSet):
 
 
 class ConduitViewSet(NetBoxModelViewSet):
-    queryset = Conduit.objects.select_related('source_zone', 'destination_zone').prefetch_related('tags')
+    queryset = Conduit.objects.prefetch_related('zones', 'enforcing_devices', 'enforcing_virtual_machines', 'tags')
     serializer_class = ConduitSerializer
     filterset_class = filtersets.ConduitFilterSet
+
+
+class FlowViewSet(NetBoxModelViewSet):
+    queryset = Flow.objects.select_related('conduit', 'source_zone', 'destination_zone', 'decided_by') \
+        .prefetch_related('tags', *FLOW_HOPS)
+    serializer_class = FlowSerializer
+    filterset_class = filtersets.FlowFilterSet
+
+
+class FlowHopViewSet(NetBoxModelViewSet):
+    queryset = FlowHop.objects.select_related('flow', 'device', 'virtual_machine', 'tunnel').prefetch_related('tags')
+    serializer_class = FlowHopSerializer
+    filterset_class = filtersets.FlowHopFilterSet
 
 
 class FieldbusViewSet(NetBoxModelViewSet):
@@ -34,7 +56,7 @@ class FieldbusViewSet(NetBoxModelViewSet):
 
 class IndustrialServiceViewSet(NetBoxModelViewSet):
     queryset = IndustrialService.objects.select_related(
-        'device', 'virtual_machine', 'interface', 'fieldbus',
+        'device', 'virtual_machine', 'service', 'fieldbus',
     ).prefetch_related('tags')
     serializer_class = IndustrialServiceSerializer
     filterset_class = filtersets.IndustrialServiceFilterSet
@@ -42,16 +64,16 @@ class IndustrialServiceViewSet(NetBoxModelViewSet):
 
 class AccessMapAPIView(APIView):
     """
-    The access map of one site as data: the conduits into zones at Purdue level <= max_level (not allowed
-    first) and the same SVG diagram as the UI. GET ?site_id=<id>[&max_level=<level>]. For reports and other tools.
+    The access map of one site as data: the flows into zones at Purdue level <= max_level, not allowed first, then
+    allowed but expired, unknown, allowed. GET ?site_id=<id>[&max_level=<level>]. For reports and other tools.
     """
-    queryset = Conduit.objects.all()  # for NetBox's token permission check (view_conduit)
+    queryset = Flow.objects.all()  # for NetBox's token permission check (view_flow)
 
     def get_view_name(self):
         return 'Access map'
 
     def get(self, request):
-        if not request.user.has_perm('netbox_iec62443.view_conduit'):
+        if not request.user.has_perm('netbox_iec62443.view_flow'):
             raise PermissionDenied()
         default = str(settings.PLUGINS_CONFIG.get('netbox_iec62443', {}).get('access_map_max_level', '2'))
         max_level = request.query_params.get('max_level') or default
@@ -61,14 +83,10 @@ class AccessMapAPIView(APIView):
             site = Site.objects.restrict(request.user, 'view').get(pk=int(request.query_params.get('site_id', '')))
         except (ValueError, Site.DoesNotExist):
             raise ValidationError({'site_id': 'A site you can view is required.'})
-        conduits = list(access_map_conduits(
-            Conduit.objects.restrict(request.user, 'view'), site=site, max_level=max_level,
-        ))
-        zones = Zone.objects.restrict(request.user, 'view').filter(site=site)
+        flows = access_map_flows(Flow.objects.restrict(request.user, 'view'), site=site, max_level=max_level)
         context = {'request': request}
         return Response({
             'site': SiteSerializer(site, nested=True, context=context).data,
             'max_level': max_level,
-            'conduits': ConduitSerializer(conduits, many=True, context=context).data,
-            'svg': str(access_map_svg(conduits, zones)),
+            'flows': FlowSerializer(flows, many=True, context=context).data,
         })

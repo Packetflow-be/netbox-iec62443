@@ -10,12 +10,24 @@
       <th scope="row">{% trans "Zones" %}</th>
       <td>
         {% for zone in zones %}
-          {{ zone|linkify }}{% if zone.purdue_level %} {% badge zone.purdue_level bg_color=zone.get_purdue_level_color %}{% endif %}{% if zone.security_level_target is not None %} <span class="text-muted small">SL-T {{ zone.security_level_target }}</span>{% endif %}{% if not forloop.last %}<br>{% endif %}
+          {{ zone|linkify }} {% badge zone.get_zone_type_display bg_color=zone.get_zone_type_color %}{% if zone.purdue_level %} {% badge zone.purdue_level bg_color=zone.get_purdue_level_color %}{% endif %}{% if zone.security_level_target is not None %} <span class="text-muted small">SL-T {{ zone.security_level_target }}</span>{% endif %}{% if not forloop.last %}<br>{% endif %}
         {% empty %}
           {{ ''|placeholder }}
         {% endfor %}
       </td>
     </tr>
+    {% if enforced %}
+      <tr>
+        <th scope="row">{% trans "Enforces conduits" %}</th>
+        <td>{% for c in enforced %}{{ c|linkify }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      </tr>
+    {% endif %}
+    {% if hop_flows %}
+      <tr>
+        <th scope="row">{% trans "Flows through it" %}</th>
+        <td>{% for f in hop_flows %}{{ f|linkify }} {% badge f.get_allowed_display bg_color=f.get_allowed_color %}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td>
+      </tr>
+    {% endif %}
   </table>
   {% if services or bridges %}
     <table class="table table-hover">
@@ -29,7 +41,8 @@
             <td>{% badge svc.get_role_display bg_color=svc.get_role_color %}</td>
             <td>
               {% if svc.fieldbus %}{{ svc.fieldbus|linkify }}{% if svc.address %} <span class="text-muted">{{ svc.address }}</span>{% endif %}
-              {% else %}{{ svc.ports_display|placeholder }}{% if svc.interface %} <span class="text-muted">{% trans "on" %} {{ svc.interface }}</span>{% endif %}{% endif %}
+              {% elif svc.service %}<a href="{{ svc.service.get_absolute_url }}">{{ svc.ports_display }}</a>
+              {% else %}{{ ''|placeholder }}{% endif %}
             </td>
           </tr>
         {% endfor %}
@@ -43,23 +56,28 @@
       </tbody>
     </table>
   {% endif %}
-  {% if conduits %}
+  {% if flows %}
     <table class="table table-hover">
       <thead>
-        <tr><th>{% trans "Conduit" %}</th><th>{% trans "From" %}</th><th>{% trans "To" %}</th><th>{% trans "Allowed" %}</th></tr>
+        <tr><th>{% trans "Flow" %}</th><th>{% trans "From" %}</th><th>{% trans "To" %}</th><th>{% trans "Allowed" %}</th></tr>
       </thead>
       <tbody>
-        {% for c in conduits %}
+        {% for f in flows %}
           <tr>
-            <td>{{ c|linkify }}{% if c.remote_access %} <i class="mdi mdi-earth" title="{% trans 'Remote access' %}"></i>{% endif %}</td>
-            <td>{{ c.source_zone|linkify }}</td>
-            <td>{% if c.direction == 'two-way' %}<i class="mdi mdi-swap-horizontal"></i> {% endif %}{{ c.destination_zone|linkify }}</td>
-            <td>{% badge c.get_allowed_display bg_color=c.get_allowed_color %}</td>
+            <td>{{ f|linkify }}{% if f.remote_access %} <i class="mdi mdi-earth" title="{% trans 'Remote access' %}"></i>{% endif %}</td>
+            <td>{{ f.source_zone|linkify }}</td>
+            <td>{{ f.destination_zone|linkify }}</td>
+            <td>{% badge f.get_allowed_display bg_color=f.get_allowed_color %}{% if f.is_expired %} <span class="badge text-bg-danger">{% trans "expired" %}</span>{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
+    {% if flow_count > flows|length %}
+      <div class="card-footer text-end">
+        <a href="{% url 'plugins:netbox_iec62443:flow_list' %}?{% for zone in zones %}zone_id={{ zone.pk }}{% if not forloop.last %}&{% endif %}{% endfor %}">{% blocktrans with n=flow_count %}All {{ n }} flows of these zones{% endblocktrans %}</a>
+      </div>
+    {% endif %}
   {% elif zones %}
-    <div class="card-body text-muted small">{% trans "No conduits recorded for these zones." %}</div>
+    <div class="card-body text-muted small">{% trans "No flows recorded for these zones." %}</div>
   {% endif %}
 </div>
