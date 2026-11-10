@@ -1,6 +1,6 @@
 from netbox.search import SearchIndex
 
-from .models import Conduit, Fieldbus, Flow, IndustrialService, Zone
+from .models import Conduit, Fieldbus, Flow, IndustrialService, RiskAssessment, Zone
 
 
 class ZoneIndex(SearchIndex):
@@ -11,7 +11,7 @@ class ZoneIndex(SearchIndex):
         ('description', 500),
         ('comments', 5000),
     )
-    display_attrs = ('site', 'zone_type', 'purdue_level', 'security_level_target', 'description')
+    display_attrs = ('site', 'zone_type', 'purdue_level', 'accountable', 'description')
 
 
 class ConduitIndex(SearchIndex):
@@ -21,7 +21,7 @@ class ConduitIndex(SearchIndex):
         ('description', 500),
         ('comments', 5000),
     )
-    display_attrs = ('site', 'security_level_target', 'description')
+    display_attrs = ('site', 'accountable', 'description')
 
 
 class FlowIndex(SearchIndex):
@@ -56,4 +56,18 @@ class IndustrialServiceIndex(SearchIndex):
     display_attrs = ('device', 'virtual_machine', 'protocol', 'role', 'fieldbus')
 
 
-indexes = (ZoneIndex, ConduitIndex, FlowIndex, FieldbusIndex, IndustrialServiceIndex)
+class RiskAssessmentIndex(SearchIndex):
+    model = RiskAssessment
+    fields = (
+        ('method', 300),
+        ('description', 500),
+        ('threats', 2000),
+        ('vulnerabilities', 2000),
+        ('consequences', 2000),
+        ('countermeasures', 2000),
+        ('comments', 5000),
+    )
+    display_attrs = ('zone', 'conduit', 'kind', 'status', 'assessed_on', 'residual_risk')
+
+
+indexes = (ZoneIndex, ConduitIndex, FlowIndex, RiskAssessmentIndex, FieldbusIndex, IndustrialServiceIndex)

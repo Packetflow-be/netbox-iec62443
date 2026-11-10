@@ -22,16 +22,32 @@ Status: early development (0.1.0.dev0), tested on NetBox 4.7.2 and 4.7.4.
 ## What you get
 
 - **Zone**: name, slug, site, tenant, **type** (OT, safety/SIS, DMZ, enterprise, external/supplier),
-  Purdue level (0, 1, 2, 3, 3.5 DMZ, 4, 5), security level target (SL-T 0-4), member devices, virtual
-  machines and prefixes, description, tags, comments.
-- **Conduit** (IEC 62443-3-2): the zones it joins (two or more), its own SL-T, and the devices and VMs
-  that **enforce** it (firewalls, data diodes, gateways).
+  Purdue level (0, 1, 2, 3, 3.5 DMZ, 4, 5), **SL-T and SL-A as vectors** over the seven foundational
+  requirements, the **accountable** person, parent zone (**sub-zones**), the IEC 62443-3-2 attributes
+  **wireless** and **temporarily connected devices**, member devices, virtual machines and prefixes,
+  description, tags, comments.
+- **Conduit** (IEC 62443-3-2): the zones it joins (two or more), its own SL-T and SL-A vectors, the
+  accountable person, and the devices and VMs that **enforce** it (firewalls, data diodes, gateways).
+- **Risk assessment** (IEC 62443-3-2) of a zone or conduit: initial (ZCR 2) or detailed (ZCR 5), draft or
+  approved, who assessed and approved it and when, next review, method, threats, vulnerabilities,
+  consequences, countermeasures, **unmitigated, residual and tolerable risk**, a link to the report.
 - **Flow**: what actually runs between two zones, in one direction: source and destination zone,
   **protocol** and **ports** (`tcp/102`), **access** (read, write, control, program), remote access
   flag, the **ordered path** it takes (hops: devices, VMs or tunnels), the conduit that carries it,
   first/last seen and evidence. Its verdict: **allowed** (yes / no / unknown), **decided by** (a NetBox
   contact) and **on**, **review by** and **expires**.
-- **Purdue level on devices and VMs** as a custom field (`iec62443_purdue_level`, group "IEC 62443").
+- **Purdue level on devices and VMs** as a custom field (`iec62443_purdue_level`, group "IEC 62443"), and
+  **SL-C** (security level capability) on devices and device types (`iec62443_sl_capability`, e.g.
+  `2,2,2,1,2,1,1`; a device's own value overrides its type's).
+- **Consistency checks** (*IEC 62443 > Consistency checks*, REST `checks/`, `manage.py iec62443_check`):
+  an address in another zone's prefix, an asset below its zone's level or in the wrong kind of zone, assets
+  in no zone or in two, SL-A below SL-T, member SL-C below the zone's SL-T, a conduit below a zone it joins,
+  conduits nobody enforces, expired or open-ended remote access, flows outside any conduit, verdicts
+  without a decider, stale flows, residual risk above tolerable, overdue risk assessments, and what an audit
+  will ask for and is missing (no SL-T, no accountable person, no approved risk assessment).
+- **Zone register** per site (a "Zone register" tab on the site, REST `register/`): zones, conduits and
+  flows with their security levels, owners, risk and verdicts, plus the check results. Printable, and
+  exported as CSV per table or as JSON. This is the audit deliverable.
 - **Access map**: per site, all flows into zones at Purdue level <= 2 (selectable): not allowed first,
   then allowed-but-expired, unknown and allowed, with what needs attention (expired access, verdicts
   due for review, flows not seen for a while, flows outside any documented conduit) and a small
@@ -131,6 +147,7 @@ migrations turn it into the model above; nothing is deleted:
   put in it. Rename or merge them to match your 62443-3-2 design.
 - Zones get a **type** from their Purdue level (3.5: DMZ, 4-5: enterprise, the rest: OT). Set supplier and
   safety zones by hand.
+- A single **SL-T** number on a zone or conduit becomes the vector with that level for every FR.
 - **Industrial services** that listen get a NetBox application service with their ports (bound to the IP
   addresses of their interface) and are linked to it. Ports on clients are dropped (noted in comments when
   they were not the protocol's defaults).
@@ -144,6 +161,15 @@ flows. Grant permissions on the new *conduit* and *flow hop* models, and rebuild
 `GET /api/plugins/iec62443/access-map/?site_id=<id>[&max_level=<level>]` returns the site's access map as
 data, for reports and other tools: the flows into zones at that Purdue level or below, in access-map order,
 as full flow objects with their hops. Needs `view_flow` and view access to the site.
+
+## Checks and register API
+
+- `GET /api/plugins/iec62443/checks/?site_id=<id>[&severity=error,warning][&check=<id>,...]`: the consistency
+  check findings of a site (check id, severity, message, object). Needs `view_zone`.
+- `GET /api/plugins/iec62443/register/?site_id=<id>`: the site's zone and conduit register as JSON.
+- `manage.py iec62443_check [--site <slug>] [--severity ...] [--check ...] [--fail-on error|warning|info|never]
+  [--json]` runs the same checks from the command line and exits with status 1 when there is a finding at
+  `--fail-on` or worse (default: error), so a nightly job or a CI pipeline can watch the model.
 
 ## Industrial systems and protocols
 
@@ -181,6 +207,14 @@ as full flow objects with their hops. Needs `view_flow` and view access to the s
   than a generic assignment model. That is the simplest thing NetBox supports end to end (forms,
   REST API, GraphQL, change log) and it lets an asset sit in more than one zone when reality is
   messy. The plugin does not enforce one zone per asset; the device panel shows all of them.
+- **Security levels are vectors.** SL-T and SL-A have one level (0-4) per foundational requirement, in
+  order IAC, UC, SI, DC, RDF, TRE, RA, written `{2 2 2 1 2 1 1}`. Forms and CSV take one number for all FRs
+  ("2") or seven ("2,2,2,1,2,1,1"); the REST API takes a list of seven. SL-C is a property of products, so it
+  is a custom field on device types (with a per-device override), and the zone page shows the lowest SL-C of
+  its members per FR next to the zone's SL-T and SL-A.
+- **The safety (SIS) attribute is the zone type**, not a separate flag: a safety zone is its own zone type.
+- **IEC 62443-3-3 requirement texts are not included.** They are copyrighted; the plugin does not track
+  system requirements (SR 1.1 ...) yet.
 - **A zone's Purdue level is its most critical (lowest) level.** A zone may hold a PLC (1) and an HMI (2);
   it counts as level 1, and the access map filters zones by it. The zone type says what kind of zone it is.
 - **Purdue level on devices/VMs is a custom field**, created by the plugin after `migrate` if it does
@@ -197,6 +231,9 @@ as full flow objects with their hops. Needs `view_flow` and view access to the s
   services, and are empty for layer-2 protocols (PROFINET RT, GOOSE).
 - **A zone with flows cannot be deleted.** Delete or move its flows first, so verdicts and evidence are
   never lost as a side effect. Deleting a conduit leaves its flows without one.
+- **Risk assessments are records, not fields.** A zone or conduit keeps every assessment; the latest
+  approved one is the one that counts for the register and the checks. A zone or conduit with risk
+  assessments cannot be deleted.
 - Zone and conduit names are unique per site (and globally for those without a site).
 
 ## Importer: observation files

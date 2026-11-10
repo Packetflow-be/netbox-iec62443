@@ -9,14 +9,17 @@ from netbox.api.viewsets import NetBoxModelViewSet
 
 from .. import filtersets
 from ..accessmap import access_map_flows
+from ..checks import SEVERITIES, run_checks
 from ..choices import PurdueLevelChoices
-from ..models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, Zone
+from ..models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
+from ..register import build_register, register_json
 from .serializers import (
     ConduitSerializer,
     FieldbusSerializer,
     FlowHopSerializer,
     FlowSerializer,
     IndustrialServiceSerializer,
+    RiskAssessmentSerializer,
     ZoneSerializer,
 )
 
@@ -24,7 +27,8 @@ FLOW_HOPS = ('hops__device', 'hops__virtual_machine', 'hops__tunnel')
 
 
 class ZoneViewSet(NetBoxModelViewSet):
-    queryset = Zone.objects.prefetch_related('devices', 'virtual_machines', 'prefixes', 'tags')
+    queryset = Zone.objects.select_related('parent', 'accountable').prefetch_related(
+        'devices', 'virtual_machines', 'prefixes', 'tags')
     serializer_class = ZoneSerializer
     filterset_class = filtersets.ZoneFilterSet
 
@@ -46,6 +50,13 @@ class FlowHopViewSet(NetBoxModelViewSet):
     queryset = FlowHop.objects.select_related('flow', 'device', 'virtual_machine', 'tunnel').prefetch_related('tags')
     serializer_class = FlowHopSerializer
     filterset_class = filtersets.FlowHopFilterSet
+
+
+class RiskAssessmentViewSet(NetBoxModelViewSet):
+    queryset = RiskAssessment.objects.select_related('zone', 'conduit', 'assessed_by', 'approved_by') \
+        .prefetch_related('tags')
+    serializer_class = RiskAssessmentSerializer
+    filterset_class = filtersets.RiskAssessmentFilterSet
 
 
 class FieldbusViewSet(NetBoxModelViewSet):
@@ -89,4 +100,58 @@ class AccessMapAPIView(APIView):
             'site': SiteSerializer(site, nested=True, context=context).data,
             'max_level': max_level,
             'flows': FlowSerializer(flows, many=True, context=context).data,
+        })
+
+
+def _site(request):
+    try:
+        return Site.objects.restrict(request.user, 'view').get(pk=int(request.query_params.get('site_id', '')))
+    except (ValueError, Site.DoesNotExist):
+        raise ValidationError({'site_id': 'A site you can view is required.'})
+
+
+class ChecksAPIView(APIView):
+    """
+    Consistency checks of one site as data. GET ?site_id=<id>[&severity=error,warning][&check=<id>,...].
+    Findings are limited to the objects you can view.
+    """
+    queryset = Zone.objects.all()  # for NetBox's token permission check (view_zone)
+
+    def get_view_name(self):
+        return 'Consistency checks'
+
+    def get(self, request):
+        if not request.user.has_perm('netbox_iec62443.view_zone'):
+            raise PermissionDenied()
+        site = _site(request)
+        severities = [s for s in request.query_params.get('severity', '').split(',') if s]
+        if any(s not in SEVERITIES for s in severities):
+            raise ValidationError({'severity': f'One or more of {", ".join(SEVERITIES)}'})
+        checks = [c for c in request.query_params.get('check', '').split(',') if c]
+        findings = run_checks(site=site, user=request.user, checks=checks or None, severities=severities or None)
+        return Response({
+            'site': SiteSerializer(site, nested=True, context={'request': request}).data,
+            'count': len(findings),
+            'findings': [{
+                'check': f.check, 'severity': f.severity, 'title': str(f.title), 'message': f.message,
+                'object': {'type': f.obj._meta.label_lower, 'id': f.obj.pk, 'display': str(f.obj),
+                           'url': request.build_absolute_uri(f.obj.get_absolute_url())},
+            } for f in findings],
+        })
+
+
+class RegisterAPIView(APIView):
+    """The zone and conduit register of one site (zones, conduits, flows, findings). GET ?site_id=<id>."""
+    queryset = Zone.objects.all()  # for NetBox's token permission check (view_zone)
+
+    def get_view_name(self):
+        return 'Zone and conduit register'
+
+    def get(self, request):
+        if not request.user.has_perm('netbox_iec62443.view_zone'):
+            raise PermissionDenied()
+        site = _site(request)
+        return Response({
+            'site': SiteSerializer(site, nested=True, context={'request': request}).data,
+            **register_json(build_register(site, user=request.user)),
         })

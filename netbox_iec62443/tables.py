@@ -4,9 +4,12 @@ from django.utils.translation import gettext_lazy as _
 from netbox.tables import PrimaryModelTable, columns
 from tenancy.tables import TenancyColumnsMixin
 
-from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, Zone
+from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
 
-__all__ = ('ConduitTable', 'FieldbusTable', 'FlowHopTable', 'FlowTable', 'IndustrialServiceTable', 'ZoneTable')
+__all__ = (
+    'ConduitTable', 'FieldbusTable', 'FlowHopTable', 'FlowTable', 'IndustrialServiceTable', 'RiskAssessmentTable',
+    'ZoneTable',
+)
 
 ACCESS_BADGES = """
 {% for value, label, color in record.get_access_display %}{% badge label bg_color=color %} {% endfor %}
@@ -27,7 +30,13 @@ class ZoneTable(TenancyColumnsMixin, PrimaryModelTable):
     site = tables.Column(verbose_name=_('Site'), linkify=True)
     zone_type = columns.ChoiceFieldColumn(verbose_name=_('Type'))
     purdue_level = columns.ChoiceFieldColumn(verbose_name=_('Purdue level'))
-    security_level_target = tables.Column(verbose_name=_('SL-T'))
+    parent = tables.Column(verbose_name=_('Parent'), linkify=True)
+    sl_target = tables.Column(verbose_name=_('SL-T'), accessor=tables.A('sl_target_display'), order_by=('sl_target',))
+    sl_achieved = tables.Column(verbose_name=_('SL-A'), accessor=tables.A('sl_achieved_display'),
+                                order_by=('sl_achieved',))
+    accountable = tables.Column(verbose_name=_('Accountable'), linkify=True)
+    wireless = columns.BooleanColumn(verbose_name=_('Wireless'))
+    temporary_devices = columns.BooleanColumn(verbose_name=_('Temporary devices'))
     device_count = tables.Column(verbose_name=_('Device count'))
     flow_count = tables.Column(verbose_name=_('Flows'))
     conduits = columns.ManyToManyColumn(verbose_name=_('Conduits'), linkify_item=True)
@@ -39,13 +48,14 @@ class ZoneTable(TenancyColumnsMixin, PrimaryModelTable):
     class Meta(PrimaryModelTable.Meta):
         model = Zone
         fields = (
-            'pk', 'id', 'name', 'slug', 'site', 'zone_type', 'purdue_level', 'security_level_target', 'device_count',
-            'flow_count', 'conduits', 'devices', 'virtual_machines', 'prefixes', 'tenant', 'tenant_group',
-            'description', 'comments', 'tags', 'created', 'last_updated',
+            'pk', 'id', 'name', 'slug', 'site', 'zone_type', 'purdue_level', 'parent', 'sl_target', 'sl_achieved',
+            'accountable', 'wireless', 'temporary_devices', 'device_count', 'flow_count', 'conduits', 'devices',
+            'virtual_machines', 'prefixes', 'tenant', 'tenant_group', 'description', 'comments', 'tags', 'created',
+            'last_updated',
         )
         default_columns = (
-            'pk', 'name', 'site', 'zone_type', 'purdue_level', 'security_level_target', 'device_count', 'flow_count',
-            'prefixes',
+            'pk', 'name', 'site', 'zone_type', 'purdue_level', 'sl_target', 'sl_achieved', 'accountable',
+            'device_count', 'flow_count', 'prefixes',
         )
 
 
@@ -53,7 +63,10 @@ class ConduitTable(PrimaryModelTable):
     name = tables.Column(verbose_name=_('Name'), linkify=True)
     site = tables.Column(verbose_name=_('Site'), linkify=True)
     zones = columns.ManyToManyColumn(verbose_name=_('Zones'), linkify_item=True)
-    security_level_target = tables.Column(verbose_name=_('SL-T'))
+    sl_target = tables.Column(verbose_name=_('SL-T'), accessor=tables.A('sl_target_display'), order_by=('sl_target',))
+    sl_achieved = tables.Column(verbose_name=_('SL-A'), accessor=tables.A('sl_achieved_display'),
+                                order_by=('sl_achieved',))
+    accountable = tables.Column(verbose_name=_('Accountable'), linkify=True)
     enforcing_devices = columns.ManyToManyColumn(verbose_name=_('Enforcing devices'), linkify_item=True)
     enforcing_virtual_machines = columns.ManyToManyColumn(verbose_name=_('Enforcing VMs'), linkify_item=True)
     flow_count = tables.Column(verbose_name=_('Flows'))
@@ -62,10 +75,12 @@ class ConduitTable(PrimaryModelTable):
     class Meta(PrimaryModelTable.Meta):
         model = Conduit
         fields = (
-            'pk', 'id', 'name', 'site', 'zones', 'security_level_target', 'enforcing_devices',
+            'pk', 'id', 'name', 'site', 'zones', 'sl_target', 'sl_achieved', 'accountable', 'enforcing_devices',
             'enforcing_virtual_machines', 'flow_count', 'description', 'comments', 'tags', 'created', 'last_updated',
         )
-        default_columns = ('pk', 'name', 'site', 'zones', 'security_level_target', 'enforcing_devices', 'flow_count')
+        default_columns = (
+            'pk', 'name', 'site', 'zones', 'sl_target', 'sl_achieved', 'enforcing_devices', 'flow_count',
+        )
 
 
 class FlowTable(PrimaryModelTable):
@@ -151,3 +166,31 @@ class IndustrialServiceTable(PrimaryModelTable):
             'description', 'comments', 'tags', 'created', 'last_updated',
         )
         default_columns = ('pk', 'parent', 'protocol', 'role', 'service', 'ports', 'fieldbus', 'address')
+
+
+class RiskAssessmentTable(PrimaryModelTable):
+    id = tables.Column(verbose_name=_('ID'), linkify=True)
+    subject = tables.Column(verbose_name=_('Zone / conduit'), linkify=True, order_by=('zone__name', 'conduit__name'))
+    kind = columns.ChoiceFieldColumn(verbose_name=_('Kind'))
+    status = columns.ChoiceFieldColumn(verbose_name=_('Status'))
+    assessed_on = columns.DateColumn(verbose_name=_('Assessed on'), linkify=True)
+    assessed_by = tables.Column(verbose_name=_('Assessed by'), linkify=True)
+    approved_by = tables.Column(verbose_name=_('Approved by'), linkify=True)
+    approved_on = columns.DateColumn(verbose_name=_('Approved on'))
+    next_review = columns.DateColumn(verbose_name=_('Next review'))
+    unmitigated_risk = columns.ChoiceFieldColumn(verbose_name=_('Unmitigated'))
+    residual_risk = columns.ChoiceFieldColumn(verbose_name=_('Residual'))
+    tolerable_risk = columns.ChoiceFieldColumn(verbose_name=_('Tolerable'))
+    tags = columns.TagColumn(url_name='plugins:netbox_iec62443:riskassessment_list')
+
+    class Meta(PrimaryModelTable.Meta):
+        model = RiskAssessment
+        fields = (
+            'pk', 'id', 'subject', 'kind', 'status', 'assessed_on', 'assessed_by', 'approved_by', 'approved_on',
+            'next_review', 'method', 'unmitigated_risk', 'residual_risk', 'tolerable_risk', 'document', 'description',
+            'comments', 'tags', 'created', 'last_updated',
+        )
+        default_columns = (
+            'pk', 'subject', 'kind', 'status', 'assessed_on', 'approved_by', 'unmitigated_risk', 'residual_risk',
+            'tolerable_risk', 'next_review',
+        )

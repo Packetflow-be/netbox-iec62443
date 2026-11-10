@@ -273,3 +273,59 @@ class FlowProtocolChoices(ChoiceSet):
         **IndustrialProtocolChoices.TRANSPORT,
         IPSEC: 'udp', OPENVPN: 'udp', WIREGUARD: 'udp', DNS: 'udp', NTP: 'udp', SNMP: 'udp', SYSLOG: 'udp',
     }
+
+
+class FoundationalRequirementChoices(ChoiceSet):
+    """The seven foundational requirements of IEC 62443-1-1 / 3-3, the axes of a security level vector."""
+    IAC = 'iac'
+    UC = 'uc'
+    SI = 'si'
+    DC = 'dc'
+    RDF = 'rdf'
+    TRE = 'tre'
+    RA = 'ra'
+
+    CHOICES = (
+        (IAC, _('FR 1 Identification and authentication control (IAC)')),
+        (UC, _('FR 2 Use control (UC)')),
+        (SI, _('FR 3 System integrity (SI)')),
+        (DC, _('FR 4 Data confidentiality (DC)')),
+        (RDF, _('FR 5 Restricted data flow (RDF)')),
+        (TRE, _('FR 6 Timely response to events (TRE)')),
+        (RA, _('FR 7 Resource availability (RA)')),
+    )
+
+
+class RiskLevelChoices(ChoiceSet):
+    LOW = 'low'
+    MEDIUM = 'medium'
+    HIGH = 'high'
+    CRITICAL = 'critical'
+
+    CHOICES = (
+        Choice(LOW, _('Low'), color='green'),
+        Choice(MEDIUM, _('Medium'), color='yellow'),
+        Choice(HIGH, _('High'), color='orange'),
+        Choice(CRITICAL, _('Critical'), color='red'),
+    )
+
+
+class RiskAssessmentKindChoices(ChoiceSet):
+    """IEC 62443-3-2: the initial (high-level, worst case) and the detailed risk assessment."""
+    INITIAL = 'initial'
+    DETAILED = 'detailed'
+
+    CHOICES = (
+        (INITIAL, _('Initial (ZCR 2)')),
+        (DETAILED, _('Detailed (ZCR 5)')),
+    )
+
+
+class RiskAssessmentStatusChoices(ChoiceSet):
+    DRAFT = 'draft'
+    APPROVED = 'approved'
+
+    CHOICES = (
+        Choice(DRAFT, _('Draft'), color='gray'),
+        Choice(APPROVED, _('Approved'), color='green'),
+    )

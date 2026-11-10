@@ -8,7 +8,7 @@ from ipam.api.serializers import PrefixSerializer, ServiceSerializer
 from ipam.api.serializers_.services import PortMappingsField
 from ipam.models import Prefix
 from netbox.api.fields import ChoiceField, SerializedPKRelatedField
-from netbox.api.serializers import PrimaryModelSerializer
+from netbox.api.serializers import PrimaryModelSerializer, WritableNestedSerializer
 from tenancy.api.serializers import ContactSerializer, TenantSerializer
 from virtualization.api.serializers import VirtualMachineSerializer
 from virtualization.models import VirtualMachine
@@ -21,16 +21,37 @@ from ..choices import (
     FlowProtocolChoices,
     IndustrialProtocolChoices,
     PurdueLevelChoices,
-    SecurityLevelChoices,
+    RiskAssessmentKindChoices,
+    RiskAssessmentStatusChoices,
+    RiskLevelChoices,
     ServiceRoleChoices,
     ZoneTypeChoices,
 )
-from ..models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, Zone
+from ..models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
 
 __all__ = (
     'ConduitSerializer', 'FieldbusSerializer', 'FlowHopSerializer', 'FlowSerializer', 'IndustrialServiceSerializer',
-    'ZoneSerializer',
+    'RiskAssessmentSerializer', 'ZoneSerializer',
 )
+
+
+class SecurityLevelVectorField(serializers.ListField):
+    """A security level vector: seven levels 0-4 in FR order (IAC, UC, SI, DC, RDF, TRE, RA), or null."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('child', serializers.IntegerField(min_value=0, max_value=4))
+        kwargs.setdefault('min_length', 7)
+        kwargs.setdefault('max_length', 7)
+        kwargs.setdefault('allow_null', True)
+        kwargs.setdefault('required', False)
+        super().__init__(**kwargs)
+
+
+class NestedZoneSerializer(WritableNestedSerializer):
+
+    class Meta:
+        model = Zone
+        fields = ('id', 'url', 'display_url', 'display', 'name', 'slug')
 
 
 class StringChoiceField(ChoiceField):
@@ -51,7 +72,10 @@ class ZoneSerializer(PrimaryModelSerializer):
     tenant = TenantSerializer(nested=True, required=False, allow_null=True)
     zone_type = ChoiceField(choices=ZoneTypeChoices, required=False)
     purdue_level = StringChoiceField(choices=PurdueLevelChoices, allow_blank=True, required=False)
-    security_level_target = ChoiceField(choices=SecurityLevelChoices, allow_null=True, required=False)
+    parent = NestedZoneSerializer(required=False, allow_null=True)
+    sl_target = SecurityLevelVectorField()
+    sl_achieved = SecurityLevelVectorField()
+    accountable = ContactSerializer(nested=True, required=False, allow_null=True)
     devices = SerializedPKRelatedField(
         queryset=Device.objects.all(), serializer=DeviceSerializer, nested=True,
         required=False, many=True,
@@ -69,8 +93,9 @@ class ZoneSerializer(PrimaryModelSerializer):
         model = Zone
         fields = (
             'id', 'url', 'display_url', 'display', 'name', 'slug', 'site', 'tenant', 'zone_type', 'purdue_level',
-            'security_level_target', 'devices', 'virtual_machines', 'prefixes', 'description', 'owner',
-            'comments', 'tags', 'custom_fields', 'created', 'last_updated',
+            'parent', 'sl_target', 'sl_achieved', 'accountable', 'wireless', 'temporary_devices', 'devices',
+            'virtual_machines', 'prefixes', 'description', 'owner', 'comments', 'tags', 'custom_fields', 'created',
+            'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'name', 'slug', 'zone_type', 'purdue_level', 'description')
 
@@ -80,7 +105,9 @@ class ConduitSerializer(PrimaryModelSerializer):
     zones = SerializedPKRelatedField(
         queryset=Zone.objects.all(), serializer=ZoneSerializer, nested=True, many=True,
     )
-    security_level_target = ChoiceField(choices=SecurityLevelChoices, allow_null=True, required=False)
+    sl_target = SecurityLevelVectorField()
+    sl_achieved = SecurityLevelVectorField()
+    accountable = ContactSerializer(nested=True, required=False, allow_null=True)
     enforcing_devices = SerializedPKRelatedField(
         queryset=Device.objects.all(), serializer=DeviceSerializer, nested=True, required=False, many=True,
     )
@@ -92,7 +119,7 @@ class ConduitSerializer(PrimaryModelSerializer):
     class Meta:
         model = Conduit
         fields = (
-            'id', 'url', 'display_url', 'display', 'name', 'site', 'zones', 'security_level_target',
+            'id', 'url', 'display_url', 'display', 'name', 'site', 'zones', 'sl_target', 'sl_achieved', 'accountable',
             'enforcing_devices', 'enforcing_virtual_machines', 'description', 'owner', 'comments', 'tags',
             'custom_fields', 'created', 'last_updated',
         )
@@ -189,3 +216,27 @@ class IndustrialServiceSerializer(PrimaryModelSerializer):
             'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'protocol', 'role', 'description')
+
+
+class RiskAssessmentSerializer(PrimaryModelSerializer):
+    zone = ZoneSerializer(nested=True, required=False, allow_null=True)
+    conduit = ConduitSerializer(nested=True, required=False, allow_null=True)
+    kind = ChoiceField(choices=RiskAssessmentKindChoices, required=False)
+    status = ChoiceField(choices=RiskAssessmentStatusChoices, required=False)
+    assessed_by = ContactSerializer(nested=True, required=False, allow_null=True)
+    approved_by = ContactSerializer(nested=True, required=False, allow_null=True)
+    unmitigated_risk = ChoiceField(choices=RiskLevelChoices, allow_blank=True, required=False)
+    residual_risk = ChoiceField(choices=RiskLevelChoices, allow_blank=True, required=False)
+    tolerable_risk = ChoiceField(choices=RiskLevelChoices, allow_blank=True, required=False)
+    residual_above_tolerable = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = RiskAssessment
+        fields = (
+            'id', 'url', 'display_url', 'display', 'zone', 'conduit', 'kind', 'status', 'assessed_on', 'assessed_by',
+            'approved_on', 'approved_by', 'next_review', 'method', 'document', 'threats', 'vulnerabilities',
+            'consequences', 'unmitigated_risk', 'countermeasures', 'residual_risk', 'tolerable_risk',
+            'residual_above_tolerable', 'description', 'owner', 'comments', 'tags', 'custom_fields', 'created',
+            'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'kind', 'status', 'assessed_on', 'description')

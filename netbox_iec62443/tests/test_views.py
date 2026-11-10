@@ -7,7 +7,7 @@ from dcim.models import Site
 from tenancy.models import Contact
 from utilities.testing import TestCase, ViewTestCases, create_tags, create_test_device
 
-from netbox_iec62443.models import Conduit, Flow, FlowHop, Zone
+from netbox_iec62443.models import Conduit, Flow, FlowHop, RiskAssessment, Zone
 
 
 class PluginURLMixin:
@@ -17,11 +17,14 @@ class PluginURLMixin:
 
 class ZoneViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
     model = Zone
+    # An SL vector is posted as "2" or "2,2,2,1,2,1,1" and stored as a list (checked in SecurityLevelFormTest)
+    validation_excluded_fields = ('sl_target', 'sl_achieved')
 
     @classmethod
     def setUpTestData(cls):
         site = Site.objects.create(name='Site 1', slug='site-1')
         device = create_test_device('plc-1', site=site)
+        contact = Contact.objects.create(name='Plant manager')
         Zone.objects.bulk_create([
             Zone(name='Zone 1', slug='zone-1', site=site, purdue_level='1'),
             Zone(name='Zone 2', slug='zone-2', site=site, purdue_level='2'),
@@ -34,16 +37,19 @@ class ZoneViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
             'site': site.pk,
             'zone_type': 'ot',
             'purdue_level': '1',
-            'security_level_target': 2,
+            'sl_target': '2',
+            'sl_achieved': '2,2,1,1,2,1,1',
+            'accountable': contact.pk,
+            'wireless': True,
             'devices': [device.pk],
             'description': 'Controllers of line 1',
             'tags': [t.pk for t in tags],
         }
         cls.csv_data = (
-            'name,slug,site,zone_type,purdue_level,security_level_target',
-            'Zone 4,zone-4,Site 1,ot,0,1',
-            'Zone 5,zone-5,Site 1,dmz,3.5,',
-            'Zone 6,zone-6,,external,5,',
+            'name,slug,site,zone_type,purdue_level,parent,sl_target,accountable',
+            'Zone 4,zone-4,Site 1,ot,0,,1,Plant manager',
+            'Zone 5,zone-5,Site 1,dmz,3.5,Zone 1,"2,2,2,1,2,1,1",',
+            'Zone 6,zone-6,,external,5,,,',
         )
         cls.csv_update_data = (
             'id,purdue_level,description',
@@ -54,12 +60,13 @@ class ZoneViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
         cls.bulk_edit_data = {
             'zone_type': 'safety',
             'purdue_level': '3.5',
-            'security_level_target': 3,
+            'temporary_devices': True,
         }
 
 
 class ConduitViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
     model = Conduit
+    validation_excluded_fields = ('sl_target', 'sl_achieved')
 
     @classmethod
     def setUpTestData(cls):
@@ -75,24 +82,24 @@ class ConduitViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
             'name': 'Conduit X',
             'site': site.pk,
             'zones': sorted([office.pk, dmz.pk, cell.pk]),
-            'security_level_target': 2,
+            'sl_target': '2',
             'enforcing_devices': [fw.pk],
             'tags': [t.pk for t in tags],
         }
         cls.csv_data = (
-            'site,name,zones,security_level_target,enforcing_devices',
+            'site,name,zones,sl_target,enforcing_devices',
             'Site 1,Conduit 4,"Office,Cell",2,fw-1',
             'Site 1,Conduit 5,"DMZ,Cell",,',
             'Site 1,Conduit 6,"Office,DMZ,Cell",1,',
         )
         cls.csv_update_data = (
-            'id,security_level_target,description',
+            'id,sl_target,description',
             f'{Conduit.objects.get(name="Conduit 1").pk},3,changed',
             f'{Conduit.objects.get(name="Conduit 2").pk},2,changed',
             f'{Conduit.objects.get(name="Conduit 3").pk},1,changed',
         )
         cls.bulk_edit_data = {
-            'security_level_target': 3,
+            'description': 'changed',
         }
 
 
@@ -283,3 +290,104 @@ class FlowFormTest(TestCase):
         flow = Flow.objects.get()
         self.assertEqual(flow.port_mappings, ['tcp/44818', 'udp/2222'])
         self.assertEqual(flow.name, 'Office -> Cell EtherNet/IP (CIP)')
+
+
+
+class RiskAssessmentViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
+    model = RiskAssessment
+
+    @classmethod
+    def setUpTestData(cls):
+        site = Site.objects.create(name='Site 1', slug='site-1')
+        cell = Zone.objects.create(name='Cell', slug='cell', site=site, purdue_level='1')
+        office = Zone.objects.create(name='Office', slug='office', site=site, purdue_level='4')
+        conduit = Conduit.objects.create(name='Office - Cell', site=site)
+        conduit.zones.set([cell, office])
+        contact = Contact.objects.create(name='Risk owner')
+        for day in (1, 2, 3):
+            RiskAssessment.objects.create(zone=cell, assessed_on=datetime.date(2026, 1, day))
+        tags = create_tags('Alpha', 'Bravo', 'Charlie')
+        cls.form_data = {
+            'conduit': conduit.pk,
+            'kind': 'detailed',
+            'status': 'approved',
+            'assessed_on': datetime.date(2026, 10, 1),
+            'assessed_by': contact.pk,
+            'approved_on': datetime.date(2026, 10, 15),
+            'approved_by': contact.pk,
+            'threats': 'Supplier laptop with malware',
+            'unmitigated_risk': 'high',
+            'countermeasures': 'Jump host with MFA',
+            'residual_risk': 'medium',
+            'tolerable_risk': 'medium',
+            'tags': [t.pk for t in tags],
+        }
+        cls.csv_data = (
+            'site,zone,conduit,kind,status,assessed_on,residual_risk,tolerable_risk',
+            'Site 1,Cell,,initial,draft,2026-02-01,high,medium',
+            'Site 1,,Office - Cell,detailed,draft,2026-02-02,,',
+            'Site 1,Office,,detailed,draft,2026-02-03,low,low',
+        )
+        ids = list(RiskAssessment.objects.order_by('pk').values_list('pk', flat=True))
+        cls.csv_update_data = (
+            'id,tolerable_risk,description',
+            f'{ids[0]},low,changed',
+            f'{ids[1]},medium,changed',
+            f'{ids[2]},high,changed',
+        )
+        cls.bulk_edit_data = {
+            'tolerable_risk': 'medium',
+            'next_review': datetime.date(2027, 10, 1),
+        }
+
+
+class SecurityLevelFormTest(TestCase):
+    user_permissions = ('netbox_iec62443.add_zone', 'netbox_iec62443.view_zone')
+
+    @override_settings(EXEMPT_VIEW_PERMISSIONS=['*'])
+    def test_sl_vectors(self):
+        url = reverse('plugins:netbox_iec62443:zone_add')
+        response = self.client.post(url, {'name': 'Z', 'slug': 'z', 'zone_type': 'ot', 'sl_target': '2',
+                                          'sl_achieved': '{2 2 1 1 2 1 1}'})
+        self.assertHttpStatus(response, 302)
+        zone = Zone.objects.get(slug='z')
+        self.assertEqual(zone.sl_target, [2] * 7)
+        self.assertEqual(zone.sl_achieved, [2, 2, 1, 1, 2, 1, 1])
+        self.assertEqual(zone.sl_gap, ['SI', 'DC', 'TRE', 'RA'])
+        response = self.client.post(url, {'name': 'Y', 'slug': 'y', 'zone_type': 'ot', 'sl_target': '2,2,5'})
+        self.assertHttpStatus(response, 200)  # form error, not saved
+        self.assertFalse(Zone.objects.filter(slug='y').exists())
+
+
+class ChecksAndRegisterViewTest(TestCase):
+    user_permissions = ('netbox_iec62443.view_zone', 'netbox_iec62443.view_conduit', 'netbox_iec62443.view_flow',
+                        'netbox_iec62443.view_riskassessment', 'dcim.view_site', 'dcim.view_device')
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.site = Site.objects.create(name='Site 1', slug='site-1')
+        office = Zone.objects.create(name='Office', slug='office', site=cls.site, purdue_level='4',
+                                     zone_type='enterprise')
+        cell = Zone.objects.create(name='Cell', slug='cell', site=cls.site, purdue_level='1', sl_target=[2] * 7)
+        cell.devices.add(create_test_device('plc-1', site=cls.site))
+        Flow.objects.create(name='office to cell', source_zone=office, destination_zone=cell, allowed='yes')
+
+    @override_settings(EXEMPT_VIEW_PERMISSIONS=[])
+    def test_checks_page(self):
+        response = self.client.get(reverse('plugins:netbox_iec62443:checks') + f'?site_id={self.site.pk}')
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, 'runs outside any documented conduit')
+        self.assertContains(response, 'flow-without-conduit')
+
+    @override_settings(EXEMPT_VIEW_PERMISSIONS=[])
+    def test_register_tab_and_csv(self):
+        url = reverse('dcim:site_iec62443_register', kwargs={'pk': self.site.pk})
+        response = self.client.get(url)
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, '{2 2 2 2 2 2 2}')
+        self.assertContains(response, 'office to cell')
+        response = self.client.get(url + '?export=zones')
+        self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8')
+        lines = response.content.decode().splitlines()
+        self.assertTrue(lines[0].startswith('zone,type,purdue_level'))
+        self.assertTrue(any(line.startswith('Cell,OT (control),1') for line in lines))

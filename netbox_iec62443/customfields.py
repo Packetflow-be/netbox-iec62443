@@ -1,7 +1,8 @@
 """
-The plugin keeps a Purdue level on devices and virtual machines as a NetBox custom field
-(no change to core tables). It is created after `migrate` when missing and never overwritten,
-so an admin may relabel or regroup it. Disable with PLUGINS_CONFIG create_custom_fields=False.
+The plugin keeps a Purdue level on devices and virtual machines, and a security level capability (SL-C) on
+devices and device types, as NetBox custom fields (no change to core tables). They are created after `migrate`
+when missing and never overwritten, so an admin may relabel or regroup them. Disable with PLUGINS_CONFIG
+create_custom_fields=False.
 """
 import logging
 
@@ -14,6 +15,9 @@ logger = logging.getLogger('netbox.plugins.netbox_iec62443')
 PURDUE_CF_NAME = 'iec62443_purdue_level'
 PURDUE_CHOICE_SET_NAME = 'IEC 62443 Purdue levels'
 PURDUE_CF_MODELS = (('dcim', 'device'), ('virtualization', 'virtualmachine'))
+SLC_CF_NAME = 'iec62443_sl_capability'
+SLC_CF_MODELS = (('dcim', 'device'), ('dcim', 'devicetype'))
+SLC_REGEX = r'^[0-4]( ?, ?[0-4]){6}$|^[0-4]$'
 
 
 def ensure_custom_fields(sender=None, **kwargs):
@@ -53,7 +57,41 @@ def ensure_custom_fields(sender=None, **kwargs):
         ])
         logger.info('Created custom field %s', PURDUE_CF_NAME)
 
+    cf, created = CustomField.objects.get_or_create(
+        name=SLC_CF_NAME,
+        defaults={
+            'type': CustomFieldTypeChoices.TYPE_TEXT,
+            'label': 'SL-C',
+            'group_name': 'IEC 62443',
+            'description': 'Security level capability per FR (IAC,UC,SI,DC,RDF,TRE,RA), e.g. "2,2,2,1,2,1,1", or one '
+                           'level for all. On a device it overrides its device type (netbox-iec62443)',
+            'validation_regex': SLC_REGEX,
+        },
+    )
+    if created:
+        cf.object_types.set([
+            ObjectType.objects.get_for_model(apps.get_model(app_label, model))
+            for app_label, model in SLC_CF_MODELS
+        ])
+        logger.info('Created custom field %s', SLC_CF_NAME)
+
 
 def get_purdue_level(obj):
     """The asset's Purdue level value ('' when unset)."""
     return (getattr(obj, 'custom_field_data', None) or {}).get(PURDUE_CF_NAME) or ''
+
+
+def get_sl_capability(device):
+    """The device's SL-C vector: its own custom field, else its device type's, else None."""
+    from django.core.exceptions import ValidationError
+
+    from . import sl
+
+    for obj in (device, getattr(device, 'device_type', None)):
+        value = (getattr(obj, 'custom_field_data', None) or {}).get(SLC_CF_NAME)
+        if value:
+            try:
+                return sl.parse(value)
+            except ValidationError:
+                return None
+    return None

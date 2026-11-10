@@ -17,5 +17,8 @@ urlpatterns = [
     path('fieldbuses/<int:pk>/', include(get_model_urls('netbox_iec62443', 'fieldbus'))),
     path('industrial-services/', include(get_model_urls('netbox_iec62443', 'industrialservice', detail=False))),
     path('industrial-services/<int:pk>/', include(get_model_urls('netbox_iec62443', 'industrialservice'))),
+    path('risk-assessments/', include(get_model_urls('netbox_iec62443', 'riskassessment', detail=False))),
+    path('risk-assessments/<int:pk>/', include(get_model_urls('netbox_iec62443', 'riskassessment'))),
     path('access-map/', views.AccessMapView.as_view(), name='accessmap'),
+    path('checks/', views.ChecksView.as_view(), name='checks'),
 ]

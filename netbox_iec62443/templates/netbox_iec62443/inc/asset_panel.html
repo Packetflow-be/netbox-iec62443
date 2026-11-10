@@ -10,7 +10,7 @@
       <th scope="row">{% trans "Zones" %}</th>
       <td>
         {% for zone in zones %}
-          {{ zone|linkify }} {% badge zone.get_zone_type_display bg_color=zone.get_zone_type_color %}{% if zone.purdue_level %} {% badge zone.purdue_level bg_color=zone.get_purdue_level_color %}{% endif %}{% if zone.security_level_target is not None %} <span class="text-muted small">SL-T {{ zone.security_level_target }}</span>{% endif %}{% if not forloop.last %}<br>{% endif %}
+          {{ zone|linkify }} {% badge zone.get_zone_type_display bg_color=zone.get_zone_type_color %}{% if zone.purdue_level %} {% badge zone.purdue_level bg_color=zone.get_purdue_level_color %}{% endif %}{% if zone.sl_target %} <span class="text-muted small">SL-T {{ zone.sl_target_display }}</span>{% endif %}{% if not forloop.last %}<br>{% endif %}
         {% empty %}
           {{ ''|placeholder }}
         {% endfor %}

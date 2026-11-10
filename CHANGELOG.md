@@ -14,8 +14,14 @@ First development version, for NetBox 4.7.
     tunnels), the conduit that carries it, first/last seen and evidence.
   - A flow's verdict (allowed yes/no/unknown) records who decided it (a contact) and when, and can have a
     review date and an expiry date.
-- Purdue level custom field on devices and virtual machines, created after migrate. A zone's Purdue level is
-  its most critical (lowest) level.
+- Audit layer: SL-T and SL-A as vectors over the seven foundational requirements on zones and conduits, an
+  accountable person (contact) on zones and conduits, sub-zones, and the IEC 62443-3-2 zone attributes wireless
+  and temporarily connected devices (safety is a zone type). Risk assessments (initial/detailed, unmitigated,
+  residual and tolerable risk, assessed/approved by and on, next review) with UI, API and GraphQL.
+- Consistency checks (UI page, REST `checks/`, `manage.py iec62443_check` with an exit code for CI) and a
+  per-site zone register (site tab, printable, CSV per table, REST `register/`).
+- Purdue level custom field on devices and virtual machines, and an SL-C custom field on devices and device
+  types, created after migrate. A zone's Purdue level is its most critical (lowest) level.
 - Access map per site (table and diagram) on flows, as a site tab and as a standalone page: not allowed first,
   then allowed but expired, unknown, allowed. It lists what needs attention: expired access, verdicts due
   for review, flows not seen for `stale_after_days` (default 90), flows outside any conduit.
@@ -42,6 +48,7 @@ First development version, for NetBox 4.7.
 
 The old conduit model (a directed zone pair with a verdict) becomes the flow model; migrations 0004-0007
 move the data and delete nothing. See "Upgrading from an earlier 0.1.0.dev0 build" in the README for what
-happens to two-way conduits, free-text protocols and via, and industrial service ports. The data migration
+happens to two-way conduits, free-text protocols and via, and industrial service ports. Migrations
+0008-0010 turn a single SL-T number into the vector with that level for every FR. The data migration
 writes no change-log entries. Afterwards grant permissions on conduits and flow hops and run
 `manage.py reindex netbox_iec62443`.
