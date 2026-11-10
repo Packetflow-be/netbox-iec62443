@@ -4,9 +4,9 @@ from rest_framework import serializers
 
 from dcim.api.serializers import DeviceSerializer, SiteSerializer
 from dcim.models import Device
-from ipam.api.serializers import PrefixSerializer, ServiceSerializer
+from ipam.api.serializers import PrefixSerializer
 from ipam.api.serializers_.services import PortMappingsField
-from ipam.models import Prefix
+from ipam.models import Prefix, Service
 from netbox.api.fields import ChoiceField, SerializedPKRelatedField
 from netbox.api.serializers import PrimaryModelSerializer, WritableNestedSerializer
 from tenancy.api.serializers import ContactSerializer, TenantSerializer
@@ -45,6 +45,18 @@ class SecurityLevelVectorField(serializers.ListField):
         kwargs.setdefault('allow_null', True)
         kwargs.setdefault('required', False)
         super().__init__(**kwargs)
+
+
+class NestedServiceSerializer(WritableNestedSerializer):
+    """
+    A NetBox application service, nested. Our own rather than ipam's ServiceSerializer(nested=True): NetBox 4.7.0's
+    validates nested writes as if they were the full serializer and fails.
+    """
+    port_mappings = serializers.ListField(child=serializers.CharField(), read_only=True)
+
+    class Meta:
+        model = Service
+        fields = ('id', 'url', 'display_url', 'display', 'name', 'port_mappings', 'description')
 
 
 class NestedZoneSerializer(WritableNestedSerializer):
@@ -205,7 +217,7 @@ class IndustrialServiceSerializer(PrimaryModelSerializer):
     virtual_machine = VirtualMachineSerializer(nested=True, required=False, allow_null=True)
     protocol = ChoiceField(choices=IndustrialProtocolChoices)
     role = ChoiceField(choices=ServiceRoleChoices, required=False)
-    service = ServiceSerializer(nested=True, required=False, allow_null=True)
+    service = NestedServiceSerializer(required=False, allow_null=True)
     fieldbus = FieldbusSerializer(nested=True, required=False, allow_null=True)
 
     class Meta:
