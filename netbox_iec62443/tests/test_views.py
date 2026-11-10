@@ -140,3 +140,31 @@ class AccessMapViewTest(TestCase):
         self.assertContains(response, 'IEC 62443')
         self.assertContains(response, 'Cell A')
         self.assertContains(response, 'office to cell')
+
+
+class ZoneDeleteProtectedTest(TestCase):
+    """A zone with conduits is refused with a message (UI) or 409 (API), not a server error."""
+    user_permissions = ('netbox_iec62443.view_zone', 'netbox_iec62443.delete_zone', 'netbox_iec62443.view_conduit')
+
+    @classmethod
+    def setUpTestData(cls):
+        office = Zone.objects.create(name='Office', slug='office', purdue_level='4')
+        cls.cell = Zone.objects.create(name='Cell', slug='cell', purdue_level='1')
+        Conduit.objects.create(name='office to cell', source_zone=office, destination_zone=cls.cell, allowed='no')
+
+    @override_settings(EXEMPT_VIEW_PERMISSIONS=[])
+    def test_ui_delete_refused(self):
+        url = reverse('plugins:netbox_iec62443:zone_delete', kwargs={'pk': self.cell.pk})
+        response = self.client.post(url, {'confirm': True}, follow=True)
+        self.assertHttpStatus(response, 200)
+        self.assertTrue(Zone.objects.filter(pk=self.cell.pk).exists())
+        self.assertEqual(Conduit.objects.get().allowed, 'no')
+
+    @override_settings(EXEMPT_VIEW_PERMISSIONS=[])
+    def test_api_delete_refused(self):
+        from users.models import Token
+        token = Token.objects.create(user=self.user)
+        url = reverse('plugins-api:netbox_iec62443-api:zone-detail', kwargs={'pk': self.cell.pk})
+        response = self.client.delete(url, HTTP_AUTHORIZATION=f'Token {token.key}')
+        self.assertHttpStatus(response, 409)
+        self.assertTrue(Zone.objects.filter(pk=self.cell.pk).exists())

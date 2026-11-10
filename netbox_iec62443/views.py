@@ -212,8 +212,6 @@ class FieldbusPanel(panels.ObjectAttributesPanel):
     zone = attrs.RelatedObjectAttr('zone', linkify=True)
     medium = attrs.ChoiceAttr('medium')
     protocol = attrs.ChoiceAttr('protocol')
-    baud_rate = attrs.TextAttr('baud_rate', label=_('Baud rate'))
-    frame_format = attrs.TextAttr('frame_format', label=_('Frame format'))
     gateway = attrs.RelatedObjectAttr('gateway', linkify=True)
     description = attrs.TextAttr('description')
 

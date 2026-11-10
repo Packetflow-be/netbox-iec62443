@@ -276,13 +276,13 @@ class FieldbusForm(PrimaryModelForm):
 
     fieldsets = (
         FieldSet('name', 'site', 'zone', 'description', 'tags', name=_('Fieldbus')),
-        FieldSet('medium', 'protocol', 'baud_rate', 'frame_format', 'gateway', name=_('Bus')),
+        FieldSet('medium', 'protocol', 'gateway', name=_('Bus')),
     )
 
     class Meta:
         model = Fieldbus
         fields = (
-            'name', 'site', 'zone', 'medium', 'protocol', 'baud_rate', 'frame_format', 'gateway', 'description',
+            'name', 'site', 'zone', 'medium', 'protocol', 'gateway', 'description',
             'owner', 'comments', 'tags',
         )
 
@@ -294,14 +294,12 @@ class FieldbusBulkEditForm(PrimaryModelBulkEditForm):
     protocol = forms.ChoiceField(
         label=_('Protocol'), choices=add_blank_choice(IndustrialProtocolChoices), required=False,
     )
-    baud_rate = forms.IntegerField(label=_('Baud rate'), min_value=1, required=False)
-    frame_format = forms.CharField(label=_('Frame format'), max_length=10, required=False)
 
     model = Fieldbus
     fieldsets = (
-        FieldSet('site', 'zone', 'medium', 'protocol', 'baud_rate', 'frame_format', 'description'),
+        FieldSet('site', 'zone', 'medium', 'protocol', 'description'),
     )
-    nullable_fields = ('site', 'zone', 'protocol', 'baud_rate', 'frame_format', 'description', 'comments')
+    nullable_fields = ('site', 'zone', 'protocol', 'description', 'comments')
 
 
 class FieldbusImportForm(PrimaryModelImportForm):
@@ -318,7 +316,7 @@ class FieldbusImportForm(PrimaryModelImportForm):
     class Meta:
         model = Fieldbus
         fields = (
-            'name', 'site', 'zone', 'medium', 'protocol', 'baud_rate', 'frame_format', 'gateway', 'description',
+            'name', 'site', 'zone', 'medium', 'protocol', 'gateway', 'description',
             'owner', 'comments', 'tags',
         )
 

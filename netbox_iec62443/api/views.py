@@ -7,10 +7,9 @@ from dcim.api.serializers import SiteSerializer
 from dcim.models import Site
 from netbox.api.viewsets import NetBoxModelViewSet
 
+from .. import filtersets
 from ..accessmap import access_map_conduits, access_map_svg
 from ..choices import PurdueLevelChoices
-
-from .. import filtersets
 from ..models import Conduit, Fieldbus, IndustrialService, Zone
 from .serializers import ConduitSerializer, FieldbusSerializer, IndustrialServiceSerializer, ZoneSerializer
 

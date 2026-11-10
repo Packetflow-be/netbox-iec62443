@@ -73,21 +73,21 @@ class FieldbusViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
         tags = create_tags('Alpha', 'Bravo', 'Charlie')
         cls.form_data = {
             'name': 'Bus X', 'site': site.pk, 'zone': zone.pk, 'medium': 'rs-485', 'protocol': 'modbus-rtu',
-            'baud_rate': 19200, 'frame_format': '8E1', 'gateway': gw.pk, 'tags': [t.pk for t in tags],
+            'gateway': gw.pk, 'tags': [t.pk for t in tags],
         }
         cls.csv_data = (
-            'name,site,medium,protocol,baud_rate,frame_format',
-            'Bus 4,Site 1,rs-485,modbus-rtu,9600,8N1',
-            'Bus 5,Site 1,rs-232,,,',
-            'Bus 6,,can,canopen,,',
+            'name,site,medium,protocol',
+            'Bus 4,Site 1,rs-485,modbus-rtu',
+            'Bus 5,Site 1,rs-232,',
+            'Bus 6,,can,canopen',
         )
         cls.csv_update_data = (
-            'id,baud_rate,description',
-            f'{Fieldbus.objects.get(name="Bus 1").pk},9600,changed',
-            f'{Fieldbus.objects.get(name="Bus 2").pk},1500000,changed',
-            f'{Fieldbus.objects.get(name="Bus 3").pk},250000,changed',
+            'id,medium,description',
+            f'{Fieldbus.objects.get(name="Bus 1").pk},rs-422,changed',
+            f'{Fieldbus.objects.get(name="Bus 2").pk},rs-485,changed',
+            f'{Fieldbus.objects.get(name="Bus 3").pk},other,changed',
         )
-        cls.bulk_edit_data = {'baud_rate': 38400, 'frame_format': '8N2'}
+        cls.bulk_edit_data = {'medium': 'rs-422'}
 
 
 class IndustrialServiceViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
@@ -128,7 +128,7 @@ class FieldbusAPITest(APIViewTestCases.APIViewTestCase):
     view_namespace = 'plugins-api:netbox_iec62443'
     graphql_base_name = 'iec62443_fieldbus'
     brief_fields = ['description', 'display', 'id', 'medium', 'name', 'url']
-    bulk_update_data = {'baud_rate': 9600}
+    bulk_update_data = {'medium': 'rs-422'}
     bulk_update_invalid_data = {'medium': 'bogus'}
 
     @classmethod
@@ -140,7 +140,7 @@ class FieldbusAPITest(APIViewTestCases.APIViewTestCase):
             Fieldbus(name='Bus 3', site=site, medium='can'),
         ])
         cls.create_data = [
-            {'name': 'Bus 4', 'site': site.pk, 'medium': 'rs-485', 'protocol': 'modbus-rtu', 'baud_rate': 19200},
+            {'name': 'Bus 4', 'site': site.pk, 'medium': 'rs-485', 'protocol': 'modbus-rtu'},
             {'name': 'Bus 5', 'medium': 'profibus', 'protocol': 'profibus-dp'},
             {'name': 'Bus 6', 'site': site.pk, 'medium': 'other'},
         ]
@@ -179,7 +179,7 @@ class FieldbusFilterSetTest(DjangoTestCase, ChangeLoggedFilterSetTestMixin):
         cls.zone = Zone.objects.create(name='Cell', slug='cell', site=cls.site)
         cls.gw = create_test_device('gw-1', site=cls.site)
         Fieldbus.objects.create(name='Bus 1', site=cls.site, zone=cls.zone, medium='rs-485', protocol='modbus-rtu',
-                                gateway=cls.gw, baud_rate=9600)
+                                gateway=cls.gw)
         Fieldbus.objects.create(name='Bus 2', site=cls.site, medium='profibus', protocol='profibus-dp')
         Fieldbus.objects.create(name='Bus 3', medium='can')
 
