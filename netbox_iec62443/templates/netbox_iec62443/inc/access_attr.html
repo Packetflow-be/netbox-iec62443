@@ -1,0 +1,1 @@
+{% for value, label, color in object.get_access_display %}{% badge label bg_color=color %} {% empty %}{{ ''|placeholder }}{% endfor %}

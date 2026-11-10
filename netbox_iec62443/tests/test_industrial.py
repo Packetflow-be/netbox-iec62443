@@ -2,7 +2,8 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase as DjangoTestCase
 from django.test import override_settings
 
-from dcim.models import Interface, Site
+from dcim.models import Site
+from ipam.models import Service
 from utilities.testing import (
     APIViewTestCases,
     ChangeLoggedFilterSetTestMixin,
@@ -27,30 +28,30 @@ class IndustrialServiceModelTest(DjangoTestCase):
         cls.other = create_test_device('plc-2', site=site)
         cls.bus = Fieldbus.objects.create(name='Line 1 RS-485', site=site, medium='rs-485', protocol='modbus-rtu')
 
-    def test_default_ports(self):
-        svc = IndustrialService(device=self.plc, protocol='modbus-tcp')
+    def test_ports_come_from_the_application_service(self):
+        core = Service.objects.create(parent=self.plc, name='Modbus', port_mappings=['tcp/502', 'tcp/1502'])
+        svc = IndustrialService(device=self.plc, protocol='modbus-tcp', service=core)
         svc.full_clean()
         svc.save()
-        self.assertEqual(svc.ports, [502])
         self.assertEqual(svc.role, 'server')
         self.assertIn('Modbus TCP', str(svc))
+        self.assertEqual(svc.ports_display, 'TCP/502, TCP/1502')
+        self.assertEqual(IndustrialService(device=self.plc, protocol='s7comm').ports_display, '')
 
-    def test_serial_has_no_ports(self):
-        svc = IndustrialService(device=self.plc, protocol='modbus-rtu', fieldbus=self.bus, address='unit 3')
-        svc.full_clean()
-        svc.save()
-        self.assertEqual(svc.ports, [])
+    def test_serial_has_no_application_service(self):
+        IndustrialService(device=self.plc, protocol='modbus-rtu', fieldbus=self.bus, address='unit 3').full_clean()
+        core = Service.objects.create(parent=self.plc, name='Modbus', port_mappings=['tcp/502'])
         with self.assertRaises(ValidationError):
-            IndustrialService(device=self.plc, protocol='modbus-rtu', ports=[502]).full_clean()
+            IndustrialService(device=self.plc, protocol='modbus-rtu', service=core).full_clean()
 
     def test_one_parent(self):
         with self.assertRaises(ValidationError):
             IndustrialService(protocol='s7comm').full_clean()
 
-    def test_interface_of_other_device(self):
-        iface = Interface.objects.create(device=self.other, name='eth0', type='1000base-t')
+    def test_application_service_of_other_device(self):
+        core = Service.objects.create(parent=self.other, name='S7', port_mappings=['tcp/102'])
         with self.assertRaises(ValidationError):
-            IndustrialService(device=self.plc, protocol='s7comm', interface=iface).full_clean()
+            IndustrialService(device=self.plc, protocol='s7comm', service=core).full_clean()
 
     def test_network_protocol_not_on_fieldbus(self):
         with self.assertRaises(ValidationError):
@@ -103,9 +104,10 @@ class IndustrialServiceViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewT
         IndustrialService.objects.create(device=hmi, protocol='s7comm', role='client')
         IndustrialService.objects.create(device=plc, protocol='modbus-rtu', role='client', fieldbus=bus)
         tags = create_tags('Alpha', 'Bravo', 'Charlie')
+        core = Service.objects.create(parent=plc, name='Modbus', port_mappings=['tcp/502', 'tcp/503'])
         cls.form_data = {
-            'device': plc.pk, 'protocol': 'modbus-tcp', 'role': 'server', 'ports': '502,503',
-            'evidence': 'Port 502 open', 'tags': [t.pk for t in tags],
+            'device': plc.pk, 'protocol': 'modbus-tcp', 'role': 'server', 'service': core.pk,
+            'evidence': 'Answered Modbus reads', 'tags': [t.pk for t in tags],
         }
         cls.csv_data = (
             'device,protocol,role,address',
@@ -153,7 +155,7 @@ class IndustrialServiceAPITest(APIViewTestCases.APIViewTestCase):
     brief_fields = ['description', 'display', 'id', 'protocol', 'role', 'url']
     bulk_update_data = {'role': 'both', 'address': 'unit 1'}
     bulk_update_invalid_data = {'role': 'bogus'}
-    user_permissions = ('dcim.view_device',)
+    user_permissions = ('dcim.view_device', 'ipam.view_service')
 
     @classmethod
     def setUpTestData(cls):
@@ -162,9 +164,10 @@ class IndustrialServiceAPITest(APIViewTestCases.APIViewTestCase):
         IndustrialService.objects.create(device=plc, protocol='s7comm')
         IndustrialService.objects.create(device=plc, protocol='modbus-tcp')
         IndustrialService.objects.create(device=plc, protocol='opc-ua')
+        dnp3 = Service.objects.create(parent=plc, name='DNP3', port_mappings=['tcp/20000', 'tcp/20001'])
         cls.create_data = [
             {'device': plc.pk, 'protocol': 'ethernet-ip', 'role': 'server'},
-            {'device': plc.pk, 'protocol': 'dnp3', 'role': 'server', 'ports': [20000, 20001]},
+            {'device': plc.pk, 'protocol': 'dnp3', 'role': 'server', 'service': dnp3.pk},
             {'device': plc.pk, 'protocol': 'modbus-rtu', 'role': 'client', 'address': 'master'},
         ]
 
@@ -196,7 +199,7 @@ class FieldbusFilterSetTest(DjangoTestCase, ChangeLoggedFilterSetTestMixin):
 class IndustrialServiceFilterSetTest(DjangoTestCase, ChangeLoggedFilterSetTestMixin):
     queryset = IndustrialService.objects.all()
     filterset = IndustrialServiceFilterSet
-    ignore_fields = ('ports', 'evidence')
+    ignore_fields = ('evidence',)
 
     @classmethod
     def setUpTestData(cls):
@@ -206,7 +209,8 @@ class IndustrialServiceFilterSetTest(DjangoTestCase, ChangeLoggedFilterSetTestMi
         cls.zone = Zone.objects.create(name='Cell', slug='cell', site=cls.site)
         cls.zone.devices.add(cls.plc)
         cls.bus = Fieldbus.objects.create(name='Bus 1', site=cls.site, medium='rs-485')
-        IndustrialService.objects.create(device=cls.plc, protocol='s7comm', role='server')
+        s7 = Service.objects.create(parent=cls.plc, name='S7', port_mappings=['tcp/102'])
+        IndustrialService.objects.create(device=cls.plc, protocol='s7comm', role='server', service=s7)
         IndustrialService.objects.create(device=cls.plc, protocol='modbus-rtu', role='client', fieldbus=cls.bus)
         IndustrialService.objects.create(device=cls.hmi, protocol='s7comm', role='client', address='rack 0 slot 1')
 
@@ -219,7 +223,7 @@ class IndustrialServiceFilterSetTest(DjangoTestCase, ChangeLoggedFilterSetTestMi
         self.assertEqual(self.filterset({'role': ['client']}, self.queryset).qs.count(), 2)
 
     def test_port(self):
-        self.assertEqual(self.filterset({'port': 102}, self.queryset).qs.count(), 2)
+        self.assertEqual(self.filterset({'port': 102}, self.queryset).qs.count(), 1)
 
     def test_fieldbus_site_zone(self):
         self.assertEqual(self.filterset({'fieldbus_id': [self.bus.pk]}, self.queryset).qs.count(), 1)
@@ -238,9 +242,11 @@ class DevicePanelServicesTest(TestCase):
     def test_panel_lists_services_and_bus(self):
         site = Site.objects.create(name='Site 1', slug='site-1')
         gw = create_test_device('gw-1', site=site)
-        IndustrialService.objects.create(device=gw, protocol='modbus-tcp', role='server')
+        core = Service.objects.create(parent=gw, name='Modbus', port_mappings=['tcp/502'])
+        IndustrialService.objects.create(device=gw, protocol='modbus-tcp', role='server', service=core)
         Fieldbus.objects.create(name='Line 1 RS-485', site=site, medium='rs-485', gateway=gw)
         response = self.client.get(gw.get_absolute_url())
         self.assertHttpStatus(response, 200)
         self.assertContains(response, 'Modbus TCP')
         self.assertContains(response, 'Line 1 RS-485')
+        self.assertContains(response, 'TCP/502')

@@ -47,18 +47,25 @@ class SecurityLevelChoices(ChoiceSet):
     )
 
 
-class ConduitDirectionChoices(ChoiceSet):
-    ONE_WAY = 'one-way'
-    TWO_WAY = 'two-way'
+class ZoneTypeChoices(ChoiceSet):
+    """What kind of zone this is. An MSP or supplier is an external zone; a flow from it is remote access."""
+    OT = 'ot'
+    SAFETY = 'safety'
+    DMZ = 'dmz'
+    ENTERPRISE = 'enterprise'
+    EXTERNAL = 'external'
 
     CHOICES = (
-        Choice(ONE_WAY, _('One-way'), color='gray'),
-        Choice(TWO_WAY, _('Two-way'), color='blue'),
+        Choice(OT, _('OT (control)'), color='red'),
+        Choice(SAFETY, _('Safety (SIS)'), color='purple'),
+        Choice(DMZ, _('DMZ'), color='cyan'),
+        Choice(ENTERPRISE, _('Enterprise'), color='blue'),
+        Choice(EXTERNAL, _('External / supplier'), color='gray'),
     )
 
 
-class ConduitAllowedChoices(ChoiceSet):
-    """Is this path allowed? The verdict column of the access map."""
+class FlowAllowedChoices(ChoiceSet):
+    """Is this flow allowed? The verdict column of the access map."""
     YES = 'yes'
     NO = 'no'
     UNKNOWN = 'unknown'
@@ -68,6 +75,25 @@ class ConduitAllowedChoices(ChoiceSet):
         Choice(NO, _('No'), color='red'),
         Choice(UNKNOWN, _('Unknown'), color='yellow'),
     )
+
+
+class AccessChoices(ChoiceSet):
+    """What a flow's requests do to the destination (see importers/functions.py)."""
+    READ = 'read'
+    WRITE = 'write'
+    CONTROL = 'control'
+    PROGRAM = 'program'
+    OTHER = 'other'
+
+    CHOICES = (
+        Choice(READ, _('Read'), color='green'),
+        Choice(WRITE, _('Write'), color='orange'),
+        Choice(CONTROL, _('Control'), color='red'),
+        Choice(PROGRAM, _('Program'), color='purple'),
+        Choice(OTHER, _('Other'), color='gray'),
+    )
+    # Classes that change the destination
+    MODIFYING = (WRITE, CONTROL, PROGRAM)
 
 
 class IndustrialProtocolChoices(ChoiceSet):
@@ -136,10 +162,19 @@ class IndustrialProtocolChoices(ChoiceSet):
         )),
     )
 
+    # The protocol's usual listening ports as NetBox port mappings ("tcp/502"). Layer-2 protocols (PROFINET RT,
+    # GOOSE, EtherCAT) and serial ones have none; PROFINET's entry is its connection manager (DCE/RPC).
+    DEFAULT_PORT_MAPPINGS = {
+        MODBUS_TCP: ['tcp/502'], S7COMM: ['tcp/102'], S7COMM_PLUS: ['tcp/102'],
+        ETHERNET_IP: ['tcp/44818', 'udp/2222'], OPC_UA: ['tcp/4840'], OPC_DA: ['tcp/135'], BACNET_IP: ['udp/47808'],
+        DNP3: ['tcp/20000'], IEC_104: ['tcp/2404'], IEC_61850_MMS: ['tcp/102'], MQTT: ['tcp/1883', 'tcp/8883'],
+        HART_IP: ['tcp/5094', 'udp/5094'], KNX_IP: ['udp/3671'], OMRON_FINS: ['udp/9600'], MELSEC: ['tcp/5007'],
+        PROFINET: ['udp/34964'],
+    }
+    # The transport a protocol runs over when only a port number is known (default tcp)
+    TRANSPORT = {BACNET_IP: 'udp', KNX_IP: 'udp', OMRON_FINS: 'udp', PROFINET: 'udp'}
     DEFAULT_PORTS = {
-        MODBUS_TCP: [502], S7COMM: [102], S7COMM_PLUS: [102], ETHERNET_IP: [44818, 2222], OPC_UA: [4840],
-        OPC_DA: [135], BACNET_IP: [47808], DNP3: [20000], IEC_104: [2404], IEC_61850_MMS: [102],
-        MQTT: [1883, 8883], HART_IP: [5094], KNX_IP: [3671], OMRON_FINS: [9600], MELSEC: [5007],
+        protocol: [int(m.split('/')[1]) for m in mappings] for protocol, mappings in DEFAULT_PORT_MAPPINGS.items()
     }
     # Serial or fieldbus protocols: no IP ports; they sit on a Fieldbus with a station address
     SERIAL = (MODBUS_RTU, MODBUS_ASCII, PROFIBUS_DP, BACNET_MSTP, IEC_101, CANOPEN)
@@ -183,3 +218,58 @@ class FieldbusMediumChoices(ChoiceSet):
         (IO_LINK, 'IO-Link'),
         (OTHER, _('Other')),
     )
+
+
+class FlowProtocolChoices(ChoiceSet):
+    """Application protocol of a flow: the industrial protocols plus the IT protocols seen on OT paths."""
+    RDP = 'rdp'
+    SSH = 'ssh'
+    TELNET = 'telnet'
+    VNC = 'vnc'
+    TEAMVIEWER = 'teamviewer'
+    ANYDESK = 'anydesk'
+    IPSEC = 'ipsec'
+    OPENVPN = 'openvpn'
+    WIREGUARD = 'wireguard'
+    HTTP = 'http'
+    HTTPS = 'https'
+    SMB = 'smb'
+    DNS = 'dns'
+    NTP = 'ntp'
+    SNMP = 'snmp'
+    SYSLOG = 'syslog'
+
+    CHOICES = IndustrialProtocolChoices.CHOICES[:-1] + (
+        (_('Remote access'), (
+            (RDP, 'RDP'),
+            (SSH, 'SSH'),
+            (TELNET, 'Telnet'),
+            (VNC, 'VNC'),
+            (TEAMVIEWER, 'TeamViewer'),
+            (ANYDESK, 'AnyDesk'),
+            (IPSEC, 'IPsec (IKE)'),
+            (OPENVPN, 'OpenVPN'),
+            (WIREGUARD, 'WireGuard'),
+        )),
+        (_('IT services'), (
+            (HTTP, 'HTTP'),
+            (HTTPS, 'HTTPS'),
+            (SMB, 'SMB'),
+            (DNS, 'DNS'),
+            (NTP, 'NTP'),
+            (SNMP, 'SNMP'),
+            (SYSLOG, 'Syslog'),
+        )),
+    ) + IndustrialProtocolChoices.CHOICES[-1:]
+
+    DEFAULT_PORT_MAPPINGS = {
+        **IndustrialProtocolChoices.DEFAULT_PORT_MAPPINGS,
+        RDP: ['tcp/3389'], SSH: ['tcp/22'], TELNET: ['tcp/23'], VNC: ['tcp/5900'], TEAMVIEWER: ['tcp/5938'],
+        ANYDESK: ['tcp/7070'], IPSEC: ['udp/500', 'udp/4500'], OPENVPN: ['udp/1194'], WIREGUARD: ['udp/51820'],
+        HTTP: ['tcp/80'], HTTPS: ['tcp/443'], SMB: ['tcp/445'], DNS: ['udp/53'], NTP: ['udp/123'],
+        SNMP: ['udp/161'], SYSLOG: ['udp/514'],
+    }
+    TRANSPORT = {
+        **IndustrialProtocolChoices.TRANSPORT,
+        IPSEC: 'udp', OPENVPN: 'udp', WIREGUARD: 'udp', DNS: 'udp', NTP: 'udp', SNMP: 'udp', SYSLOG: 'udp',
+    }

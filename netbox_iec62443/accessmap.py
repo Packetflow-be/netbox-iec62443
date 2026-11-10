@@ -1,45 +1,65 @@
 """
-The access map: every conduit into a zone at Purdue level <= N (default 2), i.e. every
-path to the controllers, with its "allowed?" verdict. Plus a small server-rendered SVG of the same.
+The access map: every flow into a zone at Purdue level <= N (default 2), i.e. every path to the controllers, with
+its "allowed?" verdict. Not allowed first, then allowed-but-expired, unknown, and allowed. Plus a small
+server-rendered SVG with one arrow per directed zone pair.
 """
+import datetime
+
 from django.db.models import Case, IntegerField, Q, Value, When
+from django.utils import timezone
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
 
-from .choices import ConduitAllowedChoices, ConduitDirectionChoices, PurdueLevelChoices
-from .models import Conduit, Zone
-
-ALLOWED_ORDER = Case(
-    When(allowed=ConduitAllowedChoices.NO, then=Value(0)),
-    When(allowed=ConduitAllowedChoices.UNKNOWN, then=Value(1)),
-    default=Value(2),
-    output_field=IntegerField(),
-)
+from .choices import FlowAllowedChoices, PurdueLevelChoices
+from .models import Flow, Zone, stale_after_days
 
 
-def access_map_conduits(queryset=None, site=None, max_level=PurdueLevelChoices.LEVEL_2):
-    """Conduits into zones at Purdue level <= max_level (two-way conduits count from either end)."""
-    levels = PurdueLevelChoices.at_or_below(max_level)
-    qs = (queryset if queryset is not None else Conduit.objects.all()).select_related(
-        'source_zone__site', 'destination_zone__site'
+def verdict_order():
+    """0 not allowed, 1 allowed but expired, 2 unknown, 3 allowed."""
+    return Case(
+        When(allowed=FlowAllowedChoices.NO, then=Value(0)),
+        When(allowed=FlowAllowedChoices.YES, expires__lt=timezone.localdate(), then=Value(1)),
+        When(allowed=FlowAllowedChoices.UNKNOWN, then=Value(2)),
+        default=Value(3),
+        output_field=IntegerField(),
     )
+
+
+def access_map_flows(queryset=None, site=None, max_level=PurdueLevelChoices.LEVEL_2):
+    """Flows into zones at Purdue level <= max_level, from any zone of the site or into one."""
+    levels = PurdueLevelChoices.at_or_below(max_level)
+    qs = (queryset if queryset is not None else Flow.objects.all()).select_related(
+        'source_zone__site', 'destination_zone__site', 'conduit',
+    ).prefetch_related('hops__device', 'hops__virtual_machine', 'hops__tunnel')
     if site is not None:
         qs = qs.filter(Q(source_zone__site=site) | Q(destination_zone__site=site))
-    qs = qs.filter(
-        Q(destination_zone__purdue_level__in=levels) |
-        Q(direction=ConduitDirectionChoices.TWO_WAY, source_zone__purdue_level__in=levels)
-    )
-    return qs.annotate(allowed_order=ALLOWED_ORDER).order_by(
-        'allowed_order', 'destination_zone__purdue_level', 'destination_zone__name', 'name'
+    qs = qs.filter(destination_zone__purdue_level__in=levels)
+    return qs.annotate(verdict_order=verdict_order()).order_by(
+        'verdict_order', 'destination_zone__purdue_level', 'destination_zone__name', 'name'
     )
 
 
+def attention(queryset):
+    """Counts of flows that need a person: allowed but expired, review due, not seen for a while, no conduit."""
+    today = timezone.localdate()
+    stale_before = timezone.now() - datetime.timedelta(days=stale_after_days())
+    return {
+        'expired': queryset.filter(allowed=FlowAllowedChoices.YES, expires__lt=today).count(),
+        'review_due': queryset.filter(review_by__lte=today).count(),
+        'stale': queryset.filter(last_seen__lt=stale_before).count(),
+        'no_conduit': queryset.filter(conduit__isnull=True).count(),
+        'stale_after_days': stale_after_days(),
+    }
+
+
 #
-# SVG diagram: one row per Purdue level (5 at the top, 0 at the bottom), zones as boxes, conduits as arrows.
+# SVG diagram: one row per Purdue level (5 at the top, 0 at the bottom), zones as boxes, one arrow per directed
+# zone pair coloured by its worst verdict.
 #
 
-LINE_COLORS = {'no': '#d63939', 'unknown': '#f59f00', 'yes': '#2fb344'}
+LINE_COLORS = {'no': '#d63939', 'expired': '#d63939', 'unknown': '#f59f00', 'yes': '#2fb344'}
+WORST = ('no', 'expired', 'unknown', 'yes')
 BOX_W, BOX_H, GAP_X, ROW_H, LABEL_W, PAD = 190, 46, 40, 96, 150, 16
 
 
@@ -55,13 +75,17 @@ def _level_rows(zones):
     return rows
 
 
-def access_map_svg(conduits, zones=()):
-    """Return an inline SVG (safe string) for the given conduits; `zones` adds zones without conduits."""
-    conduits = list(conduits)
+def _verdict(flow):
+    return 'expired' if flow.is_expired else flow.allowed
+
+
+def access_map_svg(flows, zones=()):
+    """Return an inline SVG (safe string) for the given flows; `zones` adds zones without flows."""
+    flows = list(flows)
     all_zones = {z.pk: z for z in zones}
-    for c in conduits:
-        all_zones.setdefault(c.source_zone_id, c.source_zone)
-        all_zones.setdefault(c.destination_zone_id, c.destination_zone)
+    for f in flows:
+        all_zones.setdefault(f.source_zone_id, f.source_zone)
+        all_zones.setdefault(f.destination_zone_id, f.destination_zone)
     if not all_zones:
         return ''
     rows = _level_rows(all_zones.values())
@@ -81,10 +105,14 @@ def access_map_svg(conduits, zones=()):
                 f'rx="4" class="zone"/><text x="{x + BOX_W / 2}" y="{y + BOX_H / 2 + 4}" text-anchor="middle" '
                 f'class="zn">{escape(z.name[:26])}</text></a>'
             )
+    # One arrow per directed zone pair
+    pairs = {}
+    for f in flows:
+        pairs.setdefault((f.source_zone_id, f.destination_zone_id), []).append(f)
     pair_seen = {}
-    for n, c in enumerate(conduits, start=1):
-        (sx, sy), (dx, dy) = pos[c.source_zone_id], pos[c.destination_zone_id]
-        key = tuple(sorted((c.source_zone_id, c.destination_zone_id)))
+    for (src, dst), members in pairs.items():
+        (sx, sy), (dx, dy) = pos[src], pos[dst]
+        key = tuple(sorted((src, dst)))
         offset = pair_seen.get(key, 0) * 14
         pair_seen[key] = pair_seen.get(key, 0) + 1
         x1, x2 = sx + BOX_W / 2 + offset, dx + BOX_W / 2 + offset
@@ -98,16 +126,17 @@ def access_map_svg(conduits, zones=()):
             y2 = dy if sy < dy else dy + BOX_H
             path = f'M{x1},{y1} L{x2},{y2}'
             lx, ly = (x1 + x2) / 2, (y1 + y2) / 2
-        color = LINE_COLORS.get(c.allowed, '#888')
-        dash = ' stroke-dasharray="6 4"' if c.remote_access else ''
-        start = ' marker-start="url(#iec-arrow)"' if c.direction == ConduitDirectionChoices.TWO_WAY else ''
+        worst = min((_verdict(f) for f in members), key=WORST.index)
+        color = LINE_COLORS.get(worst, '#888')
+        dash = ' stroke-dasharray="6 4"' if any(f.remote_access for f in members) else ''
+        title = escape('\n'.join(str(f) for f in members))
         lines.append(
-            f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2.5"{dash}{start} '
-            f'marker-end="url(#iec-arrow)"><title>{escape(c.name)}</title></path>'
+            f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2.5"{dash} '
+            f'marker-end="url(#iec-arrow)"><title>{title}</title></path>'
         )
         badges.append(
             f'<circle cx="{lx}" cy="{ly}" r="10" fill="{color}"/>'
-            f'<text x="{lx}" y="{ly + 4}" text-anchor="middle" class="num">{n}</text>'
+            f'<text x="{lx}" y="{ly + 4}" text-anchor="middle" class="num">{len(members)}</text>'
         )
     aria = escape(_('Access map diagram'))
     svg = (

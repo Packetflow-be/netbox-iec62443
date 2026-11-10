@@ -5,14 +5,14 @@ from django.views.generic import View
 
 from dcim.models import Site
 from extras.ui.panels import CustomFieldsPanel, TagsPanel
-from netbox.ui import attrs, layout, panels
+from netbox.ui import actions, attrs, layout, panels
 from netbox.views import generic
 from utilities.views import ContentTypePermissionRequiredMixin, ViewTab, register_model_view
 
 from . import filtersets, forms, tables
-from .accessmap import access_map_conduits, access_map_svg
+from .accessmap import access_map_flows, access_map_svg, attention
 from .choices import PurdueLevelChoices
-from .models import Conduit, Fieldbus, IndustrialService, Zone
+from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, Zone
 
 
 def _default_max_level():
@@ -32,6 +32,7 @@ def _ids_or_none(queryset):
 class ZonePanel(panels.ObjectAttributesPanel):
     name = attrs.TextAttr('name')
     site = attrs.RelatedObjectAttr('site', linkify=True)
+    zone_type = attrs.ChoiceAttr('zone_type', label=_('Zone type'))
     purdue_level = attrs.ChoiceAttr('purdue_level', label=_('Purdue level'))
     security_level_target = attrs.ChoiceAttr('security_level_target', label=_('Security level target (SL-T)'))
     tenant = attrs.RelatedObjectAttr('tenant', linkify=True, grouped_by='group')
@@ -40,17 +41,41 @@ class ZonePanel(panels.ObjectAttributesPanel):
 
 class ConduitPanel(panels.ObjectAttributesPanel):
     name = attrs.TextAttr('name')
-    source_zone = attrs.RelatedObjectAttr('source_zone', linkify=True, label=_('From zone'))
-    destination_zone = attrs.RelatedObjectAttr('destination_zone', linkify=True, label=_('To zone'))
-    direction = attrs.ChoiceAttr('direction')
+    site = attrs.RelatedObjectAttr('site', linkify=True)
+    security_level_target = attrs.ChoiceAttr('security_level_target', label=_('Security level target (SL-T)'))
     description = attrs.TextAttr('description')
 
 
-class ConduitAccessPanel(panels.ObjectAttributesPanel):
-    allowed = attrs.ChoiceAttr('allowed', label=_('Allowed'))
-    protocols = attrs.TextAttr('protocols', label=_('Protocols / ports'))
+class FlowPanel(panels.ObjectAttributesPanel):
+    name = attrs.TextAttr('name')
+    source_zone = attrs.RelatedObjectAttr('source_zone', linkify=True, label=_('From zone'))
+    destination_zone = attrs.RelatedObjectAttr('destination_zone', linkify=True, label=_('To zone'))
+    conduit = attrs.RelatedObjectAttr('conduit', linkify=True)
+    protocol = attrs.ChoiceAttr('protocol')
+    ports = attrs.TextAttr('ports_display', label=_('Ports'))
+    access = attrs.TemplatedAttr('access', label=_('Access'), template_name='netbox_iec62443/inc/access_attr.html')
     remote_access = attrs.BooleanAttr('remote_access', label=_('Remote access'))
-    via = attrs.TextAttr('via')
+    description = attrs.TextAttr('description')
+
+
+class FlowVerdictPanel(panels.ObjectAttributesPanel):
+    allowed = attrs.TemplatedAttr('allowed', label=_('Allowed'), template_name='netbox_iec62443/inc/verdict_attr.html')
+    decided_by = attrs.RelatedObjectAttr('decided_by', linkify=True, label=_('Decided by'))
+    decided_on = attrs.DateTimeAttr('decided_on', spec='date', label=_('Decided on'))
+    review_by = attrs.DateTimeAttr('review_by', spec='date', label=_('Review by'))
+    expires = attrs.DateTimeAttr('expires', spec='date', label=_('Expires'))
+
+
+class FlowSeenPanel(panels.ObjectAttributesPanel):
+    first_seen = attrs.DateTimeAttr('first_seen', label=_('First seen'))
+    last_seen = attrs.DateTimeAttr('last_seen', label=_('Last seen'))
+
+
+class FlowHopPanel(panels.ObjectAttributesPanel):
+    flow = attrs.RelatedObjectAttr('flow', linkify=True)
+    position = attrs.TextAttr('position')
+    hop = attrs.RelatedObjectAttr('hop', linkify=True, label=_('Runs through'))
+    description = attrs.TextAttr('description')
 
 
 #
@@ -61,7 +86,7 @@ class ConduitAccessPanel(panels.ObjectAttributesPanel):
 class ZoneListView(generic.ObjectListView):
     queryset = Zone.objects.annotate(
         device_count=Count('devices', distinct=True),
-        conduit_count=Count('conduits_out', distinct=True) + Count('conduits_in', distinct=True),
+        flow_count=Count('flows_out', distinct=True) + Count('flows_in', distinct=True),
     )
     filterset = filtersets.ZoneFilterSet
     filterset_form = forms.ZoneFilterForm
@@ -86,6 +111,11 @@ class ZoneView(generic.ObjectView):
                 'netbox_iec62443.conduit',
                 filters={'zone_id': lambda ctx: ctx['object'].pk},
                 title=_('Conduits'),
+            ),
+            panels.ObjectsTablePanel(
+                'netbox_iec62443.flow',
+                filters={'zone_id': lambda ctx: ctx['object'].pk},
+                title=_('Flows'),
             ),
             panels.ObjectsTablePanel(
                 'dcim.device',
@@ -145,7 +175,7 @@ class ZoneBulkDeleteView(generic.BulkDeleteView):
 
 @register_model_view(Conduit, 'list', path='', detail=False)
 class ConduitListView(generic.ObjectListView):
-    queryset = Conduit.objects.select_related('source_zone', 'destination_zone')
+    queryset = Conduit.objects.annotate(flow_count=Count('flows', distinct=True))
     filterset = filtersets.ConduitFilterSet
     filterset_form = forms.ConduitFilterForm
     table = tables.ConduitTable
@@ -158,13 +188,33 @@ class ConduitView(generic.ObjectView):
     layout = layout.SimpleLayout(
         left_panels=[
             ConduitPanel(),
-            ConduitAccessPanel(title=_('Access')),
             TagsPanel(),
         ],
         right_panels=[
-            panels.TextCodePanel('evidence', title=_('Evidence')),
             CustomFieldsPanel(),
             panels.CommentsPanel(),
+        ],
+        bottom_panels=[
+            panels.ObjectsTablePanel(
+                'netbox_iec62443.zone',
+                filters={'conduit_id': lambda ctx: ctx['object'].pk},
+                title=_('Zones'),
+            ),
+            panels.ObjectsTablePanel(
+                'dcim.device',
+                filters={'id': lambda ctx: _ids_or_none(ctx['object'].enforcing_devices.all())},
+                title=_('Enforced by (devices)'),
+            ),
+            panels.ObjectsTablePanel(
+                'virtualization.virtualmachine',
+                filters={'id': lambda ctx: _ids_or_none(ctx['object'].enforcing_virtual_machines.all())},
+                title=_('Enforced by (virtual machines)'),
+            ),
+            panels.ObjectsTablePanel(
+                'netbox_iec62443.flow',
+                filters={'conduit_id': lambda ctx: ctx['object'].pk},
+                title=_('Flows'),
+            ),
         ],
     )
 
@@ -200,6 +250,141 @@ class ConduitBulkDeleteView(generic.BulkDeleteView):
     queryset = Conduit.objects.all()
     filterset = filtersets.ConduitFilterSet
     table = tables.ConduitTable
+
+
+#
+# Flows
+#
+
+@register_model_view(Flow, 'list', path='', detail=False)
+class FlowListView(generic.ObjectListView):
+    queryset = Flow.objects.select_related('source_zone', 'destination_zone', 'conduit', 'decided_by').prefetch_related(
+        'hops__device', 'hops__virtual_machine', 'hops__tunnel',
+    )
+    filterset = filtersets.FlowFilterSet
+    filterset_form = forms.FlowFilterForm
+    table = tables.FlowTable
+
+
+@register_model_view(Flow)
+class FlowView(generic.ObjectView):
+    queryset = Flow.objects.all()
+    template_name = 'generic/object.html'
+    layout = layout.SimpleLayout(
+        left_panels=[
+            FlowPanel(),
+            FlowVerdictPanel(title=_('Verdict')),
+            TagsPanel(),
+        ],
+        right_panels=[
+            FlowSeenPanel(title=_('Observed')),
+            panels.TextCodePanel('evidence', title=_('Evidence')),
+            CustomFieldsPanel(),
+            panels.CommentsPanel(),
+        ],
+        bottom_panels=[
+            panels.ObjectsTablePanel(
+                'netbox_iec62443.flowhop',
+                filters={'flow_id': lambda ctx: ctx['object'].pk},
+                exclude_columns=['flow'],
+                title=_('Path (hops in order)'),
+                actions=[
+                    actions.AddObject(
+                        'netbox_iec62443.flowhop', label=_('Add hop'),
+                        url_params={'flow': lambda ctx: ctx['object'].pk},
+                    ),
+                ],
+            ),
+        ],
+    )
+
+
+@register_model_view(Flow, 'add', detail=False)
+@register_model_view(Flow, 'edit')
+class FlowEditView(generic.ObjectEditView):
+    queryset = Flow.objects.all()
+    form = forms.FlowForm
+
+
+@register_model_view(Flow, 'delete')
+class FlowDeleteView(generic.ObjectDeleteView):
+    queryset = Flow.objects.all()
+
+
+@register_model_view(Flow, 'bulk_import', path='import', detail=False)
+class FlowBulkImportView(generic.BulkImportView):
+    queryset = Flow.objects.all()
+    model_form = forms.FlowImportForm
+
+
+@register_model_view(Flow, 'bulk_edit', path='edit', detail=False)
+class FlowBulkEditView(generic.BulkEditView):
+    queryset = Flow.objects.all()
+    filterset = filtersets.FlowFilterSet
+    table = tables.FlowTable
+    form = forms.FlowBulkEditForm
+
+
+@register_model_view(Flow, 'bulk_delete', path='delete', detail=False)
+class FlowBulkDeleteView(generic.BulkDeleteView):
+    queryset = Flow.objects.all()
+    filterset = filtersets.FlowFilterSet
+    table = tables.FlowTable
+
+
+#
+# Flow hops
+#
+
+@register_model_view(FlowHop, 'list', path='', detail=False)
+class FlowHopListView(generic.ObjectListView):
+    queryset = FlowHop.objects.select_related('flow', 'device', 'virtual_machine', 'tunnel')
+    filterset = filtersets.FlowHopFilterSet
+    filterset_form = forms.FlowHopFilterForm
+    table = tables.FlowHopTable
+
+
+@register_model_view(FlowHop)
+class FlowHopView(generic.ObjectView):
+    queryset = FlowHop.objects.all()
+    template_name = 'generic/object.html'
+    layout = layout.SimpleLayout(
+        left_panels=[FlowHopPanel(), TagsPanel()],
+        right_panels=[CustomFieldsPanel(), panels.CommentsPanel()],
+    )
+
+
+@register_model_view(FlowHop, 'add', detail=False)
+@register_model_view(FlowHop, 'edit')
+class FlowHopEditView(generic.ObjectEditView):
+    queryset = FlowHop.objects.all()
+    form = forms.FlowHopForm
+
+
+@register_model_view(FlowHop, 'delete')
+class FlowHopDeleteView(generic.ObjectDeleteView):
+    queryset = FlowHop.objects.all()
+
+
+@register_model_view(FlowHop, 'bulk_import', path='import', detail=False)
+class FlowHopBulkImportView(generic.BulkImportView):
+    queryset = FlowHop.objects.all()
+    model_form = forms.FlowHopImportForm
+
+
+@register_model_view(FlowHop, 'bulk_edit', path='edit', detail=False)
+class FlowHopBulkEditView(generic.BulkEditView):
+    queryset = FlowHop.objects.all()
+    filterset = filtersets.FlowHopFilterSet
+    table = tables.FlowHopTable
+    form = forms.FlowHopBulkEditForm
+
+
+@register_model_view(FlowHop, 'bulk_delete', path='delete', detail=False)
+class FlowHopBulkDeleteView(generic.BulkDeleteView):
+    queryset = FlowHop.objects.all()
+    filterset = filtersets.FlowHopFilterSet
+    table = tables.FlowHopTable
 
 
 #
@@ -283,7 +468,7 @@ class IndustrialServicePanel(panels.ObjectAttributesPanel):
     virtual_machine = attrs.RelatedObjectAttr('virtual_machine', linkify=True, label=_('Virtual machine'))
     protocol = attrs.ChoiceAttr('protocol')
     role = attrs.ChoiceAttr('role')
-    interface = attrs.RelatedObjectAttr('interface', linkify=True)
+    service = attrs.RelatedObjectAttr('service', linkify=True, label=_('Application service'))
     ports = attrs.TextAttr('ports_display', label=_('Ports'))
     fieldbus = attrs.RelatedObjectAttr('fieldbus', linkify=True)
     address = attrs.TextAttr('address')
@@ -292,7 +477,7 @@ class IndustrialServicePanel(panels.ObjectAttributesPanel):
 
 @register_model_view(IndustrialService, 'list', path='', detail=False)
 class IndustrialServiceListView(generic.ObjectListView):
-    queryset = IndustrialService.objects.select_related('device', 'virtual_machine', 'interface', 'fieldbus')
+    queryset = IndustrialService.objects.select_related('device', 'virtual_machine', 'service', 'fieldbus')
     filterset = filtersets.IndustrialServiceFilterSet
     filterset_form = forms.IndustrialServiceFilterForm
     table = tables.IndustrialServiceTable
@@ -350,14 +535,14 @@ class IndustrialServiceBulkDeleteView(generic.BulkDeleteView):
 #
 
 def _access_map_context(request, site, max_level):
-    conduits = access_map_conduits(
-        Conduit.objects.restrict(request.user, 'view'), site=site, max_level=max_level,
-    )
+    visible = Flow.objects.restrict(request.user, 'view')
+    flows = list(access_map_flows(visible, site=site, max_level=max_level))
     zones = Zone.objects.restrict(request.user, 'view').filter(site=site) if site else Zone.objects.none()
-    conduits = list(conduits)
+    site_flows = visible.filter(Q(source_zone__site=site) | Q(destination_zone__site=site)) if site else visible
     return {
-        'conduits': conduits,
-        'svg': access_map_svg(conduits, zones),
+        'flows': flows,
+        'svg': access_map_svg(flows, zones),
+        'attention': attention(site_flows),
         'max_level': max_level,
         'max_level_label': dict(PurdueLevelChoices.CHOICES).get(max_level, max_level),
         'site': site,
@@ -368,7 +553,7 @@ class AccessMapView(ContentTypePermissionRequiredMixin, View):
     """Access map for one site (or all sites when none is chosen)."""
 
     def get_required_permission(self):
-        return 'netbox_iec62443.view_conduit'
+        return 'netbox_iec62443.view_flow'
 
     def get(self, request):
         max_level = _default_max_level()
@@ -393,10 +578,10 @@ class SiteAccessMapView(generic.ObjectView):
     template_name = 'netbox_iec62443/site_accessmap.html'
     tab = ViewTab(
         label=_('Access map'),
-        badge=lambda site: Conduit.objects.filter(
+        badge=lambda site: Flow.objects.filter(
             Q(source_zone__site=site) | Q(destination_zone__site=site)
         ).count(),
-        permission='netbox_iec62443.view_conduit',
+        permission='netbox_iec62443.view_flow',
         weight=2100,
         hide_if_empty=True,
     )

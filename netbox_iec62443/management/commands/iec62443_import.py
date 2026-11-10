@@ -17,7 +17,7 @@ from netbox_iec62443.importers.observations import apply_plan, build_plan
 
 
 class Command(BaseCommand):
-    help = ('Import zones, conduits, Purdue levels and industrial services from observation files '
+    help = ('Import zones, flows, Purdue levels and industrial services from observation files '
             '(docs/import-format.md)')
 
     def add_arguments(self, parser):
@@ -65,7 +65,7 @@ class Command(BaseCommand):
                               split_zones=True if options['split_all'] else options['split'])
         except ValueError as e:
             raise CommandError(f'Invalid input: {e}')
-        self.stdout.write(f'Plan: {len(plan.zones)} zones, {len(plan.conduits)} conduits, '
+        self.stdout.write(f'Plan: {len(plan.zones)} zones, {len(plan.flows)} flows, '
                           f'{len(plan.asset_levels)} assets with a Purdue level')
         if plan.unidentified_ports:
             self.stdout.write('Open OT ports without an identified protocol (no service created; name the protocol '

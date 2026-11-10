@@ -2,13 +2,16 @@ from django.db.models import Q
 
 from netbox.plugins import PluginTemplateExtension
 
+from .accessmap import verdict_order
 from .choices import PurdueLevelChoices
 from .customfields import get_purdue_level
-from .models import Conduit, Fieldbus, IndustrialService, Zone
+from .models import Conduit, Fieldbus, Flow, IndustrialService, Zone
+
+PANEL_FLOWS = 20
 
 
 class AssetIEC62443Panel(PluginTemplateExtension):
-    """Shows an asset's Purdue level, its zones and the conduits of those zones."""
+    """Shows an asset's Purdue level, its zones and their flows, its services, and the conduits and flows it carries."""
     models = ['dcim.device', 'virtualization.virtualmachine']
 
     def right_page(self):
@@ -16,26 +19,39 @@ class AssetIEC62443Panel(PluginTemplateExtension):
         user = self.context['request'].user
         if not user.has_perm('netbox_iec62443.view_zone'):
             return ''
-        zones = list(Zone.objects.restrict(user, 'view').filter(
-            Q(devices=obj) if obj._meta.model_name == 'device' else Q(virtual_machines=obj)
-        ).select_related('site'))
-        conduits = []
-        if zones:
-            conduits = Conduit.objects.restrict(user, 'view').filter(
-                Q(source_zone__in=zones) | Q(destination_zone__in=zones)
-            ).select_related('source_zone', 'destination_zone').distinct()
         is_device = obj._meta.model_name == 'device'
+        zones = list(Zone.objects.restrict(user, 'view').filter(
+            Q(devices=obj) if is_device else Q(virtual_machines=obj)
+        ).select_related('site'))
+        flows, flow_count, hop_flows = [], 0, []
+        if user.has_perm('netbox_iec62443.view_flow'):
+            visible = Flow.objects.restrict(user, 'view')
+            if zones:
+                zone_flows = visible.filter(Q(source_zone__in=zones) | Q(destination_zone__in=zones))
+                flow_count = zone_flows.count()
+                flows = zone_flows.select_related('source_zone', 'destination_zone').annotate(
+                    verdict_order=verdict_order()).order_by('verdict_order', 'name')[:PANEL_FLOWS]
+            hop_filter = Q(hops__device=obj) if is_device else Q(hops__virtual_machine=obj)
+            hop_flows = visible.filter(hop_filter).distinct()
+        enforced = []
+        if user.has_perm('netbox_iec62443.view_conduit'):
+            enforced = Conduit.objects.restrict(user, 'view').filter(
+                Q(enforcing_devices=obj) if is_device else Q(enforcing_virtual_machines=obj)
+            )
         services, bridges = [], []
         if user.has_perm('netbox_iec62443.view_industrialservice'):
             services = IndustrialService.objects.restrict(user, 'view').filter(
                 Q(device=obj) if is_device else Q(virtual_machine=obj)
-            ).select_related('interface', 'fieldbus')
+            ).select_related('service', 'fieldbus')
         if is_device and user.has_perm('netbox_iec62443.view_fieldbus'):
             bridges = Fieldbus.objects.restrict(user, 'view').filter(gateway=obj)
         level = get_purdue_level(obj)
         return self.render('netbox_iec62443/inc/asset_panel.html', extra_context={
             'zones': zones,
-            'conduits': conduits,
+            'flows': flows,
+            'flow_count': flow_count,
+            'hop_flows': hop_flows,
+            'enforced': enforced,
             'services': services,
             'bridges': bridges,
             'purdue_level': level,
