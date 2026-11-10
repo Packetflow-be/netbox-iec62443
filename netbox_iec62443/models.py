@@ -108,13 +108,13 @@ class Conduit(PrimaryModel):
     name = models.CharField(verbose_name=_('name'), max_length=100, db_collation='natural_sort')
     source_zone = models.ForeignKey(
         to=Zone,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='conduits_out',
         verbose_name=_('source zone'),
     )
     destination_zone = models.ForeignKey(
         to=Zone,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='conduits_in',
         verbose_name=_('destination zone'),
     )
@@ -222,18 +222,6 @@ class Fieldbus(PrimaryModel):
         choices=IndustrialProtocolChoices,
         blank=True,
     )
-    baud_rate = models.PositiveIntegerField(
-        verbose_name=_('baud rate'),
-        blank=True,
-        null=True,
-        help_text=_('Bits per second, e.g. 9600 or 19200'),
-    )
-    frame_format = models.CharField(
-        verbose_name=_('frame format'),
-        max_length=10,
-        blank=True,
-        help_text=_('Data bits, parity, stop bits, e.g. "8N1" or "8E1"'),
-    )
     gateway = models.ForeignKey(
         to='dcim.Device',
         on_delete=models.SET_NULL,
@@ -244,7 +232,7 @@ class Fieldbus(PrimaryModel):
         help_text=_('Device that bridges this bus to Ethernet (serial device server, protocol gateway)'),
     )
 
-    clone_fields = ('site', 'zone', 'medium', 'protocol', 'baud_rate', 'frame_format', 'gateway')
+    clone_fields = ('site', 'zone', 'medium', 'protocol', 'gateway')
 
     class Meta:
         ordering = ('site', 'name')

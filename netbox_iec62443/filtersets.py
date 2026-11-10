@@ -145,7 +145,7 @@ class FieldbusFilterSet(PrimaryModelFilterSet):
 
     class Meta:
         model = Fieldbus
-        fields = ('id', 'name', 'baud_rate', 'frame_format', 'description')
+        fields = ('id', 'name', 'description')
 
     def search(self, queryset, name, value):
         if not value.strip():

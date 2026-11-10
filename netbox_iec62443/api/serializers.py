@@ -91,9 +91,8 @@ class FieldbusSerializer(PrimaryModelSerializer):
     class Meta:
         model = Fieldbus
         fields = (
-            'id', 'url', 'display_url', 'display', 'name', 'site', 'zone', 'medium', 'protocol', 'baud_rate',
-            'frame_format', 'gateway', 'description', 'owner', 'comments', 'tags', 'custom_fields', 'created',
-            'last_updated',
+            'id', 'url', 'display_url', 'display', 'name', 'site', 'zone', 'medium', 'protocol', 'gateway',
+            'description', 'owner', 'comments', 'tags', 'custom_fields', 'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'name', 'medium', 'description')
 

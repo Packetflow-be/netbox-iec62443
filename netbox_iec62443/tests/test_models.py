@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.test import TestCase
 
 from dcim.models import Site
@@ -55,6 +56,16 @@ class ConduitTest(TestCase):
     def test_same_zone_rejected(self):
         with self.assertRaises(ValidationError):
             Conduit(name='loop', source_zone=self.cell, destination_zone=self.cell).full_clean()
+
+    def test_zone_with_conduits_cannot_be_deleted(self):
+        """Deleting a zone must not silently delete the verdicts and evidence on its conduits."""
+        Conduit.objects.create(name='c', source_zone=self.office, destination_zone=self.cell, allowed='no',
+                               evidence='seen')
+        for zone in (self.office, self.cell):
+            with self.assertRaises(ProtectedError), transaction.atomic():
+                zone.delete()
+        self.assertEqual(Conduit.objects.get(name='c').allowed, 'no')
+        self.dmz.delete()  # a zone without conduits still deletes
 
     def test_defaults(self):
         c = Conduit.objects.create(name='c', source_zone=self.office, destination_zone=self.cell)

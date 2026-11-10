@@ -68,12 +68,11 @@ class FieldbusTable(PrimaryModelTable):
     class Meta(PrimaryModelTable.Meta):
         model = Fieldbus
         fields = (
-            'pk', 'id', 'name', 'site', 'zone', 'medium', 'protocol', 'baud_rate', 'frame_format', 'gateway',
-            'service_count', 'description', 'comments', 'tags', 'created', 'last_updated',
+            'pk', 'id', 'name', 'site', 'zone', 'medium', 'protocol', 'gateway', 'service_count', 'description',
+            'comments', 'tags', 'created', 'last_updated',
         )
         default_columns = (
-            'pk', 'name', 'site', 'zone', 'medium', 'protocol', 'baud_rate', 'frame_format', 'gateway',
-            'service_count',
+            'pk', 'name', 'site', 'zone', 'medium', 'protocol', 'gateway', 'service_count',
         )
 
 

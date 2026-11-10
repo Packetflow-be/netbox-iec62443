@@ -110,10 +110,10 @@ full conduit objects) and the same SVG diagram as the UI. Needs `view_conduit` a
   sits on an interface and ports (filled in from the protocol's usual ports when left empty: 502
   for Modbus TCP, 102 for S7comm, 44818 for EtherNet/IP, 4840 for OPC UA, ...). On a serial bus it
   sits on a fieldbus at an address (Modbus unit ID, PROFIBUS station, rack/slot).
-- **Fieldbuses**: RS-485/422/232, PROFIBUS, CAN, HART, AS-i, IO-Link segments, with the protocol, baud
-  rate and frame format (`8E1`), the zone they belong to and the gateway that bridges them to
-  Ethernet (a serial device server or protocol gateway). A passive network capture can't see these,
-  so they are usually entered by hand.
+- **Fieldbuses**: RS-485/422/232, PROFIBUS, CAN, HART, AS-i, IO-Link segments, with the protocol, the
+  zone they belong to and the gateway that bridges them to Ethernet (a serial device server or
+  protocol gateway). A passive network capture can't see these, so they are usually entered by hand.
+  Commissioning settings such as baud rate and frame format are deliberately not recorded here.
 - Protocols: Modbus TCP/RTU/ASCII, S7comm(-plus), PROFINET IO, PROFIBUS DP, EtherNet/IP (CIP),
   OPC UA/DA, DNP3, IEC 60870-5-101/104, IEC 61850 MMS/GOOSE, BACnet/IP and MS/TP, KNXnet/IP, MQTT,
   HART-IP, EtherCAT, CANopen, Omron FINS, MELSEC.
@@ -121,7 +121,9 @@ full conduit objects) and the same SVG diagram as the UI. Needs `view_conduit` a
   fieldbus), REST API (`/api/plugins/iec62443/industrial-services/`, `/fieldbuses/`) and GraphQL. The
   device and VM panel lists an asset's services and the buses it is gateway for.
 - The importer creates services from the analysis: a server for every protocol an asset answered or
-  listens on (well-known OT ports), a client for every protocol it sent requests in.
+  that the input names for it, a client for every protocol it sent requests in. An open port alone
+  creates no service, because a port does not identify the protocol (port 102 is S7comm on a Siemens
+  PLC and IEC 61850 MMS on a protection relay); the importer lists such ports for you to resolve.
 
 ## Design choices
 
@@ -139,29 +141,42 @@ full conduit objects) and the same SVG diagram as the UI. Needs `view_conduit` a
   conduit; if a path inside a zone matters (an engineering laptop writing to a PLC in the same cell),
   that usually means the zone should be split.
 - **"Allowed" defaults to unknown.** Tools fill in evidence; a person decides yes or no.
+- **A zone with conduits cannot be deleted.** Delete or move its conduits first, so verdicts and
+  evidence are never lost as a side effect.
 - Zone names and slugs are unique per site (and globally for zones without a site).
 
 ## Importer: observation files
 
 ```
-manage.py iec62443_import <dir> --site <slug> [--user <name>] [--dry-run]
-    [--rename "OLD=NEW" ...] [--outside-zone NAME] [--split ZONE ... | --split-all]
+manage.py iec62443_import <dir> --site <slug> [--vrf <name or RD>] [--user <name>] [--dry-run]
+    [--outside-zone NAME] [--split ZONE ... | --split-all]
 ```
 
 Reads observation files in the format described in [docs/import-format.md](docs/import-format.md)
 (`assets.json`, `flows.json`, optionally `summary.json`): what was seen on the network, for example
-from Zeek with the CISA ICSNPP parsers, Malcolm or an asset-discovery export. It creates:
+from Zeek with the CISA ICSNPP parsers, Malcolm or an asset-discovery export.
 
-- a zone per segment name, with the segment's /24 prefix and the assets found there (matched to
-  NetBox devices/VMs by primary IPv4), Purdue level = the lowest level among its assets;
-- a conduit per directed zone pair seen talking, with the OT protocols/functions that crossed it,
-  the connection counts as evidence, and *via* / *remote access* filled in when a router in another
-  zone writes into a controller;
+One import covers **one site and one routing domain**. The same machine network (say 192.168.0.0/24
+behind every OEM machine) is normal in OT, so the importer only matches devices, VMs and prefixes at
+`--site` and in `--vrf` (default: the global table). Import captures from different VRFs separately.
+It creates:
+
+- a zone per zone name in the input, with the assets found there (matched to NetBox devices/VMs by
+  primary IPv4 at the site and in the VRF; an address that matches more than one is skipped and
+  reported), Purdue level = the lowest level among its assets;
+- links to the prefixes NetBox already has for those assets (the most specific one, not a
+  container). It never creates prefixes, and it leaves a prefix unlinked when it holds assets of
+  more than one zone;
+- a conduit per directed zone pair seen talking, with the OT protocols/functions that crossed it and
+  the connection counts as evidence. Every OT request is classified as read, write, control or
+  program by an explicit table per protocol (`netbox_iec62443/importers/functions.py`); *via* lists
+  the assets that sent write, control or program requests or are marked as remote access, and
+  *remote access* is set when an asset marked `remote_access` in the input sent requests across;
 - the Purdue level custom field on the matched assets (only where it is still empty).
 
 Options:
 
-- `--rename "OLD=NEW"` renames a zone from the input (repeatable), e.g. to translate segment names.
+- `--vrf NAME_OR_RD` matches devices, VMs and prefixes in this VRF instead of the global table.
 - `--outside-zone NAME` names the zone for addresses not in assets.json (default `Outside`).
 - `--split ZONE` splits a zone that mixes Purdue bands into one zone per band, named
   `ZONE (control)` (levels 0-1), `ZONE (supervisory)` (2) and `ZONE (operations)` (3 and up), so the
@@ -173,10 +188,10 @@ Re-running refreshes evidence but never overwrites a conduit's "allowed" or a le
 Changes are recorded in the change log under `--user` (default: the first superuser).
 
 **Other sources (not built yet).** The importer is split in two: `build_plan()` turns input files
-into an `ImportPlan` (zones with prefixes and member IPs, conduits with evidence, per-asset levels),
-and `apply_plan()` writes any plan to NetBox. A Malcolm or plain Zeek importer only needs its own
-`build_plan`: aggregate `conn.log` (and the ICSNPP protocol logs) by NetBox prefix or zone instead of
-by /24, and reuse `apply_plan()` unchanged. Malcolm already creates devices and prefixes in NetBox, so
+into an `ImportPlan` (zones with member IPs, conduits with evidence, services, per-asset levels), and
+`apply_plan()` writes any plan to NetBox, resolving addresses to devices, VMs and prefixes within the
+site and VRF. A Malcolm or plain Zeek importer only needs its own `build_plan`: aggregate `conn.log`
+(and the ICSNPP protocol logs) by zone, and reuse `apply_plan()` unchanged. Malcolm already creates devices and prefixes in NetBox, so
 such an importer could start from Malcolm's NetBox data and only add zones and conduits.
 
 ## Language
