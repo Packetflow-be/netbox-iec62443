@@ -18,7 +18,8 @@ networks are normal in OT, so every lookup in NetBox is scoped to that site and 
             summary.json "zone_pairs" without any identified request become one flow without a protocol.
             ports = the destination ports the input gives (none are assumed); access = what the requests do
             (read, write, control, program; see functions.py); remote_access = an asset marked `remote_access`
-            sent requests on it; first/last seen = the requests' times, else the capture window; evidence = counts
+            sent requests on it, or the source zone is external; first/last seen = the requests' times, else the
+            capture window; evidence = counts
             and the request lines with their class. A flow joins the conduit that is the only one joining both
             of its zones; otherwise its conduit is left for a person to set.
   devices   matched by primary IPv4 within the site and VRF; an address that matches more than one device or
@@ -64,6 +65,7 @@ for _protocol, _ports in IndustrialProtocolChoices.DEFAULT_PORTS.items():
 OT_PORTS = dict(OT_PORTS)
 BANDS = ('control', 'supervisory', 'operations')
 LISTENING = ('server', 'both')
+EVIDENCE_LINES = 50  # request lines kept in a flow's evidence, largest counts first
 
 
 @dataclass
@@ -108,12 +110,26 @@ class OpenPort:
 
 
 @dataclass
+class HostPlan:
+    """What was seen of one address, for the report of observed hosts that NetBox does not know."""
+    ip: str
+    zone: str = ''  # '' when the address is outside the observed zones
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+    peers: set = field(default_factory=set)
+    serves: set = field(default_factory=set)  # protocols (and ports) it answered
+    uses: set = field(default_factory=set)  # protocols it sent requests in
+    open_ports: set = field(default_factory=set)
+
+
+@dataclass
 class ImportPlan:
     zones: dict
     flows: list
     asset_levels: dict  # ip -> Purdue level string
     services: list = field(default_factory=list)
     unidentified_ports: list = field(default_factory=list)
+    hosts: dict = field(default_factory=dict)  # ip -> HostPlan
 
 
 @dataclass
@@ -353,7 +369,9 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
                 ensure_outside()
         crossing = sorted(ot.get((src, dst, protocol), []), key=lambda r: -r.count)
         lines = [headers.get((src, dst)) or f'Passively seen: requests from {src} to {dst} in {seen_in}.']
-        lines += [f'Request: {r.line}' for r in crossing]
+        lines += [f'Request: {r.line}' for r in crossing[:EVIDENCE_LINES]]
+        if len(crossing) > EVIDENCE_LINES:
+            lines.append(f'... and {len(crossing) - EVIDENCE_LINES} more request lines')
         senders = list(dict.fromkeys(r.src for r in crossing if r.access in MODIFYING))
         if senders:
             lines.append('Changes the destination (write/control/program): ' + '; '.join(
@@ -376,7 +394,68 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
     asset_levels = {a['ip']: _level(a['purdue_level']) for a in assets if a.get('purdue_level') not in (None, '')}
     services = _plan_services(assets, requests, seen_in)
     return ImportPlan(zones=zones, flows=plans, asset_levels=asset_levels, services=services,
-                      unidentified_ports=_unidentified_ports(assets, services))
+                      unidentified_ports=_unidentified_ports(assets, services),
+                      hosts=_plan_hosts(assets, requests, {a['ip']: zone_of(a['ip']) for a in assets}))
+
+
+def _plan_hosts(assets, requests, zone_of_ip):
+    hosts = {}
+    labels = dict(_flat_choices())
+
+    def host(ip):
+        return hosts.setdefault(ip, HostPlan(ip=ip, zone=zone_of_ip.get(ip, '')))
+
+    for r in requests:
+        label = labels.get(r.protocol) or r.proto
+        for ip in (r.src, r.dst):
+            h = host(ip)
+            for t in (r.first_seen, r.last_seen):
+                if t:
+                    h.first_seen = min(h.first_seen, t) if h.first_seen else t
+                    h.last_seen = max(h.last_seen, t) if h.last_seen else t
+        host(r.src).peers.add(r.dst)
+        host(r.dst).peers.add(r.src)
+        host(r.dst).serves.add(f'{label} {r.port_mapping}'.strip() if r.port_mapping and r.port_mapping != label
+                               else label)
+        host(r.src).uses.add(label)
+    for a in assets:
+        host(a['ip']).open_ports.update(a.get('open_ports') or [])
+    return hosts
+
+
+def unknown_assets(plan, site, vrf=None):
+    """
+    The observed hosts that match no device or VM at `site` in `vrf`, as report rows: the point of passive
+    discovery. Hosts in a zone (inside the observed address space) come first.
+    """
+    from dcim.models import Device
+    from virtualization.models import VirtualMachine
+
+    known = set()
+    for model in (Device, VirtualMachine):
+        for address in model.objects.filter(site=site, primary_ip4__vrf=vrf).values_list(
+                'primary_ip4__address', flat=True):
+            known.add(str(address.ip))
+    rows = []
+    for ip, h in plan.hosts.items():
+        if ip in known:
+            continue
+        address = ipaddress.ip_address(ip)
+        rows.append({
+            'ip': ip,
+            'zone': h.zone,
+            'private': 'yes' if address.is_private else 'no',
+            'first_seen': h.first_seen.isoformat() if h.first_seen else '',
+            'last_seen': h.last_seen.isoformat() if h.last_seen else '',
+            'peers': len(h.peers),
+            'serves': ', '.join(sorted(h.serves)),
+            'uses': ', '.join(sorted(h.uses)),
+            'open_ports': ', '.join(str(p) for p in sorted(h.open_ports)),
+        })
+    return sorted(rows, key=lambda r: (not r['zone'], r['private'] == 'no', ipaddress.ip_address(r['ip'])))
+
+
+UNKNOWN_COLUMNS = ('ip', 'zone', 'private', 'first_seen', 'last_seen', 'peers', 'serves', 'uses', 'open_ports')
 
 
 def _flow_name(src, dst, protocol):
@@ -598,7 +677,8 @@ def apply_plan(plan, site, vrf=None, log=print):
         new = {
             'port_mappings': _merge(flow.port_mappings, fp.port_mappings),
             'access': _merge(flow.access, fp.access, order=list(CLASSES)),
-            'remote_access': flow.remote_access or fp.remote_access,
+            # A flow out of an external (supplier, MSP, outside) zone is remote access by definition
+            'remote_access': flow.remote_access or fp.remote_access or src.zone_type == ZoneTypeChoices.EXTERNAL,
             'first_seen': _widest(min, flow.first_seen, fp.first_seen),
             'last_seen': _widest(max, flow.last_seen, fp.last_seen),
             'evidence': fp.evidence,

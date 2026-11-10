@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,6 +14,7 @@ from ..checks import SEVERITIES, run_checks
 from ..choices import PurdueLevelChoices
 from ..models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
 from ..register import build_register, register_json
+from ..rules import build_rules
 from .serializers import (
     ConduitSerializer,
     FieldbusSerializer,
@@ -154,4 +156,39 @@ class RegisterAPIView(APIView):
         return Response({
             'site': SiteSerializer(site, nested=True, context={'request': request}).data,
             **register_json(build_register(site, user=request.user)),
+        })
+
+
+class FirewallRulesAPIView(APIView):
+    """
+    Vendor-neutral firewall rules from the allowed flows of a site. GET ?site_id=<id>[&device_id=<id> |
+    &virtual_machine_id=<id>][&include_denied=true]. Flows without a verdict are counted in not_exported.
+    """
+    queryset = Flow.objects.all()  # for NetBox's token permission check (view_flow)
+
+    def get_view_name(self):
+        return 'Firewall rules'
+
+    def get(self, request):
+        from dcim.models import Device
+        from virtualization.models import VirtualMachine
+
+        if not request.user.has_perm('netbox_iec62443.view_flow'):
+            raise PermissionDenied()
+        site = _site(request)
+        enforcer = None
+        for param, model in (('device_id', Device), ('virtual_machine_id', VirtualMachine)):
+            if request.query_params.get(param):
+                try:
+                    enforcer = model.objects.restrict(request.user, 'view').get(pk=int(request.query_params[param]))
+                except (ValueError, model.DoesNotExist):
+                    raise ValidationError({param: 'Not found.'})
+        flows = Flow.objects.restrict(request.user, 'view').filter(
+            Q(source_zone__site=site) | Q(destination_zone__site=site))
+        include_denied = request.query_params.get('include_denied', '').lower() in ('1', 'true', 'yes')
+        rules, skipped = build_rules(flows, enforced_by=enforcer, include_denied=include_denied)
+        return Response({
+            'site': SiteSerializer(site, nested=True, context={'request': request}).data,
+            'rules': rules,
+            'not_exported': dict(skipped),
         })

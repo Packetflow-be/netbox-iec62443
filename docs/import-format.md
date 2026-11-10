@@ -1,8 +1,9 @@
 # Import format (observation files)
 
 `manage.py iec62443_import <dir> --site <slug>` reads a directory with two or three JSON files. They
-describe what was seen on an OT network; any tool can write them: a script over Zeek (with the CISA
-ICSNPP parsers) or Malcolm logs, an export from an asset-discovery tool, or a spreadsheet you convert.
+describe what was seen on an OT network; any tool can write them: an export from an asset-discovery tool, a
+script over another sensor's output, or a spreadsheet you convert. Zeek logs need no conversion: the importer
+reads them directly (see [zeek.md](zeek.md)).
 The importer matches assets to existing NetBox devices and VMs by primary IPv4 address, only at the
 import's site and in its VRF (`--vrf`, default the global table); it does not create devices or
 prefixes. One directory describes one site and one routing domain.

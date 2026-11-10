@@ -39,6 +39,14 @@ First development version, for NetBox 4.7.
     or by the flow's own `access` field. Remote access comes from the asset's `remote_access` field.
   - An open port alone creates no industrial service; protocols come from decoded traffic or the asset's
     `services` field. Unexplained open OT ports are listed in the import output.
+- The importer reads Zeek logs directly (`--format zeek`, auto-detected): Zeek's own and the CISA ICSNPP
+  protocol logs (Modbus, S7comm, S7comm-plus, EtherNet/IP and CIP, DNP3, BACnet, OPC UA, Omron FINS, HART-IP,
+  PROFINET CM) and `conn.log`, TSV or JSON, gzipped and rotated files included. Zones come from NetBox (zone
+  prefixes and members in the site and VRF) plus an optional `--zone-map` CSV. Flows from an external zone are
+  remote access.
+- Every import reports the observed hosts that match nothing in NetBox; `--unknown-report` writes them to CSV.
+- Vendor-neutral firewall rules from the allowed flows (per site or per enforcing device; CSV or JSON): REST
+  `firewall-rules/`, `manage.py iec62443_rules`, and a CSV on the site's zone register.
 - Deleting a zone that still has flows is refused, so verdicts and evidence are never lost.
 - Industrial services (protocol, role, NetBox application service with the ports, or fieldbus/address) and
   fieldbuses (medium, protocol, zone, gateway), with UI, API, GraphQL and the device panel.
