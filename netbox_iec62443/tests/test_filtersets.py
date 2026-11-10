@@ -7,8 +7,14 @@ from dcim.models import Site
 from tenancy.models import Contact
 from utilities.testing import ChangeLoggedFilterSetTestMixin, create_test_device
 
-from netbox_iec62443.filtersets import ConduitFilterSet, FlowFilterSet, FlowHopFilterSet, ZoneFilterSet
-from netbox_iec62443.models import Conduit, Flow, FlowHop, Zone
+from netbox_iec62443.filtersets import (
+    ConduitFilterSet,
+    FlowFilterSet,
+    FlowHopFilterSet,
+    RiskAssessmentFilterSet,
+    ZoneFilterSet,
+)
+from netbox_iec62443.models import Conduit, Flow, FlowHop, RiskAssessment, Zone
 
 TODAY = timezone.localdate()
 
@@ -16,7 +22,7 @@ TODAY = timezone.localdate()
 class ZoneFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
     queryset = Zone.objects.all()
     filterset = ZoneFilterSet
-    ignore_fields = ('devices', 'virtual_machines', 'prefixes')
+    ignore_fields = ('devices', 'virtual_machines', 'prefixes', 'sl_target', 'sl_achieved')
 
     @classmethod
     def setUpTestData(cls):
@@ -27,7 +33,8 @@ class ZoneFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
         cls.device = create_test_device('plc-1', site=cls.sites[0])
         zones = (
             Zone.objects.create(name='Zone 1', slug='zone-1', site=cls.sites[0], purdue_level='1',
-                                security_level_target=2, description='foobar1'),
+                                sl_target=[2] * 7, sl_achieved=[2, 2, 1, 2, 2, 2, 2], description='foobar1',
+                                wireless=True),
             Zone.objects.create(name='Zone 2', slug='zone-2', site=cls.sites[0], purdue_level='3.5', zone_type='dmz'),
             Zone.objects.create(name='Zone 3', slug='zone-3', site=cls.sites[1], purdue_level='4',
                                 zone_type='enterprise'),
@@ -50,8 +57,11 @@ class ZoneFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
         self.assertEqual(self.filterset({'zone_type': ['dmz', 'enterprise']}, self.queryset).qs.count(), 2)
         self.assertEqual(self.filterset({'purdue_level': ['1', '3.5']}, self.queryset).qs.count(), 2)
 
-    def test_security_level_target(self):
-        self.assertEqual(self.filterset({'security_level_target': [2]}, self.queryset).qs.count(), 1)
+    def test_security_levels_and_attributes(self):
+        self.assertEqual(self.filterset({'has_sl_target': True}, self.queryset).qs.count(), 1)
+        self.assertEqual(self.filterset({'sl_gap': True}, self.queryset).qs.count(), 1)
+        self.assertEqual(self.filterset({'sl_gap': False}, self.queryset).qs.count(), 2)
+        self.assertEqual(self.filterset({'wireless': True}, self.queryset).qs.count(), 1)
 
     def test_device_and_conduit(self):
         self.assertEqual(self.filterset({'device_id': [self.device.pk]}, self.queryset).qs.count(), 1)
@@ -61,14 +71,14 @@ class ZoneFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
 class ConduitFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
     queryset = Conduit.objects.all()
     filterset = ConduitFilterSet
-    ignore_fields = ('zones', 'enforcing_devices', 'enforcing_virtual_machines')
+    ignore_fields = ('zones', 'enforcing_devices', 'enforcing_virtual_machines', 'sl_target', 'sl_achieved')
 
     @classmethod
     def setUpTestData(cls):
         cls.site = Site.objects.create(name='Site 1', slug='site-1')
         cls.zones = [Zone.objects.create(name=f'Z{i}', slug=f'z{i}', site=cls.site) for i in range(3)]
         cls.fw = create_test_device('fw-1', site=cls.site)
-        c1 = Conduit.objects.create(name='C1', site=cls.site, security_level_target=2, description='diode')
+        c1 = Conduit.objects.create(name='C1', site=cls.site, sl_target=[2] * 7, description='diode')
         c1.zones.set(cls.zones[:2])
         c1.enforcing_devices.add(cls.fw)
         Conduit.objects.create(name='C2', site=cls.site).zones.set(cls.zones[1:])
@@ -82,7 +92,7 @@ class ConduitFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
         self.assertEqual(self.filterset({'zone_id': [self.zones[0].pk]}, self.queryset).qs.count(), 2)
 
     def test_sl_and_enforcing(self):
-        self.assertEqual(self.filterset({'security_level_target': [2]}, self.queryset).qs.count(), 1)
+        self.assertEqual(self.filterset({'has_sl_target': True}, self.queryset).qs.count(), 1)
         self.assertEqual(self.filterset({'enforcing_device_id': [self.fw.pk]}, self.queryset).qs.count(), 1)
 
 
@@ -167,3 +177,38 @@ class FlowHopFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
         self.assertEqual(self.filterset({'flow_id': [self.flow.pk]}, self.queryset).qs.count(), 3)
         self.assertEqual(self.filterset({'device_id': [self.jump.pk]}, self.queryset).qs.count(), 1)
         self.assertEqual(self.filterset({'q': 'jump'}, self.queryset).qs.count(), 1)
+
+
+
+class RiskAssessmentFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
+    queryset = RiskAssessment.objects.all()
+    filterset = RiskAssessmentFilterSet
+    ignore_fields = ('threats', 'vulnerabilities', 'consequences', 'countermeasures', 'document')
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.site = Site.objects.create(name='Site 1', slug='site-1')
+        cls.zone = Zone.objects.create(name='Cell', slug='cell', site=cls.site)
+        other = Zone.objects.create(name='Office', slug='office', site=cls.site)
+        cls.conduit = Conduit.objects.create(name='C1')
+        cls.conduit.zones.set([cls.zone, other])
+        RiskAssessment.objects.create(zone=cls.zone, assessed_on=TODAY, residual_risk='high', tolerable_risk='medium',
+                                      next_review=TODAY, method='company matrix')
+        RiskAssessment.objects.create(zone=other, assessed_on=TODAY, kind='initial', residual_risk='low',
+                                      tolerable_risk='medium')
+        RiskAssessment.objects.create(conduit=cls.conduit, assessed_on=TODAY, status='approved', approved_on=TODAY)
+
+    def _count(self, params):
+        return self.filterset(params, self.queryset).qs.count()
+
+    def test_subject_and_site(self):
+        self.assertEqual(self._count({'zone_id': [self.zone.pk]}), 1)
+        self.assertEqual(self._count({'conduit_id': [self.conduit.pk]}), 1)
+        self.assertEqual(self._count({'site_id': [self.site.pk]}), 3)
+
+    def test_kind_status_risk(self):
+        self.assertEqual(self._count({'kind': ['initial']}), 1)
+        self.assertEqual(self._count({'status': ['approved']}), 1)
+        self.assertEqual(self._count({'residual_above_tolerable': True}), 1)
+        self.assertEqual(self._count({'review_due': True}), 1)
+        self.assertEqual(self._count({'q': 'matrix'}), 1)

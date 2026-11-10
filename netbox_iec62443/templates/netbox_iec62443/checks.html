@@ -1,0 +1,31 @@
+{% extends 'generic/_base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "Consistency checks" %}{% if site %}: {{ site }}{% endif %}{% endblock %}
+
+{% block subtitle %}
+  <div class="text-secondary">
+    {% trans "What in the zone and conduit model contradicts itself, or is missing for an audit." %}
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label" for="{{ form.site_id.id_for_label }}">{{ form.site_id.label }}</label>
+          {{ form.site_id }}
+        </div>
+        <div class="col-md-5">
+          <label class="form-label" for="{{ form.severity.id_for_label }}">{{ form.severity.label }}</label>
+          {{ form.severity }}
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary w-100"><i class="mdi mdi-filter"></i> {% trans "Check" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% include 'netbox_iec62443/inc/checks_table.html' %}
+{% endblock %}

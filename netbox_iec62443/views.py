@@ -1,4 +1,5 @@
 from django.db.models import Count, Q
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import View
@@ -9,10 +10,13 @@ from netbox.ui import actions, attrs, layout, panels
 from netbox.views import generic
 from utilities.views import ContentTypePermissionRequiredMixin, ViewTab, register_model_view
 
-from . import filtersets, forms, tables
+from . import filtersets, forms, sl, tables
 from .accessmap import access_map_flows, access_map_svg, attention
+from .checks import CHECKS, run_checks, summary
 from .choices import PurdueLevelChoices
-from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, Zone
+from .customfields import get_sl_capability
+from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
+from .register import build_register, register_csv
 
 
 def _default_max_level():
@@ -34,7 +38,10 @@ class ZonePanel(panels.ObjectAttributesPanel):
     site = attrs.RelatedObjectAttr('site', linkify=True)
     zone_type = attrs.ChoiceAttr('zone_type', label=_('Zone type'))
     purdue_level = attrs.ChoiceAttr('purdue_level', label=_('Purdue level'))
-    security_level_target = attrs.ChoiceAttr('security_level_target', label=_('Security level target (SL-T)'))
+    parent = attrs.RelatedObjectAttr('parent', linkify=True, label=_('Parent zone'))
+    accountable = attrs.RelatedObjectAttr('accountable', linkify=True, label=_('Accountable'))
+    wireless = attrs.BooleanAttr('wireless', label=_('Wireless'))
+    temporary_devices = attrs.BooleanAttr('temporary_devices', label=_('Temporarily connected devices'))
     tenant = attrs.RelatedObjectAttr('tenant', linkify=True, grouped_by='group')
     description = attrs.TextAttr('description')
 
@@ -42,8 +49,56 @@ class ZonePanel(panels.ObjectAttributesPanel):
 class ConduitPanel(panels.ObjectAttributesPanel):
     name = attrs.TextAttr('name')
     site = attrs.RelatedObjectAttr('site', linkify=True)
-    security_level_target = attrs.ChoiceAttr('security_level_target', label=_('Security level target (SL-T)'))
+    accountable = attrs.RelatedObjectAttr('accountable', linkify=True, label=_('Accountable'))
     description = attrs.TextAttr('description')
+
+
+class SecurityLevelPanel(panels.Panel):
+    """SL-T and SL-A per foundational requirement; for a zone also the lowest SL-C among its member devices."""
+    template_name = 'netbox_iec62443/inc/sl_panel.html'
+    title = _('Security levels')
+
+    def get_context(self, context):
+        obj = context['object']
+        capability = None
+        if isinstance(obj, Zone):
+            capability = sl.minimum(get_sl_capability(d) for d in obj.devices.select_related('device_type'))
+        rows = [(*row, capability[i] if capability else None)
+                for i, row in enumerate(sl.rows(obj.sl_target, obj.sl_achieved))]
+        return {**super().get_context(context), 'rows': rows, 'capability': capability}
+
+
+class RiskAssessmentPanel(panels.ObjectAttributesPanel):
+    zone = attrs.RelatedObjectAttr('zone', linkify=True)
+    conduit = attrs.RelatedObjectAttr('conduit', linkify=True)
+    kind = attrs.ChoiceAttr('kind')
+    status = attrs.ChoiceAttr('status')
+    assessed_on = attrs.DateTimeAttr('assessed_on', spec='date', label=_('Assessed on'))
+    assessed_by = attrs.RelatedObjectAttr('assessed_by', linkify=True, label=_('Assessed by'))
+    approved_on = attrs.DateTimeAttr('approved_on', spec='date', label=_('Approved on'))
+    approved_by = attrs.RelatedObjectAttr('approved_by', linkify=True, label=_('Approved by'))
+    next_review = attrs.DateTimeAttr('next_review', spec='date', label=_('Next review'))
+    method = attrs.TextAttr('method')
+    document = attrs.TextAttr('document')
+    description = attrs.TextAttr('description')
+
+
+class RiskLevelsPanel(panels.ObjectAttributesPanel):
+    unmitigated_risk = attrs.ChoiceAttr('unmitigated_risk', label=_('Unmitigated risk'))
+    residual_risk = attrs.ChoiceAttr('residual_risk', label=_('Residual risk'))
+    tolerable_risk = attrs.ChoiceAttr('tolerable_risk', label=_('Tolerable risk'))
+    residual_above_tolerable = attrs.BooleanAttr('residual_above_tolerable', label=_('Residual above tolerable'))
+
+
+def _risk_assessments_panel(field):
+    return panels.ObjectsTablePanel(
+        'netbox_iec62443.riskassessment',
+        filters={f'{field}_id': lambda ctx: ctx['object'].pk},
+        exclude_columns=['subject'],
+        title=_('Risk assessments'),
+        actions=[actions.AddObject('netbox_iec62443.riskassessment', label=_('Add'),
+                                   url_params={field: lambda ctx: ctx['object'].pk})],
+    )
 
 
 class FlowPanel(panels.ObjectAttributesPanel):
@@ -103,10 +158,17 @@ class ZoneView(generic.ObjectView):
             TagsPanel(),
         ],
         right_panels=[
+            SecurityLevelPanel(),
             CustomFieldsPanel(),
             panels.CommentsPanel(),
         ],
         bottom_panels=[
+            _risk_assessments_panel('zone'),
+            panels.ObjectsTablePanel(
+                'netbox_iec62443.zone',
+                filters={'parent_id': lambda ctx: ctx['object'].pk},
+                title=_('Sub-zones'),
+            ),
             panels.ObjectsTablePanel(
                 'netbox_iec62443.conduit',
                 filters={'zone_id': lambda ctx: ctx['object'].pk},
@@ -191,6 +253,7 @@ class ConduitView(generic.ObjectView):
             TagsPanel(),
         ],
         right_panels=[
+            SecurityLevelPanel(),
             CustomFieldsPanel(),
             panels.CommentsPanel(),
         ],
@@ -200,6 +263,7 @@ class ConduitView(generic.ObjectView):
                 filters={'conduit_id': lambda ctx: ctx['object'].pk},
                 title=_('Zones'),
             ),
+            _risk_assessments_panel('conduit'),
             panels.ObjectsTablePanel(
                 'dcim.device',
                 filters={'id': lambda ctx: _ids_or_none(ctx['object'].enforcing_devices.all())},
@@ -385,6 +449,72 @@ class FlowHopBulkDeleteView(generic.BulkDeleteView):
     queryset = FlowHop.objects.all()
     filterset = filtersets.FlowHopFilterSet
     table = tables.FlowHopTable
+
+
+#
+# Risk assessments
+#
+
+@register_model_view(RiskAssessment, 'list', path='', detail=False)
+class RiskAssessmentListView(generic.ObjectListView):
+    queryset = RiskAssessment.objects.select_related('zone', 'conduit', 'assessed_by', 'approved_by')
+    filterset = filtersets.RiskAssessmentFilterSet
+    filterset_form = forms.RiskAssessmentFilterForm
+    table = tables.RiskAssessmentTable
+
+
+@register_model_view(RiskAssessment)
+class RiskAssessmentView(generic.ObjectView):
+    queryset = RiskAssessment.objects.all()
+    template_name = 'generic/object.html'
+    layout = layout.SimpleLayout(
+        left_panels=[
+            RiskAssessmentPanel(),
+            RiskLevelsPanel(title=_('Risk')),
+            TagsPanel(),
+        ],
+        right_panels=[
+            panels.TextCodePanel('threats', title=_('Threats')),
+            panels.TextCodePanel('vulnerabilities', title=_('Vulnerabilities')),
+            panels.TextCodePanel('consequences', title=_('Consequences')),
+            panels.TextCodePanel('countermeasures', title=_('Countermeasures')),
+            CustomFieldsPanel(),
+            panels.CommentsPanel(),
+        ],
+    )
+
+
+@register_model_view(RiskAssessment, 'add', detail=False)
+@register_model_view(RiskAssessment, 'edit')
+class RiskAssessmentEditView(generic.ObjectEditView):
+    queryset = RiskAssessment.objects.all()
+    form = forms.RiskAssessmentForm
+
+
+@register_model_view(RiskAssessment, 'delete')
+class RiskAssessmentDeleteView(generic.ObjectDeleteView):
+    queryset = RiskAssessment.objects.all()
+
+
+@register_model_view(RiskAssessment, 'bulk_import', path='import', detail=False)
+class RiskAssessmentBulkImportView(generic.BulkImportView):
+    queryset = RiskAssessment.objects.all()
+    model_form = forms.RiskAssessmentImportForm
+
+
+@register_model_view(RiskAssessment, 'bulk_edit', path='edit', detail=False)
+class RiskAssessmentBulkEditView(generic.BulkEditView):
+    queryset = RiskAssessment.objects.all()
+    filterset = filtersets.RiskAssessmentFilterSet
+    table = tables.RiskAssessmentTable
+    form = forms.RiskAssessmentBulkEditForm
+
+
+@register_model_view(RiskAssessment, 'bulk_delete', path='delete', detail=False)
+class RiskAssessmentBulkDeleteView(generic.BulkDeleteView):
+    queryset = RiskAssessment.objects.all()
+    filterset = filtersets.RiskAssessmentFilterSet
+    table = tables.RiskAssessmentTable
 
 
 #
@@ -594,3 +724,62 @@ class SiteAccessMapView(generic.ObjectView):
             'levels': PurdueLevelChoices.CHOICES,
             **_access_map_context(request, instance, max_level),
         }
+
+
+#
+# Consistency checks and the register
+#
+
+class ChecksView(ContentTypePermissionRequiredMixin, View):
+    """Consistency checks for one site (or all sites)."""
+
+    def get_required_permission(self):
+        return 'netbox_iec62443.view_zone'
+
+    def get(self, request):
+        form = forms.ChecksFilterForm(request.GET or None)
+        site, severities = None, None
+        if form.is_valid():
+            site = form.cleaned_data.get('site_id')
+            severities = form.cleaned_data.get('severity') or None
+        if site is not None and not Site.objects.restrict(request.user, 'view').filter(pk=site.pk).exists():
+            site = None
+        findings = run_checks(site=site, user=request.user, severities=severities)
+        return render(request, 'netbox_iec62443/checks.html', {
+            'form': form,
+            'site': site,
+            'findings': findings,
+            'summary': summary(findings),
+            'checks': CHECKS,
+        })
+
+
+def _register_badge(site):
+    return Zone.objects.filter(site=site).count()
+
+
+@register_model_view(Site, name='iec62443_register', path='iec62443-register')
+class SiteRegisterView(generic.ObjectView):
+    """The zone and conduit register of a site: the audit deliverable, with CSV export."""
+    queryset = Site.objects.all()
+    template_name = 'netbox_iec62443/site_register.html'
+    tab = ViewTab(
+        label=_('Zone register'),
+        badge=_register_badge,
+        permission='netbox_iec62443.view_zone',
+        weight=2110,
+        hide_if_empty=True,
+    )
+
+    def get(self, request, **kwargs):
+        table = request.GET.get('export')
+        if table in ('zones', 'conduits', 'flows'):
+            site = self.get_object(**kwargs)
+            data = register_csv(build_register(site, user=request.user), table)
+            response = HttpResponse(data, content_type='text/csv; charset=utf-8')
+            response['Content-Disposition'] = f'attachment; filename="{site.slug}-iec62443-{table}.csv"'
+            return response
+        return super().get(request, **kwargs)
+
+    def get_extra_context(self, request, instance):
+        return {'register': build_register(instance, user=request.user)}

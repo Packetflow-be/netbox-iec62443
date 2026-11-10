@@ -1,0 +1,37 @@
+{% load i18n %}
+{% if summary %}
+  <div class="card">
+    <h2 class="card-header">{% trans "Summary" %}</h2>
+    <table class="table table-hover">
+      <thead><tr><th>{% trans "Check" %}</th><th>{% trans "Severity" %}</th><th>{% trans "Findings" %}</th></tr></thead>
+      <tbody>
+        {% for check_id, item in summary.items %}
+          <tr>
+            <td><a href="#check-{{ check_id }}">{{ item.0 }}</a> <code class="small text-muted">{{ check_id }}</code></td>
+            <td>{% if item.1 == 'error' %}<span class="badge text-bg-red">{% trans "Error" %}</span>{% elif item.1 == 'warning' %}<span class="badge text-bg-orange">{% trans "Warning" %}</span>{% else %}<span class="badge text-bg-blue">{% trans "Info" %}</span>{% endif %}</td>
+            <td>{{ item.2 }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2 class="card-header">{% trans "Findings" %} <span class="badge text-bg-secondary ms-1">{{ findings|length }}</span></h2>
+    <table class="table table-hover">
+      <thead><tr><th>{% trans "Severity" %}</th><th>{% trans "Check" %}</th><th>{% trans "Object" %}</th><th>{% trans "Finding" %}</th></tr></thead>
+      <tbody>
+        {% for f in findings %}
+          {% ifchanged f.check %}<tr id="check-{{ f.check }}"></tr>{% endifchanged %}
+          <tr>
+            <td><span class="badge text-bg-{{ f.color }}">{{ f.severity }}</span></td>
+            <td class="small">{{ f.title }}</td>
+            <td>{{ f.obj|linkify }}</td>
+            <td>{{ f.message }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="card"><div class="card-body text-muted">{% trans "No findings." %}</div></div>
+{% endif %}

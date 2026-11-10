@@ -10,6 +10,7 @@ from django.utils.translation import gettext_lazy as _
 
 from netbox.models import PrimaryModel
 
+from . import sl
 from .choices import (
     AccessChoices,
     FieldbusMediumChoices,
@@ -17,12 +18,14 @@ from .choices import (
     FlowProtocolChoices,
     IndustrialProtocolChoices,
     PurdueLevelChoices,
-    SecurityLevelChoices,
+    RiskAssessmentKindChoices,
+    RiskAssessmentStatusChoices,
+    RiskLevelChoices,
     ServiceRoleChoices,
     ZoneTypeChoices,
 )
 
-__all__ = ('Conduit', 'Fieldbus', 'Flow', 'FlowHop', 'IndustrialService', 'Zone')
+__all__ = ('Conduit', 'Fieldbus', 'Flow', 'FlowHop', 'IndustrialService', 'RiskAssessment', 'Zone')
 
 
 def stale_after_days():
@@ -64,11 +67,51 @@ class Zone(PrimaryModel):
         blank=True,
         help_text=_('The most critical (lowest) level in the zone; the access map counts the zone by it'),
     )
-    security_level_target = models.PositiveSmallIntegerField(
-        verbose_name=_('security level target (SL-T)'),
-        choices=SecurityLevelChoices,
+    sl_target = ArrayField(
+        base_field=models.PositiveSmallIntegerField(),
+        size=7,
+        verbose_name=_('SL-T'),
         blank=True,
         null=True,
+        validators=[sl.validate],
+        help_text=_('Security level target per FR (IAC, UC, SI, DC, RDF, TRE, RA), 0-4'),
+    )
+    sl_achieved = ArrayField(
+        base_field=models.PositiveSmallIntegerField(),
+        size=7,
+        verbose_name=_('SL-A'),
+        blank=True,
+        null=True,
+        validators=[sl.validate],
+        help_text=_('Security level achieved per FR, as assessed'),
+    )
+    accountable = models.ForeignKey(
+        to='tenancy.Contact',
+        on_delete=models.PROTECT,
+        related_name='%(app_label)s_%(class)s_accountable_for',
+        verbose_name=_('accountable'),
+        blank=True,
+        null=True,
+        help_text=_('The person accountable for its security'),
+    )
+    parent = models.ForeignKey(
+        to='self',
+        on_delete=models.SET_NULL,
+        related_name='subzones',
+        verbose_name=_('parent zone'),
+        blank=True,
+        null=True,
+        help_text=_('Makes this a sub-zone of another zone'),
+    )
+    wireless = models.BooleanField(
+        verbose_name=_('wireless'),
+        default=False,
+        help_text=_('The zone has wireless devices or links (IEC 62443-3-2 asks for them to be identified)'),
+    )
+    temporary_devices = models.BooleanField(
+        verbose_name=_('temporarily connected devices'),
+        default=False,
+        help_text=_('Laptops, USB media or service devices are connected to the zone from time to time'),
     )
     devices = models.ManyToManyField(
         to='dcim.Device',
@@ -86,7 +129,7 @@ class Zone(PrimaryModel):
         blank=True,
     )
 
-    clone_fields = ('site', 'tenant', 'zone_type', 'purdue_level', 'security_level_target')
+    clone_fields = ('site', 'tenant', 'zone_type', 'purdue_level', 'sl_target', 'parent', 'accountable')
 
     class Meta:
         ordering = ('site', 'name')
@@ -114,6 +157,32 @@ class Zone(PrimaryModel):
     def get_zone_type_color(self):
         return ZoneTypeChoices.colors.get(self.zone_type)
 
+    def clean(self):
+        super().clean()
+        if self.parent_id:
+            if self.parent_id == self.pk:
+                raise ValidationError({'parent': _('A zone cannot be its own parent.')})
+            ancestor, seen = self.parent, set()
+            while ancestor is not None and ancestor.pk not in seen:
+                if ancestor.pk == self.pk:
+                    raise ValidationError({'parent': _('This would make the zone a sub-zone of itself.')})
+                seen.add(ancestor.pk)
+                ancestor = ancestor.parent
+            if self.site_id and self.parent.site_id and self.parent.site_id != self.site_id:
+                raise ValidationError({'parent': _('The parent zone belongs to another site.')})
+
+    @property
+    def sl_target_display(self):
+        return sl.display(self.sl_target)
+
+    @property
+    def sl_achieved_display(self):
+        return sl.display(self.sl_achieved)
+
+    @property
+    def sl_gap(self):
+        return sl.below(self.sl_achieved, self.sl_target)
+
     @property
     def flows(self):
         """All flows that start or end in this zone."""
@@ -140,11 +209,32 @@ class Conduit(PrimaryModel):
         verbose_name=_('zones'),
         help_text=_('The zones this conduit joins (two or more)'),
     )
-    security_level_target = models.PositiveSmallIntegerField(
-        verbose_name=_('security level target (SL-T)'),
-        choices=SecurityLevelChoices,
+    sl_target = ArrayField(
+        base_field=models.PositiveSmallIntegerField(),
+        size=7,
+        verbose_name=_('SL-T'),
         blank=True,
         null=True,
+        validators=[sl.validate],
+        help_text=_('Security level target per FR (IAC, UC, SI, DC, RDF, TRE, RA), 0-4'),
+    )
+    sl_achieved = ArrayField(
+        base_field=models.PositiveSmallIntegerField(),
+        size=7,
+        verbose_name=_('SL-A'),
+        blank=True,
+        null=True,
+        validators=[sl.validate],
+        help_text=_('Security level achieved per FR, as assessed'),
+    )
+    accountable = models.ForeignKey(
+        to='tenancy.Contact',
+        on_delete=models.PROTECT,
+        related_name='%(app_label)s_%(class)s_accountable_for',
+        verbose_name=_('accountable'),
+        blank=True,
+        null=True,
+        help_text=_('The person accountable for its security'),
     )
     enforcing_devices = models.ManyToManyField(
         to='dcim.Device',
@@ -160,7 +250,7 @@ class Conduit(PrimaryModel):
         blank=True,
     )
 
-    clone_fields = ('site', 'security_level_target')
+    clone_fields = ('site', 'sl_target', 'accountable')
 
     class Meta:
         ordering = ('site', 'name')
@@ -176,6 +266,18 @@ class Conduit(PrimaryModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def sl_target_display(self):
+        return sl.display(self.sl_target)
+
+    @property
+    def sl_achieved_display(self):
+        return sl.display(self.sl_achieved)
+
+    @property
+    def sl_gap(self):
+        return sl.below(self.sl_achieved, self.sl_target)
 
 
 class Flow(PrimaryModel):
@@ -588,3 +690,122 @@ class IndustrialService(PrimaryModel):
 
     def get_role_color(self):
         return ServiceRoleChoices.colors.get(self.role)
+
+
+class RiskAssessment(PrimaryModel):
+    """
+    An IEC 62443-3-2 risk assessment of a zone or a conduit: the initial (worst case, ZCR 2) or the detailed one
+    (ZCR 5), with the unmitigated and residual risk against the organisation's tolerable risk. Keep every
+    assessment; the latest approved one is the one that counts.
+    """
+    zone = models.ForeignKey(
+        to=Zone,
+        on_delete=models.PROTECT,
+        related_name='risk_assessments',
+        blank=True,
+        null=True,
+    )
+    conduit = models.ForeignKey(
+        to=Conduit,
+        on_delete=models.PROTECT,
+        related_name='risk_assessments',
+        blank=True,
+        null=True,
+    )
+    kind = models.CharField(
+        verbose_name=_('kind'),
+        max_length=20,
+        choices=RiskAssessmentKindChoices,
+        default=RiskAssessmentKindChoices.DETAILED,
+    )
+    status = models.CharField(
+        verbose_name=_('status'),
+        max_length=20,
+        choices=RiskAssessmentStatusChoices,
+        default=RiskAssessmentStatusChoices.DRAFT,
+    )
+    assessed_on = models.DateField(verbose_name=_('assessed on'))
+    assessed_by = models.ForeignKey(
+        to='tenancy.Contact',
+        on_delete=models.PROTECT,
+        related_name='iec62443_risk_assessments',
+        verbose_name=_('assessed by'),
+        blank=True,
+        null=True,
+    )
+    approved_by = models.ForeignKey(
+        to='tenancy.Contact',
+        on_delete=models.PROTECT,
+        related_name='iec62443_risk_assessments_approved',
+        verbose_name=_('approved by'),
+        blank=True,
+        null=True,
+    )
+    approved_on = models.DateField(verbose_name=_('approved on'), blank=True, null=True)
+    next_review = models.DateField(verbose_name=_('next review'), blank=True, null=True)
+    method = models.CharField(
+        verbose_name=_('method'),
+        max_length=200,
+        blank=True,
+        help_text=_('The risk matrix or method used, e.g. the company risk matrix'),
+    )
+    threats = models.TextField(verbose_name=_('threats'), blank=True)
+    vulnerabilities = models.TextField(verbose_name=_('vulnerabilities'), blank=True)
+    consequences = models.TextField(verbose_name=_('consequences'), blank=True)
+    unmitigated_risk = models.CharField(
+        verbose_name=_('unmitigated risk'),
+        max_length=20,
+        choices=RiskLevelChoices,
+        blank=True,
+    )
+    countermeasures = models.TextField(verbose_name=_('countermeasures'), blank=True)
+    residual_risk = models.CharField(
+        verbose_name=_('residual risk'),
+        max_length=20,
+        choices=RiskLevelChoices,
+        blank=True,
+    )
+    tolerable_risk = models.CharField(
+        verbose_name=_('tolerable risk'),
+        max_length=20,
+        choices=RiskLevelChoices,
+        blank=True,
+        help_text=_('The highest risk the organisation accepts here'),
+    )
+    document = models.URLField(verbose_name=_('document'), blank=True, help_text=_('Link to the full report'))
+
+    clone_fields = ('zone', 'conduit', 'kind', 'method', 'tolerable_risk')
+
+    class Meta:
+        ordering = ('-assessed_on', 'pk')
+        verbose_name = _('risk assessment')
+        verbose_name_plural = _('risk assessments')
+
+    def __str__(self):
+        return f'{self.subject} {self.get_kind_display().split(" (")[0].lower()} {self.assessed_on}'
+
+    @property
+    def subject(self):
+        return self.zone or self.conduit
+
+    @property
+    def residual_above_tolerable(self):
+        order = RiskLevelChoices.values()
+        if not self.residual_risk or not self.tolerable_risk:
+            return False
+        return order.index(self.residual_risk) > order.index(self.tolerable_risk)
+
+    def clean(self):
+        super().clean()
+        if bool(self.zone_id) == bool(self.conduit_id):
+            raise ValidationError(_('A risk assessment is of either a zone or a conduit.'))
+        if self.status == RiskAssessmentStatusChoices.APPROVED and not self.approved_on:
+            raise ValidationError({'approved_on': _('An approved assessment has an approval date.')})
+        if self.approved_on and self.approved_on < self.assessed_on:
+            raise ValidationError({'approved_on': _('Approved before it was assessed.')})
+
+    def get_status_color(self):
+        return RiskAssessmentStatusChoices.colors.get(self.status)
+
+    def get_residual_risk_color(self):
+        return RiskLevelChoices.colors.get(self.residual_risk)

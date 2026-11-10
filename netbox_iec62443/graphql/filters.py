@@ -11,7 +11,8 @@ from tenancy.graphql.filter_mixins import TenancyFilterMixin
 from .. import models
 
 __all__ = (
-    'ConduitFilter', 'FieldbusFilter', 'FlowFilter', 'FlowHopFilter', 'IndustrialServiceFilter', 'ZoneFilter',
+    'ConduitFilter', 'FieldbusFilter', 'FlowFilter', 'FlowHopFilter', 'IndustrialServiceFilter',
+    'RiskAssessmentFilter', 'ZoneFilter',
 )
 
 
@@ -22,14 +23,17 @@ class ZoneFilter(TenancyFilterMixin, PrimaryModelFilter):
     site_id: ID | None = strawberry_django.filter_field()
     zone_type: StrFilterLookup[str] | None = strawberry_django.filter_field()
     purdue_level: StrFilterLookup[str] | None = strawberry_django.filter_field()
-    security_level_target: FilterLookup[int] | None = strawberry_django.filter_field()
+    parent_id: ID | None = strawberry_django.filter_field()
+    accountable_id: ID | None = strawberry_django.filter_field()
+    wireless: FilterLookup[bool] | None = strawberry_django.filter_field()
+    temporary_devices: FilterLookup[bool] | None = strawberry_django.filter_field()
 
 
 @register_filter(models.Conduit, lookups=True)
 class ConduitFilter(PrimaryModelFilter):
     name: StrFilterLookup[str] | None = strawberry_django.filter_field()
     site_id: ID | None = strawberry_django.filter_field()
-    security_level_target: FilterLookup[int] | None = strawberry_django.filter_field()
+    accountable_id: ID | None = strawberry_django.filter_field()
     zones: Annotated['ZoneFilter', strawberry.lazy('netbox_iec62443.graphql.filters')] | None = (
         strawberry_django.filter_field()
     )
@@ -81,3 +85,13 @@ class IndustrialServiceFilter(PrimaryModelFilter):
     service_id: ID | None = strawberry_django.filter_field()
     fieldbus_id: ID | None = strawberry_django.filter_field()
     address: StrFilterLookup[str] | None = strawberry_django.filter_field()
+
+
+@register_filter(models.RiskAssessment, lookups=True)
+class RiskAssessmentFilter(PrimaryModelFilter):
+    zone_id: ID | None = strawberry_django.filter_field()
+    conduit_id: ID | None = strawberry_django.filter_field()
+    kind: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    status: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    residual_risk: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    tolerable_risk: StrFilterLookup[str] | None = strawberry_django.filter_field()

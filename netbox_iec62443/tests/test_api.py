@@ -5,7 +5,7 @@ from dcim.models import Site
 from tenancy.models import Contact
 from utilities.testing import APITestCase, APIViewTestCases, create_test_device
 
-from netbox_iec62443.models import Conduit, Flow, FlowHop, Zone
+from netbox_iec62443.models import Conduit, Flow, FlowHop, RiskAssessment, Zone
 
 
 class ZoneAPITest(APIViewTestCases.APIViewTestCase):
@@ -32,7 +32,8 @@ class ZoneAPITest(APIViewTestCases.APIViewTestCase):
             Zone(name='Zone 3', slug='zone-3', site=site, purdue_level='4'),
         ])
         cls.create_data = [
-            {'name': 'Zone 4', 'slug': 'zone-4', 'site': site.pk, 'purdue_level': '1', 'security_level_target': 2,
+            {'name': 'Zone 4', 'slug': 'zone-4', 'site': site.pk, 'purdue_level': '1',
+             'sl_target': [2, 2, 2, 1, 2, 1, 1], 'sl_achieved': [1] * 7, 'wireless': True,
              'devices': [devices[0].pk, devices[1].pk]},
             {'name': 'Zone 5', 'slug': 'zone-5', 'site': site.pk, 'purdue_level': '3.5', 'zone_type': 'dmz'},
             {'name': 'Zone 6', 'slug': 'zone-6', 'purdue_level': '', 'zone_type': 'external',
@@ -47,10 +48,10 @@ class ConduitAPITest(APIViewTestCases.APIViewTestCase):
     user_permissions = ('netbox_iec62443.view_zone', 'dcim.view_device')
     brief_fields = ['description', 'display', 'id', 'name', 'url']
     bulk_update_data = {
-        'security_level_target': 3,
+        'sl_target': [3, 3, 3, 2, 3, 2, 2],
     }
     bulk_update_invalid_data = {
-        'security_level_target': 9,
+        'sl_target': [9, 9, 9, 9, 9, 9, 9],
     }
 
     @classmethod
@@ -63,7 +64,7 @@ class ConduitAPITest(APIViewTestCases.APIViewTestCase):
         for name in ('Conduit 1', 'Conduit 2', 'Conduit 3'):
             Conduit.objects.create(name=name, site=site).zones.set([office, cell])
         cls.create_data = [
-            {'name': 'Conduit 4', 'site': site.pk, 'zones': [office.pk, dmz.pk], 'security_level_target': 2,
+            {'name': 'Conduit 4', 'site': site.pk, 'zones': [office.pk, dmz.pk], 'sl_target': [2] * 7,
              'enforcing_devices': [fw.pk]},
             {'name': 'Conduit 5', 'site': site.pk, 'zones': [cell.pk, dmz.pk]},
             {'name': 'Conduit 6', 'zones': sorted([office.pk, dmz.pk, cell.pk])},
@@ -211,3 +212,71 @@ class AccessMapAPITest(APITestCase):
         self.assertHttpStatus(response, status.HTTP_400_BAD_REQUEST)
         response = self.client.get(f'{self.url}?site_id={self.site.pk}&max_level=9', **self.header)
         self.assertHttpStatus(response, status.HTTP_400_BAD_REQUEST)
+
+
+
+class RiskAssessmentAPITest(APIViewTestCases.APIViewTestCase):
+    model = RiskAssessment
+    view_namespace = 'plugins-api:netbox_iec62443'
+    graphql_base_name = 'iec62443_risk_assessment'
+    user_permissions = ('netbox_iec62443.view_zone', 'netbox_iec62443.view_conduit', 'tenancy.view_contact')
+    brief_fields = ['assessed_on', 'description', 'display', 'id', 'kind', 'status', 'url']
+    bulk_update_data = {
+        'tolerable_risk': 'medium',
+    }
+    bulk_update_invalid_data = {
+        'tolerable_risk': 'meh',
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        site = Site.objects.create(name='Site 1', slug='site-1')
+        cell = Zone.objects.create(name='Cell', slug='cell', site=site, purdue_level='1')
+        office = Zone.objects.create(name='Office', slug='office', site=site, purdue_level='4')
+        conduit = Conduit.objects.create(name='Office - Cell', site=site)
+        conduit.zones.set([cell, office])
+        contact = Contact.objects.create(name='Risk owner')
+        for day in (1, 2, 3):
+            RiskAssessment.objects.create(zone=cell, assessed_on=f'2026-01-0{day}')
+        cls.create_data = [
+            {'zone': cell.pk, 'kind': 'initial', 'assessed_on': '2026-02-01', 'unmitigated_risk': 'high'},
+            {'conduit': conduit.pk, 'assessed_on': '2026-02-02', 'status': 'approved', 'approved_on': '2026-02-03',
+             'approved_by': contact.pk, 'residual_risk': 'low', 'tolerable_risk': 'medium'},
+            {'zone': office.pk, 'assessed_on': '2026-02-04', 'threats': 'phishing'},
+        ]
+
+
+class ChecksAndRegisterAPITest(APITestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.site = Site.objects.create(name='Site 1', slug='site-1')
+        office = Zone.objects.create(name='Office', slug='office', site=self.site, purdue_level='4')
+        cell = Zone.objects.create(name='Cell', slug='cell', site=self.site, purdue_level='1')
+        Flow.objects.create(name='office to cell', source_zone=office, destination_zone=cell, allowed='yes',
+                            remote_access=True)
+
+    def test_checks(self):
+        url = reverse('plugins-api:netbox_iec62443-api:checks')
+        response = self.client.get(f'{url}?site_id={self.site.pk}', **self.header)
+        self.assertHttpStatus(response, status.HTTP_403_FORBIDDEN)
+        self.add_permissions('netbox_iec62443.view_zone', 'netbox_iec62443.view_flow', 'netbox_iec62443.view_conduit',
+                             'dcim.view_site')
+        response = self.client.get(f'{url}?site_id={self.site.pk}&severity=warning', **self.header)
+        self.assertHttpStatus(response, status.HTTP_200_OK)
+        checks = {f['check'] for f in response.data['findings']}
+        self.assertIn('remote-access-without-expiry', checks)
+        self.assertIn('flow-without-conduit', checks)
+        self.assertTrue(all(f['severity'] == 'warning' for f in response.data['findings']))
+        response = self.client.get(f'{url}?site_id={self.site.pk}&severity=bogus', **self.header)
+        self.assertHttpStatus(response, status.HTTP_400_BAD_REQUEST)
+
+    def test_register(self):
+        self.add_permissions('netbox_iec62443.view_zone', 'netbox_iec62443.view_flow', 'netbox_iec62443.view_conduit',
+                             'dcim.view_site')
+        url = reverse('plugins-api:netbox_iec62443-api:register')
+        response = self.client.get(f'{url}?site_id={self.site.pk}', **self.header)
+        self.assertHttpStatus(response, status.HTTP_200_OK)
+        self.assertEqual(sorted(z['zone'] for z in response.data['zones']), ['Cell', 'Office'])
+        self.assertEqual([f['flow'] for f in response.data['flows']], ['office to cell'])
+        self.assertTrue(response.data['findings'])

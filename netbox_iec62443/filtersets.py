@@ -14,6 +14,7 @@ from utilities.filtersets import register_filterset
 from virtualization.models import VirtualMachine
 from vpn.models import Tunnel
 
+from . import sl
 from .choices import (
     AccessChoices,
     FieldbusMediumChoices,
@@ -21,16 +22,37 @@ from .choices import (
     FlowProtocolChoices,
     IndustrialProtocolChoices,
     PurdueLevelChoices,
-    SecurityLevelChoices,
+    RiskAssessmentKindChoices,
+    RiskAssessmentStatusChoices,
+    RiskLevelChoices,
     ServiceRoleChoices,
     ZoneTypeChoices,
 )
-from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, Zone, stale_after_days
+from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone, stale_after_days
 
 __all__ = (
     'ConduitFilterSet', 'FieldbusFilterSet', 'FlowFilterSet', 'FlowHopFilterSet', 'IndustrialServiceFilterSet',
-    'ZoneFilterSet',
+    'RiskAssessmentFilterSet', 'ZoneFilterSet',
 )
+
+
+class SecurityLevelFilterMixin(django_filters.FilterSet):
+    """Filters shared by zones and conduits: SL-T set, SL-A below SL-T, accountable person."""
+    has_sl_target = django_filters.BooleanFilter(
+        field_name='sl_target', lookup_expr='isnull', exclude=True, label=_('Has an SL-T'),
+    )
+    sl_gap = django_filters.BooleanFilter(method='filter_sl_gap', label=_('SL-A below SL-T'))
+    accountable_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Contact.objects.all(),
+        distinct=False,
+        label=_('Accountable (ID)'),
+    )
+
+    def filter_sl_gap(self, queryset, name, value):
+        if value is None:
+            return queryset
+        q = sl.gap_q('sl_achieved', 'sl_target')
+        return queryset.filter(q) if value else queryset.exclude(q)
 
 
 def port_mappings_q(field, port):
@@ -40,7 +62,7 @@ def port_mappings_q(field, port):
 
 
 @register_filterset
-class ZoneFilterSet(PrimaryModelFilterSet, TenancyFilterSet):
+class ZoneFilterSet(SecurityLevelFilterMixin, PrimaryModelFilterSet, TenancyFilterSet):
     site_id = django_filters.ModelMultipleChoiceFilter(
         queryset=Site.objects.all(),
         distinct=False,
@@ -55,7 +77,11 @@ class ZoneFilterSet(PrimaryModelFilterSet, TenancyFilterSet):
     )
     zone_type = django_filters.MultipleChoiceFilter(choices=ZoneTypeChoices, distinct=False)
     purdue_level = django_filters.MultipleChoiceFilter(choices=PurdueLevelChoices, distinct=False)
-    security_level_target = django_filters.MultipleChoiceFilter(choices=SecurityLevelChoices, distinct=False)
+    parent_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Zone.objects.all(),
+        distinct=False,
+        label=_('Parent zone (ID)'),
+    )
     device_id = django_filters.ModelMultipleChoiceFilter(
         field_name='devices',
         queryset=Device.objects.all(),
@@ -79,7 +105,7 @@ class ZoneFilterSet(PrimaryModelFilterSet, TenancyFilterSet):
 
     class Meta:
         model = Zone
-        fields = ('id', 'name', 'slug', 'description')
+        fields = ('id', 'name', 'slug', 'wireless', 'temporary_devices', 'description')
 
     def search(self, queryset, name, value):
         if not value.strip():
@@ -93,7 +119,7 @@ class ZoneFilterSet(PrimaryModelFilterSet, TenancyFilterSet):
 
 
 @register_filterset
-class ConduitFilterSet(PrimaryModelFilterSet):
+class ConduitFilterSet(SecurityLevelFilterMixin, PrimaryModelFilterSet):
     site_id = django_filters.ModelMultipleChoiceFilter(
         queryset=Site.objects.all(),
         distinct=False,
@@ -111,7 +137,6 @@ class ConduitFilterSet(PrimaryModelFilterSet):
         queryset=Zone.objects.all(),
         label=_('Zone (ID)'),
     )
-    security_level_target = django_filters.MultipleChoiceFilter(choices=SecurityLevelChoices, distinct=False)
     enforcing_device_id = django_filters.ModelMultipleChoiceFilter(
         field_name='enforcing_devices',
         queryset=Device.objects.all(),
@@ -295,6 +320,83 @@ class FlowHopFilterSet(PrimaryModelFilterSet):
             Q(tunnel__name__icontains=value) |
             Q(description__icontains=value)
         )
+
+
+@register_filterset
+class RiskAssessmentFilterSet(PrimaryModelFilterSet):
+    zone_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Zone.objects.all(),
+        distinct=False,
+        label=_('Zone (ID)'),
+    )
+    conduit_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Conduit.objects.all(),
+        distinct=False,
+        label=_('Conduit (ID)'),
+    )
+    site_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Site.objects.all(),
+        method='filter_site',
+        label=_('Site (ID) of the zone or conduit'),
+    )
+    kind = django_filters.MultipleChoiceFilter(choices=RiskAssessmentKindChoices, distinct=False)
+    status = django_filters.MultipleChoiceFilter(choices=RiskAssessmentStatusChoices, distinct=False)
+    unmitigated_risk = django_filters.MultipleChoiceFilter(choices=RiskLevelChoices, distinct=False)
+    residual_risk = django_filters.MultipleChoiceFilter(choices=RiskLevelChoices, distinct=False)
+    tolerable_risk = django_filters.MultipleChoiceFilter(choices=RiskLevelChoices, distinct=False)
+    residual_above_tolerable = django_filters.BooleanFilter(
+        method='filter_residual_above_tolerable', label=_('Residual risk above tolerable'),
+    )
+    review_due = django_filters.BooleanFilter(method='filter_review_due', label=_('Review due'))
+    assessed_by_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Contact.objects.all(),
+        distinct=False,
+        label=_('Assessed by (ID)'),
+    )
+    approved_by_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Contact.objects.all(),
+        distinct=False,
+        label=_('Approved by (ID)'),
+    )
+
+    class Meta:
+        model = RiskAssessment
+        fields = ('id', 'assessed_on', 'approved_on', 'next_review', 'method', 'description')
+
+    def search(self, queryset, name, value):
+        if not value.strip():
+            return queryset
+        return queryset.filter(
+            Q(zone__name__icontains=value) |
+            Q(conduit__name__icontains=value) |
+            Q(method__icontains=value) |
+            Q(threats__icontains=value) |
+            Q(vulnerabilities__icontains=value) |
+            Q(consequences__icontains=value) |
+            Q(countermeasures__icontains=value) |
+            Q(description__icontains=value)
+        )
+
+    def filter_site(self, queryset, name, value):
+        if not value:
+            return queryset
+        q = Q(zone__site__in=value) | Q(conduit__site__in=value) | Q(conduit__zones__site__in=value)
+        return queryset.filter(q).distinct()
+
+    def filter_residual_above_tolerable(self, queryset, name, value):
+        if value is None:
+            return queryset
+        levels = RiskLevelChoices.values()
+        q = Q()
+        for i, tolerable in enumerate(levels):
+            q |= Q(tolerable_risk=tolerable, residual_risk__in=levels[i + 1:])
+        return queryset.filter(q) if value else queryset.exclude(q)
+
+    def filter_review_due(self, queryset, name, value):
+        if value is None:
+            return queryset
+        q = Q(next_review__lte=timezone.localdate())
+        return queryset.filter(q) if value else queryset.exclude(q)
 
 
 @register_filterset

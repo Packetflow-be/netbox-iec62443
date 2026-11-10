@@ -38,6 +38,12 @@ menu = PluginMenu(
                 permissions=['netbox_iec62443.view_flowhop'], buttons=_buttons('flowhop'),
             ),
         )),
+        (_('Risk'), (
+            PluginMenuItem(
+                link='plugins:netbox_iec62443:riskassessment_list', link_text=_('Risk assessments'),
+                permissions=['netbox_iec62443.view_riskassessment'], buttons=_buttons('riskassessment'),
+            ),
+        )),
         (_('Industrial systems'), (
             PluginMenuItem(
                 link='plugins:netbox_iec62443:industrialservice_list', link_text=_('Industrial services'),
@@ -52,6 +58,10 @@ menu = PluginMenu(
             PluginMenuItem(
                 link='plugins:netbox_iec62443:accessmap', link_text=_('Access map'),
                 permissions=['netbox_iec62443.view_flow'],
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_iec62443:checks', link_text=_('Consistency checks'),
+                permissions=['netbox_iec62443.view_zone'],
             ),
         )),
     ),
