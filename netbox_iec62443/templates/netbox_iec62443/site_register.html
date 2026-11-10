@@ -30,7 +30,7 @@
           {% for z in register.zones %}
             <tr>
               <td>{{ z.zone }}</td><td>{{ z.type }}</td><td>{{ z.purdue_level|placeholder }}</td>
-              <td>{{ z.parent|placeholder }}</td><td>{{ z.sl_target|placeholder }}</td><td>{{ z.sl_achieved|placeholder }}</td>
+              <td>{{ z.parent|placeholder }}</td><td class="text-nowrap">{{ z.sl_target|placeholder }}</td><td class="text-nowrap">{{ z.sl_achieved|placeholder }}</td>
               <td>{{ z.accountable|placeholder }}</td><td>{{ z.wireless }}</td><td>{{ z.temporary_devices }}</td>
               <td class="small">{{ z.devices|placeholder }}{% if z.virtual_machines %}<br>{{ z.virtual_machines }}{% endif %}</td>
               <td class="small">{{ z.prefixes|placeholder }}</td>
@@ -54,7 +54,7 @@
         <tbody>
           {% for c in register.conduits %}
             <tr>
-              <td>{{ c.conduit }}</td><td>{{ c.zones }}</td><td>{{ c.sl_target|placeholder }}</td><td>{{ c.sl_achieved|placeholder }}</td>
+              <td>{{ c.conduit }}</td><td>{{ c.zones }}</td><td class="text-nowrap">{{ c.sl_target|placeholder }}</td><td class="text-nowrap">{{ c.sl_achieved|placeholder }}</td>
               <td>{{ c.enforced_by|placeholder }}</td><td>{{ c.accountable|placeholder }}</td>
               <td>{{ c.not_allowed }} / {{ c.unknown }} / {{ c.allowed }}</td>
               <td class="small">{{ c.risk_assessment|placeholder }}</td>
@@ -82,7 +82,7 @@
               <td>{{ f.access|placeholder }}</td><td>{{ f.remote_access }}</td><td class="small">{{ f.path|placeholder }}</td>
               <td>{{ f.conduit|placeholder }}</td><td>{{ f.allowed }}</td>
               <td class="small">{{ f.decided_by|placeholder }}{% if f.decided_on %}, {{ f.decided_on }}{% endif %}</td>
-              <td>{{ f.expires|placeholder }}</td><td>{{ f.last_seen|placeholder }}</td>
+              <td class="text-nowrap">{{ f.expires|placeholder }}</td><td class="text-nowrap">{{ f.last_seen|slice:":10"|placeholder }}</td>
             </tr>
           {% endfor %}
         </tbody>

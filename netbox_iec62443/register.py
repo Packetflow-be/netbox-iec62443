@@ -32,7 +32,10 @@ def _yes(value):
 
 
 def _date(value):
-    return value.isoformat() if value else ''
+    """ISO date, or date and time to the second."""
+    if not value:
+        return ''
+    return value.replace(microsecond=0).isoformat() if hasattr(value, 'hour') else value.isoformat()
 
 
 def _latest(ras):

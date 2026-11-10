@@ -4,19 +4,36 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netbox-iec62443"
-version = "0.1.0.dev0"
-description = "IEC 62443 zones and conduits, Purdue levels and an access map for NetBox"
+dynamic = ["version"]
+description = "IEC 62443 zones, conduits and flows, Purdue levels, an access map and a zone register for NetBox"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [{ name = "Packetflow" }]
 requires-python = ">=3.12"
-keywords = ["netbox", "netbox-plugin", "iec62443", "ot", "ics", "purdue"]
+keywords = ["netbox", "netbox-plugin", "iec62443", "ot", "ics", "scada", "purdue", "zeek", "icsnpp"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
     "Framework :: Django",
-    "Programming Language :: Python :: 3",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
     "Topic :: System :: Networking",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Packetflow-be/netbox-iec62443"
+Documentation = "https://github.com/Packetflow-be/netbox-iec62443#readme"
+Issues = "https://github.com/Packetflow-be/netbox-iec62443/issues"
+Changelog = "https://github.com/Packetflow-be/netbox-iec62443/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = { attr = "netbox_iec62443.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["netbox_iec62443*"]

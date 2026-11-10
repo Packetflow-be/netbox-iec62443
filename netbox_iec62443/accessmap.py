@@ -4,6 +4,8 @@ its "allowed?" verdict. Not allowed first, then allowed-but-expired, unknown, an
 server-rendered SVG with one arrow per directed zone pair.
 """
 import datetime
+import math
+from collections import defaultdict
 
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
@@ -105,27 +107,38 @@ def access_map_svg(flows, zones=()):
                 f'rx="4" class="zone"/><text x="{x + BOX_W / 2}" y="{y + BOX_H / 2 + 4}" text-anchor="middle" '
                 f'class="zn">{escape(z.name[:26])}</text></a>'
             )
-    # One arrow per directed zone pair
+    # One arrow per directed zone pair. Each zone spreads the ends of its arrows across its box, ordered by where
+    # the other zone sits, so arrows do not share a line; the count badge sits just before the arrowhead, in the
+    # gap above or below the destination box, where it cannot cover a zone's name.
     pairs = {}
     for f in flows:
         pairs.setdefault((f.source_zone_id, f.destination_zone_id), []).append(f)
-    pair_seen = {}
+    ends = defaultdict(list)
+    for src, dst in pairs:
+        ends[src].append(((src, dst), dst))
+        ends[dst].append(((src, dst), src))
+    for zone_pk in ends:
+        ends[zone_pk].sort(key=lambda end: (pos[end[1]][0], pos[end[1]][1]))
+
+    def anchor_x(zone_pk, key):
+        items = [k for k, _other in ends[zone_pk]]
+        n, i = len(items), items.index(key)
+        step = min(28, (BOX_W - 30) / max(n - 1, 1))
+        return pos[zone_pk][0] + BOX_W / 2 + (i - (n - 1) / 2) * step
+
     for (src, dst), members in pairs.items():
-        (sx, sy), (dx, dy) = pos[src], pos[dst]
-        key = tuple(sorted((src, dst)))
-        offset = pair_seen.get(key, 0) * 14
-        pair_seen[key] = pair_seen.get(key, 0) + 1
-        x1, x2 = sx + BOX_W / 2 + offset, dx + BOX_W / 2 + offset
+        (_sx, sy), (_dx, dy) = pos[src], pos[dst]
+        x1, x2 = anchor_x(src, (src, dst)), anchor_x(dst, (src, dst))
         if sy == dy:  # same row: arc above the boxes
             y1 = y2 = sy
-            mid_y = sy - 22 - offset
-            path = f'M{x1},{y1} Q{(x1 + x2) / 2},{mid_y - 20} {x2},{y2}'
-            lx, ly = (x1 + x2) / 2, mid_y - 8
+            path = f'M{x1},{y1} Q{(x1 + x2) / 2},{sy - 60} {x2},{y2}'
+            lx, ly = (x1 + x2) / 2, sy - 32
         else:
             y1 = sy + BOX_H if sy < dy else sy
             y2 = dy if sy < dy else dy + BOX_H
             path = f'M{x1},{y1} L{x2},{y2}'
-            lx, ly = (x1 + x2) / 2, (y1 + y2) / 2
+            length = math.hypot(x2 - x1, y2 - y1) or 1
+            lx, ly = x2 - (x2 - x1) / length * 18, y2 - (y2 - y1) / length * 18
         worst = min((_verdict(f) for f in members), key=WORST.index)
         color = LINE_COLORS.get(worst, '#888')
         dash = ' stroke-dasharray="6 4"' if any(f.remote_access for f in members) else ''
@@ -135,7 +148,7 @@ def access_map_svg(flows, zones=()):
             f'marker-end="url(#iec-arrow)"><title>{title}</title></path>'
         )
         badges.append(
-            f'<circle cx="{lx}" cy="{ly}" r="10" fill="{color}"/>'
+            f'<circle cx="{lx}" cy="{ly}" r="9" fill="{color}"><title>{title}</title></circle>'
             f'<text x="{lx}" y="{ly + 4}" text-anchor="middle" class="num">{len(members)}</text>'
         )
     aria = escape(_('Access map diagram'))

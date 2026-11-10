@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  schedule:
+    # Weekly, to see NetBox's next release break the plugin before it ships
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ruff
+      - run: ruff check .
+
+  test:
+    name: NetBox ${{ matrix.netbox }}
+    runs-on: ubuntu-latest
+    # NetBox's development branch may break the plugin before a release; that is a warning, not a failure
+    continue-on-error: ${{ matrix.netbox == 'feature' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported release, the newest 4.7 release (query-count baselines are recorded on it) and
+        # NetBox's development branch for the next release
+        netbox: ['v4.7.0', 'latest-4.7', 'feature']
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: netbox
+          POSTGRES_PASSWORD: netbox
+          POSTGRES_DB: netbox
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - name: Resolve the NetBox version
+        id: netbox
+        run: |
+          ref='${{ matrix.netbox }}'
+          if [ "$ref" = 'latest-4.7' ]; then
+            ref=$(git ls-remote --tags --refs https://github.com/netbox-community/netbox.git 'v4.7.*' \
+              | sed 's#.*/##' | grep -E '^v4\.7\.[0-9]+$' | sort -V | tail -1)
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Testing against NetBox $ref"
+      - uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox
+          ref: ${{ steps.netbox.outputs.ref }}
+          path: netbox
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: netbox/requirements.txt
+      - name: Install NetBox and the plugin
+        run: |
+          sed -i 's/psycopg\[c,pool\]/psycopg[binary,pool]/' netbox/requirements.txt
+          pip install -r netbox/requirements.txt
+          pip install -e plugin
+          cp plugin/.github/ci/configuration.py netbox/netbox/netbox/configuration.py
+          mkdir -p netbox/netbox/project-static/docs
+      - name: Migrations match the models
+        working-directory: netbox/netbox
+        env:
+          DEVELOPER: 'True'
+        run: python manage.py makemigrations netbox_iec62443 --check --dry-run
+      - name: Tests
+        working-directory: netbox/netbox
+        run: |
+          if [ '${{ matrix.netbox }}' = 'latest-4.7' ]; then
+            python manage.py test netbox_iec62443 --noinput --parallel auto
+          else
+            # Query counts differ between NetBox releases; record them instead of asserting (needs a serial run)
+            UPDATE_QUERY_COUNTS=1 python manage.py test netbox_iec62443 --noinput
+          fi
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - name: The wheel holds the templates and migrations
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          names = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist()
+          for needed in ('netbox_iec62443/templates/netbox_iec62443/accessmap.html',
+                         'netbox_iec62443/templates/netbox_iec62443/inc/sl_panel.html',
+                         'netbox_iec62443/migrations/0001_initial.py',
+                         'netbox_iec62443/tests/query_counts.json'):
+              assert needed in names, f'{needed} missing from the wheel'
+          print(f'{len(names)} files in the wheel')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    # A tag vX.Y.Z publishes to PyPI with trusted publishing (no token stored; see docs/development.md)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, test, build]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: The tag matches the package version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ls dist/ | grep -q "netbox_iec62443-${version}-py3-none-any.whl" \
+            || { echo "Tag $GITHUB_REF_NAME does not match the built version: $(ls dist/)"; exit 1; }
+      - uses: pypa/gh-action-pypi-publish@release/v1

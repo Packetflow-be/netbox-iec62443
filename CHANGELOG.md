@@ -1,8 +1,13 @@
 # Changelog
 
-## 0.1.0.dev0 (unreleased)
+## 0.1.0 (not yet released)
 
-First development version, for NetBox 4.7.
+First release, for NetBox 4.7 (4.7.0 and later; 4.8 allowed).
+
+- Packaging for PyPI, CI on NetBox 4.7.0, the newest 4.7 release and NetBox's development branch, and
+  publishing to PyPI from a version tag.
+- `manage.py iec62443_demo` creates a populated fictional plant (and `--delete` removes it), so a new user sees
+  the access map, register and checks within minutes.
 
 - Zone, Conduit, Flow and Flow hop models with UI views, bulk import/edit/delete, filters, search, REST API
   and GraphQL.
@@ -52,10 +57,10 @@ First development version, for NetBox 4.7.
   fieldbuses (medium, protocol, zone, gateway), with UI, API, GraphQL and the device panel.
 - English only; all strings translatable, so the UI follows NetBox's language once translations exist.
 
-### Upgrading from an earlier 0.1.0.dev0 build
+### Upgrading from a 0.1.0.dev0 development build
 
 The old conduit model (a directed zone pair with a verdict) becomes the flow model; migrations 0004-0007
-move the data and delete nothing. See "Upgrading from an earlier 0.1.0.dev0 build" in the README for what
+move the data and delete nothing. See "Upgrading from a 0.1.0.dev0 development build" in the README for what
 happens to two-way conduits, free-text protocols and via, and industrial service ports. Migrations
 0008-0010 turn a single SL-T number into the vector with that level for every FR. The data migration
 writes no change-log entries. Afterwards grant permissions on conduits and flow hops and run

@@ -11,13 +11,19 @@ remote access over 4G routers, TeamViewer, VPN or an MSP's jump host), and decid
 allowed. It also records industrial services (Modbus, S7comm, PROFINET, EtherNet/IP, OPC UA, DNP3, ...)
 and serial fieldbuses.
 
-Status: early development (0.1.0.dev0), tested on NetBox 4.7.2 and 4.7.4.
+Status: 0.1.0, alpha. Runs on NetBox 4.7 (tested in CI on 4.7.0 and the newest 4.7 release); see
+[Compatibility](#compatibility). To see it populated in a few minutes, run `manage.py iec62443_demo`.
 
-![Access map tab on a site](docs/access-map.png)
+![Access map tab on a site: flows into the controller zones, what needs attention, and a diagram](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62443/main/docs/access-map.png)
 
-![A zone with its conduits, devices and prefixes](docs/zone.png)
+![A zone: type, level, accountable person, SL-T/SL-A/SL-C per foundational requirement, risk assessments, sub-zones,
+conduits and flows](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62443/main/docs/zone.png)
 
-![Industrial services: protocol, role, ports or fieldbus per device](docs/industrial-services.png)
+![A flow: protocol, ports, verdict with who decided it and until when, and the path it runs through](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62443/main/docs/flow.png)
+
+![The zone register of a site, with CSV, JSON and firewall-rule exports](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62443/main/docs/register.png)
+
+![Consistency checks](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62443/main/docs/checks.png)
 
 ## What you get
 
@@ -77,15 +83,18 @@ filters on the flow list (`hop_device_id`, `remote_access`, `modifying`).
 
 ## Setup
 
-Requires NetBox 4.7.x.
+Requires NetBox 4.7 (see [Compatibility](#compatibility)).
 
 **NetBox installed from source** (`/opt/netbox`):
 
 ```bash
 cd /opt/netbox
-echo "netbox-iec62443 @ git+https://github.com/Packetflow-be/netbox-iec62443.git" | sudo tee -a local_requirements.txt
-sudo venv/bin/pip install "netbox-iec62443 @ git+https://github.com/Packetflow-be/netbox-iec62443.git"
+echo "netbox-iec62443" | sudo tee -a local_requirements.txt
+sudo venv/bin/pip install netbox-iec62443
 ```
+
+Until the first release is on PyPI, install from GitHub instead:
+`pip install "netbox-iec62443 @ git+https://github.com/Packetflow-be/netbox-iec62443.git"`.
 
 Add to `/opt/netbox/netbox/netbox/configuration.py`:
 
@@ -109,7 +118,7 @@ sudo systemctl restart netbox netbox-rq
 **[netbox-docker](https://github.com/netbox-community/netbox-docker)** (custom image, see its wiki on plugins):
 
 ```bash
-echo "netbox-iec62443 @ git+https://github.com/Packetflow-be/netbox-iec62443.git" >> plugin_requirements.txt
+echo "netbox-iec62443" >> plugin_requirements.txt
 cat >> configuration/plugins.py <<'PY'
 PLUGINS = ["netbox_iec62443"]
 PLUGINS_CONFIG = {"netbox_iec62443": {}}
@@ -124,7 +133,15 @@ docker compose up -d
 curl -s -H "Authorization: Token $TOKEN" https://netbox.example.com/api/status/ | grep netbox_iec62443
 ```
 
-**Import observations** (format in [docs/import-format.md](docs/import-format.md)):
+**Try it** with a fictional plant (zones, conduits, flows, an MSP remote-access path, services, risk
+assessments and a few things the checks will flag); `--delete` removes exactly what it created:
+
+```bash
+sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_demo
+```
+
+**Import a capture** (Zeek logs, see [docs/zeek.md](docs/zeek.md), or observation files, see
+[docs/import-format.md](docs/import-format.md)):
 
 ```bash
 sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_import ./observations --site <site-slug> --dry-run
@@ -138,7 +155,7 @@ Permissions: users who view flows also need view permission on zones (a flow sho
 access map needs `view_flow`. For development against netbox-docker, see
 [docs/development.md](docs/development.md).
 
-### Upgrading from an earlier 0.1.0.dev0 build
+### Upgrading from a 0.1.0.dev0 development build
 
 Earlier builds had a single "conduit" model that was really a directed zone pair with a verdict. The
 migrations turn it into the model above; nothing is deleted:
@@ -158,6 +175,17 @@ migrations turn it into the model above; nothing is deleted:
 Permissions, saved filters, export templates and event rules that pointed at the old conduit now point at
 flows. Grant permissions on the new *conduit* and *flow hop* models, and rebuild the search index:
 `manage.py reindex netbox_iec62443`.
+
+## Compatibility
+
+| Plugin | NetBox | Python |
+|---|---|---|
+| 0.1.x | 4.7.0 and later 4.7 releases; 4.8 allowed | 3.12, 3.13 |
+
+CI runs the full test suite on NetBox 4.7.0, on the newest 4.7 release, and every week on NetBox's
+development branch for the next release, so a NetBox change that breaks the plugin shows up before it ships.
+`max_version` admits 4.8 on the strength of that weekly run; it is lowered again if the next release breaks
+the plugin.
 
 ## Access map API
 
@@ -189,6 +217,8 @@ enforceable by a routed firewall. The plugin writes no vendor syntax and reads n
   `--fail-on` or worse (default: error), so a nightly job or a CI pipeline can watch the model.
 
 ## Industrial systems and protocols
+
+![Industrial services: protocol, role, application service with ports, or fieldbus and address](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62443/main/docs/industrial-services.png)
 
 - **Industrial services**: which industrial protocol a device or VM speaks, and as what: server
   (slave, outstation), client (master), both, publisher or subscriber. Over the network its ports and IP
@@ -331,8 +361,9 @@ inside a NetBox installation with the plugin enabled:
 python manage.py test netbox_iec62443 --keepdb
 ```
 
-Query-count baselines live in `netbox_iec62443/tests/query_counts.json` (re-record with
-`UPDATE_QUERY_COUNTS=1`). See `docs/development.md` for the netbox-docker workflow.
+Query-count baselines live in `netbox_iec62443/tests/query_counts.json`, recorded on the newest 4.7 release
+(re-record with `UPDATE_QUERY_COUNTS=1`). See [docs/development.md](docs/development.md) for a source or
+netbox-docker setup, CI and releasing.
 
 ## License
 
