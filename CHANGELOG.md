@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `--branch NAME` on `iec62443_demo`, `iec62443_import`, `iec62443_check` and `iec62443_rules`: the command
+  runs in that branch of the [netbox-branching](https://github.com/netboxlabs/netbox-branching) plugin instead
+  of main. Without the option nothing changes, and netbox-branching stays optional (#9).
+
 ## 0.2.0 (2026-11-11)
 
 - `iec62443_import --unknown-import DIR` writes the unknown hosts inside a zone as NetBox bulk-import files

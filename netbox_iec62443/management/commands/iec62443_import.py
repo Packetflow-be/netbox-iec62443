@@ -4,7 +4,7 @@ import uuid
 from contextlib import nullcontext
 from pathlib import Path
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
 from django.db import transaction
 from django.db.models import Q
 
@@ -14,6 +14,7 @@ from netbox.context_managers import event_tracking
 from users.models import User
 from utilities.request import NetBoxFakeRequest
 
+from netbox_iec62443.branching import BranchCommand
 from netbox_iec62443.importers import zeek
 from netbox_iec62443.importers.netbox_zones import zone_map_from_netbox
 from netbox_iec62443.importers.observations import (
@@ -26,7 +27,7 @@ from netbox_iec62443.importers.observations import (
 )
 
 
-class Command(BaseCommand):
+class Command(BranchCommand):
     help = ('Import zones, flows, Purdue levels and industrial services from observation files '
             '(docs/import-format.md) or from Zeek logs (with or without the CISA ICSNPP parsers)')
 
@@ -109,10 +110,10 @@ class Command(BaseCommand):
                                      'POST': {}, 'FILES': {}})
         # A dry run skips event tracking: no change log entries and no webhooks for rolled-back work
         tracking = nullcontext() if options['dry_run'] else event_tracking(request)
-        with transaction.atomic(), tracking:
+        with transaction.atomic(using=self.db_alias), tracking:
             stats = apply_plan(plan, site, vrf=vrf, log=lambda m: self.stdout.write(f'  {m}'))
             if options['dry_run']:
-                transaction.set_rollback(True)
+                transaction.set_rollback(True, using=self.db_alias)
         for k, v in sorted(stats.items()):
             self.stdout.write(f'{k}: {v}')
         self._report_unknown(plan, site, vrf, options['unknown_report'], options['unknown_import'])

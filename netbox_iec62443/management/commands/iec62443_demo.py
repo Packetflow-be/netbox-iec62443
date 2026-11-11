@@ -6,15 +6,17 @@ and --delete removes exactly that.
 """
 import datetime
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
 from django.db import transaction
 from django.utils import timezone
+
+from netbox_iec62443.branching import BranchCommand
 
 SITE_SLUG = 'iec62443-demo'
 PREFIX = 'IEC 62443 demo'
 
 
-class Command(BaseCommand):
+class Command(BranchCommand):
     help = 'Create (or --delete) a demo plant to try the plugin: zones, conduits, flows, services, risk assessments'
 
     def add_arguments(self, parser):
@@ -23,13 +25,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from dcim.models import Site
         if options['delete']:
-            with transaction.atomic():
+            with transaction.atomic(using=self.db_alias):
                 self._delete()
             self.stdout.write(self.style.SUCCESS('Demo data removed'))
             return
         if Site.objects.filter(slug=SITE_SLUG).exists():
             raise CommandError(f'The demo site "{SITE_SLUG}" already exists; remove it first with --delete')
-        with transaction.atomic():
+        with transaction.atomic(using=self.db_alias):
             site = self._create()
         self.stdout.write(self.style.SUCCESS(
             f'Demo plant created: open the site "{site}" and its Access map and Zone register tabs, or '

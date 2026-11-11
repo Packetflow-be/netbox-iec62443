@@ -1,13 +1,14 @@
 import json
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
 
 from dcim.models import Site
 
+from netbox_iec62443.branching import BranchCommand
 from netbox_iec62443.checks import CHECKS, SEVERITIES, run_checks
 
 
-class Command(BaseCommand):
+class Command(BranchCommand):
     help = 'Run the IEC 62443 consistency checks; exits non-zero when findings reach --fail-on (for CI)'
 
     def add_arguments(self, parser):

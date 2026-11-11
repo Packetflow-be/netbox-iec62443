@@ -140,6 +140,15 @@ assessments and a few things the checks will flag); `--delete` removes exactly w
 sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_demo
 ```
 
+**In a branch.** With the [netbox-branching](https://github.com/netboxlabs/netbox-branching) plugin, every
+page follows the branch picked in NetBox's menu. A `manage.py` command runs outside a web request and so works
+on main, unless you name a branch: `--branch NAME` on `iec62443_demo`, `iec62443_import`, `iec62443_check` and
+`iec62443_rules` runs the command in that branch and leaves main alone. The branch must exist and be ready.
+
+```bash
+sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_demo --branch demo
+```
+
 **Import a capture** (Zeek logs, see [docs/zeek.md](docs/zeek.md), or observation files, see
 [docs/import-format.md](docs/import-format.md)):
 
