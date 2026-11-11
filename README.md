@@ -11,7 +11,7 @@ remote access over 4G routers, TeamViewer, VPN or an MSP's jump host), and decid
 allowed. It also records industrial services (Modbus, S7comm, PROFINET, EtherNet/IP, OPC UA, DNP3, ...)
 and serial fieldbuses.
 
-Status: 0.1.0, alpha. Runs on NetBox 4.7 (tested in CI on 4.7.0 and the newest 4.7 release); see
+Status: 0.2.0, alpha. Runs on NetBox 4.7 (tested in CI on 4.7.0 and the newest 4.7 release); see
 [Compatibility](#compatibility). To see it populated in a few minutes, run `manage.py iec62443_demo`.
 
 ![Access map tab on a site: flows into the controller zones, what needs attention, and a diagram](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62443/main/docs/access-map.png)
