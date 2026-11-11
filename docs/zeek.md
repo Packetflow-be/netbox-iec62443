@@ -71,3 +71,7 @@ Every import ends with the observed hosts that match no device or VM at the site
 a zone first: these are the assets a passive capture found and nobody documented. `--unknown-report FILE.csv`
 writes all of them with their zone, first/last seen, number of peers, what they answered (protocol and
 port), what they used, and their open ports.
+
+`--unknown-import DIR` writes those inside a zone of the plant as NetBox bulk-import files (devices,
+interfaces, IP addresses); see the README. On a first visit, when NetBox is still empty, this is how the
+capture becomes a device list: name what each host is, import the files, and run the import again.

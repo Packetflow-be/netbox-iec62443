@@ -458,6 +458,54 @@ def unknown_assets(plan, site, vrf=None):
 UNKNOWN_COLUMNS = ('ip', 'zone', 'private', 'first_seen', 'last_seen', 'peers', 'serves', 'uses', 'open_ports')
 
 
+# The files of --unknown-import, in the order NetBox imports them, with their columns
+UNKNOWN_IMPORT_FILES = (
+    ('1-devices.csv', ('name', 'role', 'manufacturer', 'device_type', 'site', 'status', 'description')),
+    ('2-interfaces.csv', ('device', 'name', 'type')),
+    ('3-ip-addresses.csv', ('address', 'vrf', 'status', 'device', 'interface', 'is_primary')),
+)
+UNKNOWN_IMPORT_INTERFACE = 'eth0'
+
+
+def unknown_import_rows(plan, site, vrf=None):
+    """
+    The unknown hosts that sit in a zone of the plant, as rows for NetBox's own bulk import of devices,
+    interfaces and IP addresses: {file name: rows}. The importer does not create devices: a capture shows an
+    address and what it talks, not what the machine is, so role, manufacturer and device type are left empty
+    for a person to fill in. Hosts outside every zone, in an external zone or with a public address are left
+    out. The mask comes from the most specific prefix NetBox has for the address in the VRF, else it is /32.
+    """
+    from ipam.models import Prefix
+
+    from netbox_iec62443.models import Zone
+
+    zone_types = {z.name: z.zone_type for z in plan.zones.values()}
+    zone_types.update(Zone.objects.filter(site=site).values_list('name', 'zone_type'))
+    devices, interfaces, addresses = [], [], []
+    for row in unknown_assets(plan, site, vrf):
+        if not row['zone'] or row['private'] != 'yes' or zone_types.get(row['zone']) == ZoneTypeChoices.EXTERNAL:
+            continue
+        ip = row['ip']
+        name = f'unknown-{ip}'
+        seen = [f"In zone {row['zone']}"]
+        if row['first_seen']:
+            seen.append(f"seen {row['first_seen'][:10]}..{row['last_seen'][:10]}")
+        if row['serves']:
+            seen.append(f"serves {row['serves']}")
+        prefix = Prefix.objects.filter(vrf=vrf, prefix__net_contains_or_equals=ip).order_by(
+            '-prefix__net_mask_length').first()
+        devices.append({
+            'name': name, 'role': '', 'manufacturer': '', 'device_type': '', 'site': site.name, 'status': 'active',
+            'description': ('Found by passive discovery. ' + ', '.join(seen))[:200],
+        })
+        interfaces.append({'device': name, 'name': UNKNOWN_IMPORT_INTERFACE, 'type': 'other'})
+        addresses.append({
+            'address': f'{ip}/{prefix.prefix.prefixlen if prefix else 32}', 'vrf': vrf.name if vrf else '',
+            'status': 'active', 'device': name, 'interface': UNKNOWN_IMPORT_INTERFACE, 'is_primary': 'true',
+        })
+    return dict(zip((name for name, _ in UNKNOWN_IMPORT_FILES), (devices, interfaces, addresses)))
+
+
 def _flow_name(src, dst, protocol):
     label = dict(_flat_choices()).get(protocol) if protocol else None
     return f"{src} -> {dst} {label or '(unidentified)'}"[:100]

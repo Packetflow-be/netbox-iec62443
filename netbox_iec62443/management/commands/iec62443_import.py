@@ -16,7 +16,14 @@ from utilities.request import NetBoxFakeRequest
 
 from netbox_iec62443.importers import zeek
 from netbox_iec62443.importers.netbox_zones import zone_map_from_netbox
-from netbox_iec62443.importers.observations import UNKNOWN_COLUMNS, apply_plan, build_plan, unknown_assets
+from netbox_iec62443.importers.observations import (
+    UNKNOWN_COLUMNS,
+    UNKNOWN_IMPORT_FILES,
+    apply_plan,
+    build_plan,
+    unknown_assets,
+    unknown_import_rows,
+)
 
 
 class Command(BaseCommand):
@@ -33,6 +40,10 @@ class Command(BaseCommand):
                                  'on top of the zones NetBox already has for the site')
         parser.add_argument('--unknown-report', metavar='CSV',
                             help='Write the observed hosts that match no device or VM in NetBox to this CSV file')
+        parser.add_argument('--unknown-import', metavar='DIR',
+                            help='Write the unknown hosts inside a zone as NetBox bulk-import files (devices, '
+                                 'interfaces, IP addresses) to this directory; fill in role and device type, then '
+                                 'import them in NetBox')
         parser.add_argument('--site', required=True, help='Slug of the site the zones belong to')
         parser.add_argument('--user', help='Username recorded in the change log (default: first superuser)')
         parser.add_argument('--dry-run', action='store_true', help='Show what would change, then roll back')
@@ -104,7 +115,7 @@ class Command(BaseCommand):
                 transaction.set_rollback(True)
         for k, v in sorted(stats.items()):
             self.stdout.write(f'{k}: {v}')
-        self._report_unknown(plan, site, vrf, options['unknown_report'])
+        self._report_unknown(plan, site, vrf, options['unknown_report'], options['unknown_import'])
         self.stdout.write(self.style.WARNING('Dry run: nothing saved') if options['dry_run']
                           else self.style.SUCCESS(f'Done (change log user: {user})'))
 
@@ -126,7 +137,7 @@ class Command(BaseCommand):
         self.stdout.write(f'Zeek logs: {streams}')
         return {'assets': assets, 'flows': flows, 'summary': summary}
 
-    def _report_unknown(self, plan, site, vrf, path):
+    def _report_unknown(self, plan, site, vrf, path, import_dir):
         rows = unknown_assets(plan, site, vrf)
         in_zones = [r for r in rows if r['zone']]
         self.stdout.write(f'Observed hosts not in NetBox: {len(rows)} ({len(in_zones)} inside a zone)')
@@ -142,3 +153,15 @@ class Command(BaseCommand):
                 writer.writeheader()
                 writer.writerows(rows)
             self.stdout.write(f'Report written to {path}')
+        if import_dir:
+            files = unknown_import_rows(plan, site, vrf)
+            target = Path(import_dir)
+            target.mkdir(parents=True, exist_ok=True)
+            for name, columns in UNKNOWN_IMPORT_FILES:
+                with open(target / name, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=columns)
+                    writer.writeheader()
+                    writer.writerows(files[name])
+            self.stdout.write(f"Bulk-import files for {len(files['1-devices.csv'])} unknown host(s) written to "
+                              f'{target}: fill in role, manufacturer and device_type in 1-devices.csv, import the '
+                              f'files in order in NetBox, then run this import again')
