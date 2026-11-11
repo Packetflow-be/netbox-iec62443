@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (not yet released)
+## 0.1.0 (2026-11-11)
 
 First release, for NetBox 4.7 (4.7.0 and later; 4.8 allowed).
 
@@ -63,5 +63,6 @@ The old conduit model (a directed zone pair with a verdict) becomes the flow mod
 move the data and delete nothing. See "Upgrading from a 0.1.0.dev0 development build" in the README for what
 happens to two-way conduits, free-text protocols and via, and industrial service ports. Migrations
 0008-0010 turn a single SL-T number into the vector with that level for every FR. The data migration
-writes no change-log entries. Afterwards grant permissions on conduits and flow hops and run
-`manage.py reindex netbox_iec62443`.
+writes no change-log entries. Right after `migrate` the plugin extends every permission on flows to conduits
+and flow hops (not when it has constraints) and rebuilds the search index of its models. The REST endpoint
+`access-map/` returns `flows` where it returned `conduits`, without the SVG diagram.

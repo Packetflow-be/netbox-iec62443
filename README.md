@@ -173,8 +173,13 @@ migrations turn it into the model above; nothing is deleted:
   they were not the protocol's defaults).
 
 Permissions, saved filters, export templates and event rules that pointed at the old conduit now point at
-flows. Grant permissions on the new *conduit* and *flow hop* models, and rebuild the search index:
-`manage.py reindex netbox_iec62443`.
+flows. Right after `migrate`, the plugin gives every permission on flows the new *conduit* and *flow hop*
+models too (a permission with constraints is left alone and logged: extend it by hand) and rebuilds the
+search index of its models. Risk assessments are new: grant permissions on them yourself.
+
+The REST endpoint `access-map/` now returns `flows` (structured protocol, ports, access and hops) where it
+returned `conduits` with free text, and no longer carries the SVG diagram; the diagram is on the access map
+page.
 
 ## Compatibility
 
