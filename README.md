@@ -11,7 +11,7 @@ remote access over 4G routers, TeamViewer, VPN or an MSP's jump host), and decid
 allowed. It also records industrial services (Modbus, S7comm, PROFINET, EtherNet/IP, OPC UA, DNP3, ...)
 and serial fieldbuses.
 
-Status: 0.1.0, alpha. Runs on NetBox 4.7 (tested in CI on 4.7.0 and the newest 4.7 release); see
+Status: 0.2.0, alpha. Runs on NetBox 4.7 (tested in CI on 4.7.0 and the newest 4.7 release); see
 [Compatibility](#compatibility). To see it populated in a few minutes, run `manage.py iec62443_demo`.
 
 ![Access map tab on a site: flows into the controller zones, what needs attention, and a diagram](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62443/main/docs/access-map.png)
@@ -93,7 +93,7 @@ echo "netbox-iec62443" | sudo tee -a local_requirements.txt
 sudo venv/bin/pip install netbox-iec62443
 ```
 
-Until the first release is on PyPI, install from GitHub instead:
+For a build that is not released yet, install from GitHub instead:
 `pip install "netbox-iec62443 @ git+https://github.com/Packetflow-be/netbox-iec62443.git"`.
 
 Add to `/opt/netbox/netbox/netbox/configuration.py`:
@@ -292,7 +292,7 @@ enforceable by a routed firewall. The plugin writes no vendor syntax and reads n
 
 ```
 manage.py iec62443_import <dir> --site <slug> [--vrf <name or RD>] [--user <name>] [--dry-run]
-    [--format auto|zeek|observations] [--zone-map CSV] [--unknown-report CSV]
+    [--format auto|zeek|observations] [--zone-map CSV] [--unknown-report CSV] [--unknown-import DIR]
     [--outside-zone NAME] [--split ZONE ... | --split-all]
 ```
 
@@ -328,6 +328,13 @@ It creates:
 Every import ends with the **observed hosts that match no device or VM** in NetBox at the site, hosts inside
 a zone first, and `--unknown-report FILE.csv` writes them all with what was seen of them: finding these is
 the point of passive discovery. Flows out of an external zone are marked as remote access.
+
+The importer never creates devices: a capture shows an address and what it talks, not what the machine is.
+`--unknown-import DIR` writes the unknown hosts inside a zone of the plant (not those in an external zone)
+as three files for NetBox's own bulk import: `1-devices.csv`, `2-interfaces.csv` and `3-ip-addresses.csv`.
+Fill in `role`, `manufacturer` and `device_type` in the first, import the three in that order (Devices,
+Interfaces, IP addresses > Import), and run the import again: the new devices now get their zone, Purdue
+level and services. Rename them in NetBox afterwards; the files name them `unknown-<address>`.
 
 Options:
 

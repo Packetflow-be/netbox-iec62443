@@ -203,6 +203,44 @@ class ZeekImportCommandTest(TestCase):
         self.assertEqual({r['ip'] for r in rows}, {'10.10.10.99', '10.10.30.2', '192.168.50.7'})
         self.assertIn('Observed hosts not in NetBox: 3 (3 inside a zone)', output)
 
+    def test_unknown_import_files(self):
+        """The bulk-import files load in NetBox's own import forms once a person named role and device type."""
+        from dcim.forms import DeviceImportForm, InterfaceImportForm
+        from dcim.models import Device
+        from ipam.forms import IPAddressImportForm
+
+        with tempfile.TemporaryDirectory() as tmp:
+            write_logs(tmp)
+            Path(tmp, 'zones.csv').write_text('192.168.50.0/24,MSP,,external\n10.10.30.0/24,Servers,3\n')
+            out = StringIO()
+            call_command('iec62443_import', tmp, '--site', 'plant', '--zone-map', str(Path(tmp, 'zones.csv')),
+                         '--unknown-import', str(Path(tmp, 'import')), stdout=out)
+            files = {p.name: list(csv.DictReader(p.open())) for p in sorted(Path(tmp, 'import').iterdir())}
+        self.assertEqual(list(files), ['1-devices.csv', '2-interfaces.csv', '3-ip-addresses.csv'])
+        # The MSP laptop is in an external zone: not a device of the plant
+        self.assertEqual([d['name'] for d in files['1-devices.csv']], ['unknown-10.10.10.99', 'unknown-10.10.30.2'])
+        device = files['1-devices.csv'][0]
+        self.assertEqual((device['role'], device['device_type'], device['site']), ('', '', 'Plant'))
+        self.assertIn('In zone Cell', device['description'])
+        self.assertIn('serves tcp/445', device['description'])
+        # The mask of the prefix NetBox has, else /32
+        self.assertEqual([a['address'] for a in files['3-ip-addresses.csv']], ['10.10.10.99/24', '10.10.30.2/32'])
+        self.assertIn('Bulk-import files for 2 unknown host(s)', out.getvalue())
+
+        self.assertFalse(DeviceImportForm(device).is_valid())  # a person names what it is first
+        known = self.plc
+        for row in files['1-devices.csv']:
+            row.update(role=known.role.name, manufacturer=known.device_type.manufacturer.name,
+                       device_type=known.device_type.model)
+        for form_class, name in ((DeviceImportForm, '1-devices.csv'), (InterfaceImportForm, '2-interfaces.csv'),
+                                 (IPAddressImportForm, '3-ip-addresses.csv')):
+            for row in files[name]:
+                form = form_class(row)
+                self.assertTrue(form.is_valid(), form.errors)
+                form.save()
+        created = Device.objects.get(name='unknown-10.10.10.99')
+        self.assertEqual(str(created.primary_ip4), '10.10.10.99/24')
+
     def test_zeek_needs_zones(self):
         empty = Site.objects.create(name='Empty', slug='empty')
         with tempfile.TemporaryDirectory() as tmp:

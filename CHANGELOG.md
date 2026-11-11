@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 (2026-11-11)
+
+- `iec62443_import --unknown-import DIR` writes the unknown hosts inside a zone as NetBox bulk-import files
+  (devices, interfaces, IP addresses), for a first visit where NetBox does not know the plant's devices yet.
+  The importer still creates no devices itself: a person names the role and device type first.
+
 ## 0.1.0 (2026-11-11)
 
 First release, for NetBox 4.7 (4.7.0 and later; 4.8 allowed).
