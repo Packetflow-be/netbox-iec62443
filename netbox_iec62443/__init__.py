@@ -27,7 +27,9 @@ class IEC62443Config(PluginConfig):
         from django.db.models.signals import post_migrate
 
         from .customfields import ensure_custom_fields
+        from .upgrade import after_upgrade
         post_migrate.connect(ensure_custom_fields, sender=self)
+        post_migrate.connect(after_upgrade, sender=self)
 
 
 config = IEC62443Config
