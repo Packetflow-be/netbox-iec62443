@@ -2,9 +2,10 @@ from django.db.models import Q
 
 from netbox.plugins import PluginTemplateExtension
 
+from . import lifecycle
 from .accessmap import verdict_order
 from .choices import PurdueLevelChoices
-from .customfields import get_purdue_level
+from .customfields import get_firmware_version, get_purdue_level
 from .models import Conduit, Fieldbus, Flow, IndustrialService, Zone
 
 PANEL_FLOWS = 20
@@ -46,6 +47,10 @@ class AssetOTPanel(PluginTemplateExtension):
         if is_device and user.has_perm('netbox_ot.view_fieldbus'):
             bridges = Fieldbus.objects.restrict(user, 'view').filter(gateway=obj)
         level = get_purdue_level(obj)
+        firmware, end = '', None
+        if is_device:
+            firmware = get_firmware_version(obj)
+            end = lifecycle.end_of_support([obj]).get(obj.pk)
         return self.render('netbox_ot/inc/asset_panel.html', extra_context={
             'zones': zones,
             'flows': flows,
@@ -55,6 +60,9 @@ class AssetOTPanel(PluginTemplateExtension):
             'services': services,
             'bridges': bridges,
             'purdue_level': level,
+            'firmware': firmware,
+            'end_of_support': end,
+            'lifecycle_installed': is_device and lifecycle.installed(),
             'purdue_level_label': dict(PurdueLevelChoices.CHOICES).get(level, level),
             'purdue_level_color': PurdueLevelChoices.colors.get(level),
         })

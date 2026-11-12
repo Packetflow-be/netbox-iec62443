@@ -17,7 +17,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from . import sl
+from . import lifecycle, sl
 from .choices import FlowAllowedChoices, RiskAssessmentStatusChoices, ZoneTypeChoices
 from .customfields import get_purdue_level, get_sl_capability
 from .models import Conduit, Flow, RiskAssessment, Zone, stale_after_days
@@ -82,6 +82,13 @@ class Scope:
         self.conduits = list(conduits.prefetch_related('zones', 'enforcing_devices', 'enforcing_virtual_machines'))
         self.flows = flows.select_related('source_zone', 'destination_zone')
         self.visible = visible
+
+    def end_of_support(self):
+        """{device pk: EndOfSupport} for the devices in the zones in scope (netbox-lifecycle; empty without it)."""
+        if not hasattr(self, '_end_of_support'):
+            self._end_of_support = lifecycle.end_of_support(
+                {d.pk: d for z in self.zones for d in z.devices.all()}.values())
+        return self._end_of_support
 
     def members(self, zone):
         return list(zone.devices.all()) + list(zone.virtual_machines.all())
@@ -211,6 +218,37 @@ def capability_below_target(scope):
                 yield device, _('{device} SL-C {slc} is below SL-T {slt} of zone {zone} in {frs}').format(
                     device=device, slc=sl.display(get_sl_capability(device)), slt=sl.display(zone.sl_target),
                     zone=zone, frs=', '.join(frs))
+
+
+def _secure_zone_devices(scope):
+    """(zone, device, EndOfSupport) for devices with a lifecycle date in zones with an SL-T of 2 or more."""
+    ends = scope.end_of_support()
+    if not ends:
+        return
+    for zone in scope.zones:
+        if not zone.sl_target or max(zone.sl_target) < 2:
+            continue
+        for device in zone.devices.all():
+            if device.pk in ends:
+                yield zone, device, ends[device.pk]
+
+
+@check('end-of-support', _('Device past its end of support in a zone with SL-T 2 or more'), WARNING)
+def end_of_support(scope):
+    for zone, device, end in _secure_zone_devices(scope):
+        if end.passed:
+            yield device, _('{device} in zone {zone} (SL-T {slt}): {source} reached end of {kind} on {date}').format(
+                device=device, zone=zone, slt=sl.display(zone.sl_target), source=end.source, kind=end.kind,
+                date=end.date.isoformat())
+
+
+@check('end-of-support-ahead', _('Device reaches its end of support within a year (zone SL-T 2 or more)'), INFO)
+def end_of_support_ahead(scope):
+    for zone, device, end in _secure_zone_devices(scope):
+        if end.ahead:
+            yield device, _('{device} in zone {zone} (SL-T {slt}): {source} reaches end of {kind} on {date}').format(
+                device=device, zone=zone, slt=sl.display(zone.sl_target), source=end.source, kind=end.kind,
+                date=end.date.isoformat())
 
 
 #

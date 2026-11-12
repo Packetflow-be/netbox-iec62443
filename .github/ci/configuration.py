@@ -18,7 +18,7 @@ REDIS = {
 }
 SECRET_KEY = 'ci-only-not-a-secret-' + 'x' * 40
 API_TOKEN_PEPPERS = {1: 'ci-only-not-a-secret-' + 'y' * 40}
-# The upgrade job switches from the old plugin name to the new one
-PLUGINS = [os.environ.get('CI_PLUGIN', 'netbox_ot')]
-PLUGINS_CONFIG = {PLUGINS[0]: {}}
+# CI_PLUGINS: the upgrade job starts on the old plugin name, the companions job adds the companion plugins
+PLUGINS = os.environ.get('CI_PLUGINS', 'netbox_ot').split(',')
+PLUGINS_CONFIG = {name: {} for name in PLUGINS}
 DEVELOPER = os.environ.get('DEVELOPER') == 'True'

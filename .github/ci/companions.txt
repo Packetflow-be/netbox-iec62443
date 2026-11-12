@@ -1,0 +1,4 @@
+# Companion plugins netbox-ot is tested beside (the `companions` job in ci.yml). These pins are the tested
+# bundle that docs/companions.md recommends; raise them here first, CI then proves the new set.
+netbox-lifecycle==1.1.11
+netbox-inventory==2.7.1

@@ -7,15 +7,15 @@ import io
 
 from django.utils import timezone
 
-from . import __version__, sl
+from . import __version__, lifecycle, sl
 from .checks import run_checks, summary
 from .customfields import get_purdue_level
 from .models import Conduit, Flow, Zone
 
 ZONE_COLUMNS = (
     'zone', 'type', 'purdue_level', 'parent', 'sl_target', 'sl_achieved', 'accountable', 'wireless',
-    'temporary_devices', 'devices', 'virtual_machines', 'prefixes', 'risk_assessment', 'residual_risk',
-    'tolerable_risk', 'next_review', 'description',
+    'temporary_devices', 'devices', 'end_of_support', 'virtual_machines', 'prefixes', 'risk_assessment',
+    'residual_risk', 'tolerable_risk', 'next_review', 'description',
 )
 CONDUIT_COLUMNS = (
     'conduit', 'zones', 'sl_target', 'sl_achieved', 'enforced_by', 'accountable', 'flows', 'not_allowed',
@@ -68,6 +68,8 @@ def build_register(site, user=None):
     flows = flows.select_related('source_zone', 'destination_zone', 'conduit', 'decided_by').prefetch_related(
         'hops__device', 'hops__virtual_machine', 'hops__tunnel').order_by('source_zone__name',
                                                                          'destination_zone__name', 'name')
+    zones = list(zones)
+    ends = lifecycle.end_of_support({d.pk: d for z in zones for d in z.devices.all()}.values())
     zone_rows = []
     for z in zones:
         zone_rows.append({
@@ -76,6 +78,11 @@ def build_register(site, user=None):
             'sl_achieved': sl.display(z.sl_achieved), 'accountable': str(z.accountable or ''),
             'wireless': _yes(z.wireless), 'temporary_devices': _yes(z.temporary_devices),
             'devices': ', '.join(f'{d.name} ({get_purdue_level(d) or "-"})' for d in z.devices.all()),
+            # Devices past or within a year of their end of security fixes / support (netbox-lifecycle)
+            'end_of_support': ', '.join(
+                f'{d.name} ({ends[d.pk].date.isoformat()})' for d in z.devices.all()
+                if d.pk in ends and (ends[d.pk].passed or ends[d.pk].ahead)
+            ),
             'virtual_machines': ', '.join(v.name for v in z.virtual_machines.all()),
             'prefixes': ', '.join(str(p.prefix) for p in z.prefixes.all()),
             **_ra_columns(_latest(z.risk_assessments.all())),

@@ -32,7 +32,7 @@
               <td>{{ z.zone }}</td><td>{{ z.type }}</td><td>{{ z.purdue_level|placeholder }}</td>
               <td>{{ z.parent|placeholder }}</td><td class="text-nowrap">{{ z.sl_target|placeholder }}</td><td class="text-nowrap">{{ z.sl_achieved|placeholder }}</td>
               <td>{{ z.accountable|placeholder }}</td><td>{{ z.wireless }}</td><td>{{ z.temporary_devices }}</td>
-              <td class="small">{{ z.devices|placeholder }}{% if z.virtual_machines %}<br>{{ z.virtual_machines }}{% endif %}</td>
+              <td class="small">{{ z.devices|placeholder }}{% if z.virtual_machines %}<br>{{ z.virtual_machines }}{% endif %}{% if z.end_of_support %}<br><span class="text-danger">{% trans "End of support" %}: {{ z.end_of_support }}</span>{% endif %}</td>
               <td class="small">{{ z.prefixes|placeholder }}</td>
               <td class="small">{{ z.risk_assessment|placeholder }}</td>
               <td class="small">{% if z.residual_risk %}{{ z.residual_risk }} / {{ z.tolerable_risk|placeholder }}{% else %}{{ ''|placeholder }}{% endif %}</td>

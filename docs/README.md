@@ -12,6 +12,8 @@
 7. [Importer](importer.md): Zeek logs ([zeek.md](zeek.md)) and observation files
    ([import-format.md](import-format.md)).
 8. [REST API, GraphQL and management commands](api.md).
-9. [Development](development.md): running the tests, CI, releasing, translations.
+9. [Companion plugins](companions.md): netbox-lifecycle and netbox-inventory, the tested bundle, end of support,
+   firmware versions, a licence note.
+10. [Development](development.md): running the tests, CI, releasing, translations.
 
 Release notes: [CHANGELOG.md](../CHANGELOG.md).
