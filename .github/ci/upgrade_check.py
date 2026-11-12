@@ -53,8 +53,11 @@ if step == 'before':
 else:
     with open(os.environ['UPGRADE_SNAPSHOT']) as f:
         before = json.load(f)
-    if before != snapshot:
-        print('The upgrade changed the data; before:', json.dumps(before, indent=2, sort_keys=True))
+    # Custom fields the new version adds (e.g. the firmware version) are fine; none may go missing
+    missing = sorted(set(before.pop('custom_fields')) - set(snapshot.pop('custom_fields')))
+    if missing or before != snapshot:
+        print('The upgrade changed the data; before:', json.dumps(before, indent=2, sort_keys=True),
+              'custom fields missing:', missing)
         sys.exit(1)
     if not snapshot['objects']['Zone']:
         print('No zones: the demo plant was not created')
