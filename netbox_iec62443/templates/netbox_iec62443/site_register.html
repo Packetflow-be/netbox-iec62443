@@ -80,7 +80,7 @@
               <td>{{ f.from_zone }}</td><td>{{ f.to_zone }}</td>
               <td>
                 {{ f.protocol|placeholder }}{% if f.ports %} <span class="text-muted small">{{ f.ports }}</span>{% endif %}
-                {% if f._object.connection != 'client-server' %}
+                {% if f.connection != default_connection %}
                   <div class="small text-muted">{{ f.connection }}{% if f.broker_zone %}, {% trans "broker in" %} {{ f.broker_zone }}{% endif %}{% if f.topics %}: {{ f.topics }}{% endif %}</div>
                 {% endif %}
               </td>

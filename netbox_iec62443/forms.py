@@ -519,7 +519,7 @@ class FlowFilterForm(PrimaryModelFilterSetForm):
         FieldSet('site_id', 'zone_id', 'source_zone_id', 'destination_zone_id', 'conduit_id', 'has_conduit',
                  name=_('Zones')),
         FieldSet('protocol', 'port', 'access', 'modifying', 'remote_access', name=_('Traffic')),
-        FieldSet('connection', 'broker_zone_id', 'outbound_only', 'topic', name=_('Connection')),
+        FieldSet('connection', 'broker_zone_id', 'outbound_only', 'topics', name=_('Connection')),
         FieldSet('allowed', 'decided_by_id', 'expired', 'review_due', 'stale', name=_('Verdict')),
         FieldSet('hop_device_id', 'hop_virtual_machine_id', 'hop_tunnel_id', name=_('Path')),
         FieldSet('owner_group_id', 'owner_id', name=_('Ownership')),
@@ -546,7 +546,7 @@ class FlowFilterForm(PrimaryModelFilterSetForm):
     outbound_only = forms.NullBooleanField(
         label=_('No inbound connection'), required=False, widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
     )
-    topic = forms.CharField(label=_('Topic'), required=False)
+    topics = forms.CharField(label=_('Topic'), required=False)
     modifying = forms.NullBooleanField(
         label=_('Writes, controls or programs'), required=False,
         widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),

@@ -285,6 +285,7 @@ class FlowFormTest(TestCase):
         cell = Zone.objects.create(name='Cell', slug='cell', purdue_level='1')
         response = self.client.post(reverse('plugins:netbox_iec62443:flow_add'), {
             'source_zone': office.pk, 'destination_zone': cell.pk, 'protocol': 'ethernet-ip',
+            'connection': 'client-server',
             'port_mappings': '[{"protocol": "tcp", "ports": "44818"}, {"protocol": "udp", "ports": "2222"}]',
             'allowed': 'unknown',
         })
