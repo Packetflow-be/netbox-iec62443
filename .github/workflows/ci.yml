@@ -25,7 +25,7 @@ jobs:
       - run: ruff check .
 
   test:
-    name: NetBox ${{ matrix.netbox }}
+    name: NetBox ${{ matrix.netbox }}${{ matrix.branching && ' + netbox-branching' || '' }}
     runs-on: ubuntu-latest
     # NetBox's development branch may break the plugin before a release; that is a warning, not a failure
     continue-on-error: ${{ matrix.netbox == 'feature' }}
@@ -35,6 +35,12 @@ jobs:
         # The oldest supported release, the newest 4.7 release (query-count baselines are recorded on it) and
         # NetBox's development branch for the next release
         netbox: ['v4.7.0', 'latest-4.7', 'feature']
+        branching: [false]
+        include:
+          # The newest 4.7 release once more with netbox-branching installed: the --branch option, the default
+          # branch and the settings page are tested against real branches only there
+          - netbox: 'latest-4.7'
+            branching: true
     services:
       postgres:
         image: postgres:16
@@ -79,6 +85,11 @@ jobs:
           pip install -e plugin
           cp plugin/.github/ci/configuration.py netbox/netbox/netbox/configuration.py
           mkdir -p netbox/netbox/project-static/docs
+      - name: Install netbox-branching
+        if: matrix.branching
+        run: |
+          pip install 'netboxlabs-netbox-branching<2'
+          cat plugin/.github/ci/branching.py >> netbox/netbox/netbox/configuration.py
       - name: Migrations match the models
         working-directory: netbox/netbox
         env:
@@ -87,10 +98,11 @@ jobs:
       - name: Tests
         working-directory: netbox/netbox
         run: |
-          if [ '${{ matrix.netbox }}' = 'latest-4.7' ]; then
+          if [ '${{ matrix.netbox }}' = 'latest-4.7' ] && [ '${{ matrix.branching }}' != 'true' ]; then
             python manage.py test netbox_ot --noinput --parallel auto
           else
-            # Query counts differ between NetBox releases; record them instead of asserting (needs a serial run)
+            # Query counts differ between NetBox releases (and netbox-branching adds its own); record them
+            # instead of asserting (needs a serial run)
             UPDATE_QUERY_COUNTS=1 python manage.py test netbox_ot --noinput
           fi
 

@@ -25,7 +25,9 @@ from .choices import (
     ZoneTypeChoices,
 )
 
-__all__ = ('Conduit', 'Fieldbus', 'Flow', 'FlowHop', 'IndustrialService', 'RiskAssessment', 'Zone')
+__all__ = (
+    'Conduit', 'Fieldbus', 'Flow', 'FlowHop', 'IndustrialService', 'PluginSettings', 'RiskAssessment', 'Zone',
+)
 
 
 def stale_after_days():
@@ -809,3 +811,43 @@ class RiskAssessment(PrimaryModel):
 
     def get_residual_risk_color(self):
         return RiskLevelChoices.colors.get(self.residual_risk)
+
+
+class PluginSettings(models.Model):
+    """
+    The plugin's settings that an administrator changes in the GUI: one row.
+
+    A plain Django model on purpose: without change logging, netbox-branching does not copy it into branches,
+    so it lives in main and reads the same whichever branch is active.
+    """
+    branching_enabled = models.BooleanField(
+        verbose_name=_('use a branch for imports'), default=False,
+        help_text=_('The import and demo commands run in the default branch'),
+    )
+    default_branch = models.CharField(
+        verbose_name=_('default branch'), max_length=100, blank=True,
+        help_text=_('Name of a netbox-branching branch'),
+    )
+    protect_main = models.BooleanField(
+        verbose_name=_('refuse imports into main'), default=False,
+        help_text=_('The import and demo commands will not write to main'),
+    )
+    last_updated = models.DateTimeField(auto_now=True, null=True)
+    updated_by = models.CharField(max_length=150, blank=True)
+
+    class Meta:
+        verbose_name = _('plugin settings')
+        verbose_name_plural = _('plugin settings')
+
+    def __str__(self):
+        return str(_('OT settings'))
+
+    @classmethod
+    def load(cls):
+        """The settings row, created with the defaults on first use."""
+        return cls.objects.order_by('pk').first() or cls.objects.create()
+
+    def clean(self):
+        super().clean()
+        if self.branching_enabled and not self.default_branch:
+            raise ValidationError({'default_branch': _('Pick the branch that imports go to.')})

@@ -1,19 +1,16 @@
 import csv
 import json
-import uuid
 from contextlib import nullcontext
 from pathlib import Path
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
 from django.db import transaction
 from django.db.models import Q
 
 from dcim.models import Site
 from ipam.models import VRF
-from netbox.context_managers import event_tracking
-from users.models import User
-from utilities.request import NetBoxFakeRequest
 
+from netbox_ot.branching import BranchCommand, change_logging, changelog_user
 from netbox_ot.importers import zeek
 from netbox_ot.importers.netbox_zones import zone_map_from_netbox
 from netbox_ot.importers.observations import (
@@ -26,9 +23,13 @@ from netbox_ot.importers.observations import (
 )
 
 
-class Command(BaseCommand):
+class Command(BranchCommand):
     help = ('Import zones, flows, Purdue levels and industrial services from observation files '
             '(docs/import-format.md) or from Zeek logs (with or without the CISA ICSNPP parsers)')
+    follows_settings = True
+
+    def writes(self, options):
+        return not options.get('dry_run')
 
     def add_arguments(self, parser):
         parser.add_argument('directory', help='Directory holding assets.json, flows.json and optionally summary.json, '
@@ -86,11 +87,7 @@ class Command(BaseCommand):
                 data['summary'] = json.loads(summary.read_text()) if summary.exists() else {}
             except (OSError, ValueError) as e:
                 raise CommandError(f'Cannot read input: {e}')
-        users = User.objects.filter(username=options['user']) if options['user'] else \
-            User.objects.filter(is_superuser=True).order_by('pk')
-        user = users.first()
-        if user is None:
-            raise CommandError('No user for the change log (use --user)')
+        user = changelog_user(options['user'])
 
         try:
             plan = build_plan(data['assets'], data['flows'], data['summary'], outside_zone=options['outside_zone'],
@@ -105,14 +102,12 @@ class Command(BaseCommand):
             for op in plan.unidentified_ports:
                 self.stdout.write(f"  {op.ip} port {op.port}: {' or '.join(op.candidates)}?")
 
-        request = NetBoxFakeRequest({'id': uuid.uuid4(), 'user': user, 'META': {}, 'path': '', 'GET': {},
-                                     'POST': {}, 'FILES': {}})
         # A dry run skips event tracking: no change log entries and no webhooks for rolled-back work
-        tracking = nullcontext() if options['dry_run'] else event_tracking(request)
-        with transaction.atomic(), tracking:
+        tracking = nullcontext() if options['dry_run'] else change_logging(user)
+        with transaction.atomic(using=self.db_alias), tracking:
             stats = apply_plan(plan, site, vrf=vrf, log=lambda m: self.stdout.write(f'  {m}'))
             if options['dry_run']:
-                transaction.set_rollback(True)
+                transaction.set_rollback(True, using=self.db_alias)
         for k, v in sorted(stats.items()):
             self.stdout.write(f'{k}: {v}')
         self._report_unknown(plan, site, vrf, options['unknown_report'], options['unknown_import'])

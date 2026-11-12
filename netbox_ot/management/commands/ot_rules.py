@@ -1,14 +1,15 @@
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
 from django.db.models import Q
 
 from dcim.models import Device, Site
 from virtualization.models import VirtualMachine
 
+from netbox_ot.branching import BranchCommand
 from netbox_ot.models import Flow
 from netbox_ot.rules import build_rules, rules_csv, rules_json
 
 
-class Command(BaseCommand):
+class Command(BranchCommand):
     help = 'Export vendor-neutral firewall rules from the flows people allowed (CSV or JSON)'
 
     def add_arguments(self, parser):

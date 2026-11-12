@@ -14,6 +14,8 @@
 8. [REST API, GraphQL and management commands](api.md).
 9. [Companion plugins](companions.md): netbox-lifecycle and netbox-inventory, the tested bundle, end of support,
    firmware versions, a licence note.
-10. [Development](development.md): running the tests, CI, releasing, translations.
+10. [Working in a branch](branching.md): netbox-branching, `--branch` on the commands, a default branch for
+    imports and a guard for main.
+11. [Development](development.md): running the tests, CI, releasing, translations.
 
 Release notes: [CHANGELOG.md](../CHANGELOG.md).
