@@ -124,7 +124,8 @@ jobs:
           for needed in ('netbox_iec62443/templates/netbox_iec62443/accessmap.html',
                          'netbox_iec62443/templates/netbox_iec62443/inc/sl_panel.html',
                          'netbox_iec62443/migrations/0001_initial.py',
-                         'netbox_iec62443/tests/query_counts.json'):
+                         'netbox_iec62443/tests/query_counts.json',
+                         'netbox_iec62443/data/iec62443-3-3-2013.csv'):
               assert needed in names, f'{needed} missing from the wheel'
           print(f'{len(names)} files in the wheel')
           PY

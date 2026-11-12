@@ -39,7 +39,7 @@ version = { attr = "netbox_iec62443.__version__" }
 include = ["netbox_iec62443*"]
 
 [tool.setuptools.package-data]
-netbox_iec62443 = ["templates/**/*.html", "tests/*.json"]
+netbox_iec62443 = ["templates/**/*.html", "tests/*.json", "data/*.csv"]
 
 [tool.ruff]
 line-length = 120

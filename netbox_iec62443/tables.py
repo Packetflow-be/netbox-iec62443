@@ -4,11 +4,21 @@ from django.utils.translation import gettext_lazy as _
 from netbox.tables import PrimaryModelTable, columns
 from tenancy.tables import TenancyColumnsMixin
 
-from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
+from .models import (
+    Conduit,
+    Fieldbus,
+    Flow,
+    FlowHop,
+    IndustrialService,
+    RequirementStatus,
+    RiskAssessment,
+    SystemRequirement,
+    Zone,
+)
 
 __all__ = (
-    'ConduitTable', 'FieldbusTable', 'FlowHopTable', 'FlowTable', 'IndustrialServiceTable', 'RiskAssessmentTable',
-    'ZoneTable',
+    'ConduitTable', 'FieldbusTable', 'FlowHopTable', 'FlowTable', 'IndustrialServiceTable', 'RequirementStatusTable',
+    'RiskAssessmentTable', 'SystemRequirementTable', 'ZoneTable',
 )
 
 ACCESS_BADGES = """
@@ -198,4 +208,56 @@ class RiskAssessmentTable(PrimaryModelTable):
         default_columns = (
             'pk', 'subject', 'kind', 'status', 'assessed_on', 'approved_by', 'unmitigated_risk', 'residual_risk',
             'tolerable_risk', 'next_review',
+        )
+
+
+class SystemRequirementTable(PrimaryModelTable):
+    identifier = tables.Column(verbose_name=_('Identifier'), linkify=True)
+    edition = columns.ChoiceFieldColumn(verbose_name=_('Edition'))
+    foundational_requirement = columns.ChoiceFieldColumn(verbose_name=_('Foundational requirement'))
+    parent = tables.Column(verbose_name=_('Requirement'), linkify=True)
+    security_level = tables.Column(verbose_name=_('Applies from SL'))
+    wording = tables.Column(verbose_name=_('Wording'))
+    statuses = columns.LinkedCountColumn(
+        verbose_name=_('Statuses'), viewname='plugins:netbox_iec62443:requirementstatus_list',
+        url_params={'requirement_id': 'pk'}, accessor=tables.A('status_count'),
+    )
+    tags = columns.TagColumn(url_name='plugins:netbox_iec62443:systemrequirement_list')
+
+    class Meta(PrimaryModelTable.Meta):
+        model = SystemRequirement
+        fields = (
+            'pk', 'id', 'identifier', 'edition', 'foundational_requirement', 'parent', 'security_level', 'wording',
+            'statuses', 'description', 'comments', 'tags', 'created', 'last_updated',
+        )
+        default_columns = ('pk', 'identifier', 'foundational_requirement', 'security_level', 'description')
+
+
+class RequirementStatusTable(PrimaryModelTable):
+    id = tables.Column(verbose_name=_('ID'), linkify=True)
+    subject = tables.Column(verbose_name=_('Zone / conduit'), linkify=True, order_by=('zone__name', 'conduit__name'))
+    requirement = tables.Column(verbose_name=_('Requirement'), linkify=True)
+    foundational_requirement = columns.ChoiceFieldColumn(
+        verbose_name=_('FR'), accessor=tables.A('requirement__foundational_requirement'),
+        order_by=('requirement__foundational_requirement',),
+    )
+    security_level = tables.Column(
+        verbose_name=_('Applies from SL'), accessor=tables.A('requirement__security_level'),
+    )
+    status = columns.ChoiceFieldColumn(verbose_name=_('Status'))
+    risk_assessment = tables.Column(verbose_name=_('Risk assessment'), linkify=True)
+    assessed_by = tables.Column(verbose_name=_('Assessed by'), linkify=True)
+    assessed_on = columns.DateColumn(verbose_name=_('Assessed on'))
+    tags = columns.TagColumn(url_name='plugins:netbox_iec62443:requirementstatus_list')
+
+    class Meta(PrimaryModelTable.Meta):
+        model = RequirementStatus
+        fields = (
+            'pk', 'id', 'subject', 'requirement', 'foundational_requirement', 'security_level', 'status',
+            'countermeasure', 'evidence', 'risk_assessment', 'assessed_by', 'assessed_on', 'description', 'comments',
+            'tags', 'created', 'last_updated',
+        )
+        default_columns = (
+            'pk', 'subject', 'requirement', 'security_level', 'status', 'countermeasure', 'assessed_by',
+            'assessed_on',
         )

@@ -36,10 +36,18 @@ groups = (
             permissions=['netbox_iec62443.view_flowhop'], buttons=_buttons('flowhop'),
         ),
     )),
-    (_('Risk'), (
+    (_('Risk and requirements'), (
         PluginMenuItem(
             link='plugins:netbox_iec62443:riskassessment_list', link_text=_('Risk assessments'),
             permissions=['netbox_iec62443.view_riskassessment'], buttons=_buttons('riskassessment'),
+        ),
+        PluginMenuItem(
+            link='plugins:netbox_iec62443:requirementstatus_list', link_text=_('Requirement statuses'),
+            permissions=['netbox_iec62443.view_requirementstatus'], buttons=_buttons('requirementstatus'),
+        ),
+        PluginMenuItem(
+            link='plugins:netbox_iec62443:systemrequirement_list', link_text=_('System requirements'),
+            permissions=['netbox_iec62443.view_systemrequirement'], buttons=_buttons('systemrequirement'),
         ),
     )),
     (_('Industrial systems'), (

@@ -12,7 +12,7 @@ from .. import models
 
 __all__ = (
     'ConduitFilter', 'FieldbusFilter', 'FlowFilter', 'FlowHopFilter', 'IndustrialServiceFilter',
-    'RiskAssessmentFilter', 'ZoneFilter',
+    'RequirementStatusFilter', 'RiskAssessmentFilter', 'SystemRequirementFilter', 'ZoneFilter',
 )
 
 
@@ -97,3 +97,22 @@ class RiskAssessmentFilter(PrimaryModelFilter):
     status: StrFilterLookup[str] | None = strawberry_django.filter_field()
     residual_risk: StrFilterLookup[str] | None = strawberry_django.filter_field()
     tolerable_risk: StrFilterLookup[str] | None = strawberry_django.filter_field()
+
+
+@register_filter(models.SystemRequirement, lookups=True)
+class SystemRequirementFilter(PrimaryModelFilter):
+    edition: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    identifier: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    foundational_requirement: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    parent_id: ID | None = strawberry_django.filter_field()
+    security_level: FilterLookup[int] | None = strawberry_django.filter_field()
+
+
+@register_filter(models.RequirementStatus, lookups=True)
+class RequirementStatusFilter(PrimaryModelFilter):
+    zone_id: ID | None = strawberry_django.filter_field()
+    conduit_id: ID | None = strawberry_django.filter_field()
+    requirement_id: ID | None = strawberry_django.filter_field()
+    status: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    risk_assessment_id: ID | None = strawberry_django.filter_field()
+    assessed_by_id: ID | None = strawberry_django.filter_field()

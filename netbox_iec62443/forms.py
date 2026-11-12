@@ -38,15 +38,29 @@ from .choices import (
     FieldbusMediumChoices,
     FlowAllowedChoices,
     FlowProtocolChoices,
+    FoundationalRequirementChoices,
     IndustrialProtocolChoices,
     PurdueLevelChoices,
+    RequirementEditionChoices,
+    RequirementStatusChoices,
     RiskAssessmentKindChoices,
     RiskAssessmentStatusChoices,
     RiskLevelChoices,
     ServiceRoleChoices,
     ZoneTypeChoices,
 )
-from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, PluginSettings, RiskAssessment, Zone
+from .models import (
+    Conduit,
+    Fieldbus,
+    Flow,
+    FlowHop,
+    IndustrialService,
+    PluginSettings,
+    RequirementStatus,
+    RiskAssessment,
+    SystemRequirement,
+    Zone,
+)
 
 __all__ = (
     'AccessMapFilterForm',
@@ -72,6 +86,10 @@ __all__ = (
     'IndustrialServiceForm',
     'IndustrialServiceImportForm',
     'PluginSettingsForm',
+    'RequirementStatusBulkEditForm',
+    'RequirementStatusFilterForm',
+    'RequirementStatusForm',
+    'RequirementStatusImportForm',
     'RiskAssessmentBulkEditForm',
     'RiskAssessmentFilterForm',
     'RiskAssessmentForm',
@@ -79,6 +97,10 @@ __all__ = (
     'ZoneBulkEditForm',
     'ZoneFilterForm',
     'ZoneForm',
+    'SystemRequirementBulkEditForm',
+    'SystemRequirementFilterForm',
+    'SystemRequirementForm',
+    'SystemRequirementImportForm',
     'ZoneImportForm',
 )
 
@@ -969,6 +991,184 @@ class ChecksFilterForm(forms.Form):
         label=_('Severity'), required=False,
         choices=(('error', _('Error')), ('warning', _('Warning')), ('info', _('Info'))),
     )
+
+
+#
+# System requirements (IEC 62443-3-3) and their status per zone or conduit
+#
+
+SL_CHOICES = [('', '---------')] + [(str(n), f'SL {n}') for n in range(1, 5)]
+
+
+class SystemRequirementForm(PrimaryModelForm):
+    parent = DynamicModelChoiceField(
+        label=_('Requirement'), queryset=SystemRequirement.objects.all(), required=False,
+        query_params={'is_enhancement': 'false'}, help_text=SystemRequirement._meta.get_field('parent').help_text,
+    )
+    foundational_requirement = forms.ChoiceField(
+        label=_('Foundational requirement'), choices=add_blank_choice(FoundationalRequirementChoices),
+        required=False, help_text=_('Left empty, it follows from the identifier'),
+    )
+
+    fieldsets = (
+        FieldSet('edition', 'identifier', 'foundational_requirement', 'parent', 'security_level', 'description',
+                 'tags', name=_('System requirement')),
+        FieldSet('wording', name=_('From your copy of the standard')),
+    )
+
+    class Meta:
+        model = SystemRequirement
+        fields = (
+            'edition', 'identifier', 'foundational_requirement', 'parent', 'security_level', 'wording',
+            'description', 'owner', 'comments', 'tags',
+        )
+        widgets = {'wording': forms.Textarea(attrs={'rows': 4})}
+
+
+class SystemRequirementBulkEditForm(PrimaryModelBulkEditForm):
+    security_level = forms.TypedChoiceField(
+        label=_('Applies from SL'), choices=SL_CHOICES, coerce=int, empty_value=None, required=False,
+    )
+
+    model = SystemRequirement
+    fieldsets = (FieldSet('security_level', 'description'),)
+    nullable_fields = ('security_level', 'description', 'comments')
+
+
+class SystemRequirementImportForm(PrimaryModelImportForm):
+    edition = CSVChoiceField(label=_('Edition'), choices=RequirementEditionChoices, required=False)
+    foundational_requirement = CSVChoiceField(
+        label=_('Foundational requirement'), choices=FoundationalRequirementChoices, required=False,
+    )
+    parent = CSVModelChoiceField(
+        label=_('Requirement'), queryset=SystemRequirement.objects.all(), required=False,
+        to_field_name='identifier', help_text=_('Identifier of the requirement an enhancement belongs to'),
+    )
+
+    class Meta:
+        model = SystemRequirement
+        fields = (
+            'edition', 'identifier', 'foundational_requirement', 'parent', 'security_level', 'wording',
+            'description', 'owner', 'comments', 'tags',
+        )
+
+    def clean_edition(self):
+        return self.cleaned_data.get('edition') or RequirementEditionChoices.IEC_62443_3_3_2013
+
+
+class SystemRequirementFilterForm(PrimaryModelFilterSetForm):
+    model = SystemRequirement
+    fieldsets = (
+        FieldSet('q', 'filter_id', 'tag'),
+        FieldSet('edition', 'foundational_requirement', 'security_level', 'is_enhancement', 'has_wording',
+                 name=_('Requirement')),
+    )
+    edition = forms.MultipleChoiceField(label=_('Edition'), choices=RequirementEditionChoices, required=False)
+    foundational_requirement = forms.MultipleChoiceField(
+        label=_('Foundational requirement'), choices=FoundationalRequirementChoices, required=False,
+    )
+    security_level = forms.MultipleChoiceField(label=_('Applies from SL'), choices=SL_CHOICES[1:], required=False)
+    is_enhancement = forms.NullBooleanField(
+        label=_('Enhancement'), required=False, widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
+    )
+    has_wording = forms.NullBooleanField(
+        label=_('Wording loaded'), required=False, widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
+    )
+    tag = TagFilterField(model)
+
+
+class RequirementStatusForm(PrimaryModelForm):
+    zone = DynamicModelChoiceField(label=_('Zone'), queryset=Zone.objects.all(), required=False)
+    conduit = DynamicModelChoiceField(label=_('Conduit'), queryset=Conduit.objects.all(), required=False)
+    requirement = DynamicModelChoiceField(label=_('Requirement'), queryset=SystemRequirement.objects.all())
+    risk_assessment = DynamicModelChoiceField(
+        label=_('Risk assessment'), queryset=RiskAssessment.objects.all(), required=False,
+        query_params={'zone_id': '$zone', 'conduit_id': '$conduit'},
+    )
+    assessed_by = DynamicModelChoiceField(label=_('Assessed by'), queryset=Contact.objects.all(), required=False)
+
+    fieldsets = (
+        FieldSet('zone', 'conduit', 'requirement', 'status', 'description', 'tags', name=_('Requirement status')),
+        FieldSet('countermeasure', 'evidence', 'risk_assessment', name=_('Justification')),
+        FieldSet('assessed_by', 'assessed_on', name=_('Assessment')),
+    )
+
+    class Meta:
+        model = RequirementStatus
+        fields = (
+            'zone', 'conduit', 'requirement', 'status', 'countermeasure', 'evidence', 'risk_assessment',
+            'assessed_by', 'assessed_on', 'description', 'owner', 'comments', 'tags',
+        )
+        widgets = {
+            'assessed_on': DatePicker(),
+            'countermeasure': forms.Textarea(attrs={'rows': 3}),
+            'evidence': forms.Textarea(attrs={'rows': 3}),
+        }
+
+
+class RequirementStatusBulkEditForm(PrimaryModelBulkEditForm):
+    status = forms.ChoiceField(label=_('Status'), choices=add_blank_choice(RequirementStatusChoices), required=False)
+    assessed_by = DynamicModelChoiceField(label=_('Assessed by'), queryset=Contact.objects.all(), required=False)
+    assessed_on = forms.DateField(label=_('Assessed on'), required=False, widget=DatePicker())
+
+    model = RequirementStatus
+    fieldsets = (FieldSet('status', 'assessed_by', 'assessed_on', 'description'),)
+    nullable_fields = ('assessed_by', 'assessed_on', 'description', 'comments')
+
+
+class RequirementStatusImportForm(PrimaryModelImportForm):
+    site = CSVModelChoiceField(
+        label=_('Site'), queryset=Site.objects.all(), required=False, to_field_name='name',
+        help_text=_('Site of the zone or conduit; its name is looked up within this site'),
+    )
+    zone = CSVModelChoiceField(label=_('Zone'), queryset=Zone.objects.all(), required=False, to_field_name='name')
+    conduit = CSVModelChoiceField(
+        label=_('Conduit'), queryset=Conduit.objects.all(), required=False, to_field_name='name',
+    )
+    requirement = CSVModelChoiceField(
+        label=_('Requirement'), queryset=SystemRequirement.objects.filter(
+            edition=RequirementEditionChoices.IEC_62443_3_3_2013),
+        to_field_name='identifier', help_text=_('Identifier, e.g. SR 1.1 or SR 1.1 RE 1 (IEC 62443-3-3:2013)'),
+    )
+    status = CSVChoiceField(label=_('Status'), choices=RequirementStatusChoices)
+    assessed_by = CSVModelChoiceField(
+        label=_('Assessed by'), queryset=Contact.objects.all(), required=False, to_field_name='name',
+    )
+
+    class Meta:
+        model = RequirementStatus
+        fields = (
+            'site', 'zone', 'conduit', 'requirement', 'status', 'countermeasure', 'evidence', 'assessed_by',
+            'assessed_on', 'description', 'owner', 'comments', 'tags',
+        )
+
+    def __init__(self, data=None, *args, **kwargs):
+        super().__init__(data, *args, **kwargs)
+        if data:
+            _scope_zones_to_site(self, data, ('zone', 'conduit'))
+
+
+class RequirementStatusFilterForm(PrimaryModelFilterSetForm):
+    model = RequirementStatus
+    fieldsets = (
+        FieldSet('q', 'filter_id', 'tag'),
+        FieldSet('site_id', 'zone_id', 'conduit_id', name=_('Zone or conduit')),
+        FieldSet('requirement_id', 'foundational_requirement', 'status', 'assessed_by_id', name=_('Status')),
+    )
+    site_id = DynamicModelMultipleChoiceField(queryset=Site.objects.all(), required=False, label=_('Site'))
+    zone_id = DynamicModelMultipleChoiceField(queryset=Zone.objects.all(), required=False, label=_('Zone'))
+    conduit_id = DynamicModelMultipleChoiceField(queryset=Conduit.objects.all(), required=False, label=_('Conduit'))
+    requirement_id = DynamicModelMultipleChoiceField(
+        queryset=SystemRequirement.objects.all(), required=False, label=_('Requirement'),
+    )
+    foundational_requirement = forms.MultipleChoiceField(
+        label=_('Foundational requirement'), choices=FoundationalRequirementChoices, required=False,
+    )
+    status = forms.MultipleChoiceField(label=_('Status'), choices=RequirementStatusChoices, required=False)
+    assessed_by_id = DynamicModelMultipleChoiceField(
+        queryset=Contact.objects.all(), required=False, label=_('Assessed by'),
+    )
+    tag = TagFilterField(model)
 
 
 class PluginSettingsForm(forms.ModelForm):

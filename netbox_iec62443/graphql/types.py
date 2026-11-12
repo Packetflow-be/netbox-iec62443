@@ -11,7 +11,9 @@ from .filters import (
     FlowFilter,
     FlowHopFilter,
     IndustrialServiceFilter,
+    RequirementStatusFilter,
     RiskAssessmentFilter,
+    SystemRequirementFilter,
     ZoneFilter,
 )
 
@@ -23,8 +25,8 @@ if TYPE_CHECKING:
     from vpn.graphql.types import TunnelType
 
 __all__ = (
-    'ConduitType', 'FieldbusType', 'FlowHopType', 'FlowType', 'IndustrialServiceType', 'RiskAssessmentType',
-    'ZoneType',
+    'ConduitType', 'FieldbusType', 'FlowHopType', 'FlowType', 'IndustrialServiceType', 'RequirementStatusType',
+    'RiskAssessmentType', 'SystemRequirementType', 'ZoneType',
 )
 
 
@@ -38,6 +40,9 @@ class ZoneType(PrimaryObjectType):
     sl_target: list[int] | None
     sl_achieved: list[int] | None
     risk_assessments: list[Annotated['RiskAssessmentType', strawberry.lazy('netbox_iec62443.graphql.types')]]
+    requirement_statuses: list[
+        Annotated['RequirementStatusType', strawberry.lazy('netbox_iec62443.graphql.types')]
+    ]
     devices: list[Annotated['DeviceType', strawberry.lazy('dcim.graphql.types')]]
     virtual_machines: list[Annotated['VirtualMachineType', strawberry.lazy('virtualization.graphql.types')]]
     prefixes: list[Annotated['PrefixType', strawberry.lazy('ipam.graphql.types')]]
@@ -54,6 +59,9 @@ class ConduitType(PrimaryObjectType):
     sl_target: list[int] | None
     sl_achieved: list[int] | None
     risk_assessments: list[Annotated['RiskAssessmentType', strawberry.lazy('netbox_iec62443.graphql.types')]]
+    requirement_statuses: list[
+        Annotated['RequirementStatusType', strawberry.lazy('netbox_iec62443.graphql.types')]
+    ]
     enforcing_devices: list[Annotated['DeviceType', strawberry.lazy('dcim.graphql.types')]]
     enforcing_virtual_machines: list[
         Annotated['VirtualMachineType', strawberry.lazy('virtualization.graphql.types')]
@@ -104,3 +112,22 @@ class RiskAssessmentType(PrimaryObjectType):
     conduit: Annotated['ConduitType', strawberry.lazy('netbox_iec62443.graphql.types')] | None
     assessed_by: Annotated['ContactType', strawberry.lazy('tenancy.graphql.types')] | None
     approved_by: Annotated['ContactType', strawberry.lazy('tenancy.graphql.types')] | None
+    requirement_statuses: list[
+        Annotated['RequirementStatusType', strawberry.lazy('netbox_iec62443.graphql.types')]
+    ]
+
+
+@register_type(models.SystemRequirement, fields='__all__', filters=SystemRequirementFilter, pagination=True)
+class SystemRequirementType(PrimaryObjectType):
+    parent: Annotated['SystemRequirementType', strawberry.lazy('netbox_iec62443.graphql.types')] | None
+    enhancements: list[Annotated['SystemRequirementType', strawberry.lazy('netbox_iec62443.graphql.types')]]
+    statuses: list[Annotated['RequirementStatusType', strawberry.lazy('netbox_iec62443.graphql.types')]]
+
+
+@register_type(models.RequirementStatus, fields='__all__', filters=RequirementStatusFilter, pagination=True)
+class RequirementStatusType(PrimaryObjectType):
+    zone: Annotated['ZoneType', strawberry.lazy('netbox_iec62443.graphql.types')] | None
+    conduit: Annotated['ConduitType', strawberry.lazy('netbox_iec62443.graphql.types')] | None
+    requirement: Annotated['SystemRequirementType', strawberry.lazy('netbox_iec62443.graphql.types')]
+    risk_assessment: Annotated['RiskAssessmentType', strawberry.lazy('netbox_iec62443.graphql.types')] | None
+    assessed_by: Annotated['ContactType', strawberry.lazy('tenancy.graphql.types')] | None

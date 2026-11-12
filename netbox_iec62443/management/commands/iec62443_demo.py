@@ -51,13 +51,23 @@ class Command(BranchCommand):
         from virtualization.models import VirtualMachine
         from vpn.models import Tunnel
 
-        from netbox_iec62443.models import Conduit, Fieldbus, Flow, IndustrialService, RiskAssessment, Zone
+        from netbox_iec62443.models import (
+            Conduit,
+            Fieldbus,
+            Flow,
+            IndustrialService,
+            RequirementStatus,
+            RiskAssessment,
+            Zone,
+        )
 
         site = Site.objects.filter(slug=SITE_SLUG).first()
         zones = Zone.objects.filter(site=site) | Zone.objects.filter(name=f'{PREFIX} MSP')
         conduits = Conduit.objects.filter(zones__in=zones).distinct()
         devices = Device.objects.filter(site=site)
         vms = VirtualMachine.objects.filter(site=site)
+        RequirementStatus.objects.filter(zone__in=zones).delete()
+        RequirementStatus.objects.filter(conduit__in=conduits).delete()
         RiskAssessment.objects.filter(zone__in=zones).delete()
         RiskAssessment.objects.filter(conduit__in=conduits).delete()
         Flow.objects.filter(source_zone__in=zones).delete()
@@ -96,9 +106,12 @@ class Command(BranchCommand):
             Flow,
             FlowHop,
             IndustrialService,
+            RequirementStatus,
             RiskAssessment,
+            SystemRequirement,
             Zone,
         )
+        from netbox_iec62443.requirements import load_shipped
 
         today = timezone.localdate()
         now = timezone.now()
@@ -258,4 +271,16 @@ class Command(BranchCommand):
             unmitigated_risk='critical', countermeasures='Jump host with MFA, time-limited access',
             residual_risk='high', tolerable_risk='medium')
         RiskAssessment.objects.create(zone=office, kind='initial', assessed_on=today, unmitigated_risk='medium')
+
+        # IEC 62443-3-3 requirement statuses for the cell. The plugin ships identifiers only: the levels at which
+        # requirements apply come from your own copy of the standard (iec62443_requirements --csv)
+        load_shipped()
+        sr = {r.identifier: r for r in SystemRequirement.objects.filter(identifier__in=('SR 5.1', 'SR 5.2', 'SR 1.13'))}
+        RequirementStatus.objects.create(zone=cell, requirement=sr['SR 5.1'], status='met', assessed_by=ot_lead,
+                                         assessed_on=today, evidence='Own VLAN and subnet; firewall between the zones')
+        RequirementStatus.objects.create(
+            zone=cell, requirement=sr['SR 5.2'], status='compensated', assessed_by=ot_lead, assessed_on=today,
+            countermeasure='The OT firewall in the DMZ enforces the cell boundary; no device in the cell does')
+        RequirementStatus.objects.create(zone=cell, requirement=sr['SR 1.13'], status='not-met', assessed_by=ot_lead,
+                                         assessed_on=today, evidence='Supplier TeamViewer reaches the PLCs directly')
         return site

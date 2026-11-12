@@ -21,19 +21,33 @@ from .choices import (
     FieldbusMediumChoices,
     FlowAllowedChoices,
     FlowProtocolChoices,
+    FoundationalRequirementChoices,
     IndustrialProtocolChoices,
     PurdueLevelChoices,
+    RequirementEditionChoices,
+    RequirementStatusChoices,
     RiskAssessmentKindChoices,
     RiskAssessmentStatusChoices,
     RiskLevelChoices,
     ServiceRoleChoices,
     ZoneTypeChoices,
 )
-from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone, stale_after_days
+from .models import (
+    Conduit,
+    Fieldbus,
+    Flow,
+    FlowHop,
+    IndustrialService,
+    RequirementStatus,
+    RiskAssessment,
+    SystemRequirement,
+    Zone,
+    stale_after_days,
+)
 
 __all__ = (
     'ConduitFilterSet', 'FieldbusFilterSet', 'FlowFilterSet', 'FlowHopFilterSet', 'IndustrialServiceFilterSet',
-    'RiskAssessmentFilterSet', 'ZoneFilterSet',
+    'RequirementStatusFilterSet', 'RiskAssessmentFilterSet', 'SystemRequirementFilterSet', 'ZoneFilterSet',
 )
 
 
@@ -536,3 +550,101 @@ class IndustrialServiceFilterSet(PrimaryModelFilterSet):
         return queryset.filter(
             Q(device__iec62443_zones__in=value) | Q(virtual_machine__iec62443_zones__in=value)
         ).distinct()
+
+
+@register_filterset
+class SystemRequirementFilterSet(PrimaryModelFilterSet):
+    edition = django_filters.MultipleChoiceFilter(choices=RequirementEditionChoices, distinct=False)
+    foundational_requirement = django_filters.MultipleChoiceFilter(
+        choices=FoundationalRequirementChoices, distinct=False,
+    )
+    security_level = django_filters.MultipleChoiceFilter(
+        choices=[(n, str(n)) for n in range(1, 5)], distinct=False, label=_('Applies from SL'),
+    )
+    parent_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=SystemRequirement.objects.all(),
+        distinct=False,
+        label=_('Requirement (ID) of an enhancement'),
+    )
+    is_enhancement = django_filters.BooleanFilter(
+        field_name='parent', lookup_expr='isnull', exclude=True, label=_('Is an enhancement'),
+    )
+    has_wording = django_filters.BooleanFilter(method='filter_has_wording', label=_('Wording loaded'))
+
+    class Meta:
+        model = SystemRequirement
+        fields = ('id', 'identifier', 'description')
+
+    def search(self, queryset, name, value):
+        if not value.strip():
+            return queryset
+        return queryset.filter(
+            Q(identifier__icontains=value) |
+            Q(wording__icontains=value) |
+            Q(description__icontains=value)
+        )
+
+    def filter_has_wording(self, queryset, name, value):
+        if value is None:
+            return queryset
+        return queryset.exclude(wording='') if value else queryset.filter(wording='')
+
+
+@register_filterset
+class RequirementStatusFilterSet(PrimaryModelFilterSet):
+    zone_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Zone.objects.all(),
+        distinct=False,
+        label=_('Zone (ID)'),
+    )
+    conduit_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Conduit.objects.all(),
+        distinct=False,
+        label=_('Conduit (ID)'),
+    )
+    site_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Site.objects.all(),
+        method='filter_site',
+        label=_('Site (ID) of the zone or conduit'),
+    )
+    requirement_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=SystemRequirement.objects.all(),
+        distinct=False,
+        label=_('Requirement (ID)'),
+    )
+    foundational_requirement = django_filters.MultipleChoiceFilter(
+        field_name='requirement__foundational_requirement', choices=FoundationalRequirementChoices, distinct=False,
+    )
+    status = django_filters.MultipleChoiceFilter(choices=RequirementStatusChoices, distinct=False)
+    risk_assessment_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=RiskAssessment.objects.all(),
+        distinct=False,
+        label=_('Risk assessment (ID)'),
+    )
+    assessed_by_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Contact.objects.all(),
+        distinct=False,
+        label=_('Assessed by (ID)'),
+    )
+
+    class Meta:
+        model = RequirementStatus
+        fields = ('id', 'assessed_on', 'description')
+
+    def search(self, queryset, name, value):
+        if not value.strip():
+            return queryset
+        return queryset.filter(
+            Q(zone__name__icontains=value) |
+            Q(conduit__name__icontains=value) |
+            Q(requirement__identifier__icontains=value) |
+            Q(countermeasure__icontains=value) |
+            Q(evidence__icontains=value) |
+            Q(description__icontains=value)
+        )
+
+    def filter_site(self, queryset, name, value):
+        if not value:
+            return queryset
+        q = Q(zone__site__in=value) | Q(conduit__site__in=value) | Q(conduit__zones__site__in=value)
+        return queryset.filter(q).distinct()

@@ -4,7 +4,9 @@ CSV (one file per table) and JSON (REST API).
 """
 import csv
 import io
+import re
 
+from django.db.models import Q
 from django.utils import timezone
 
 from . import __version__, sl
@@ -20,6 +22,10 @@ ZONE_COLUMNS = (
 CONDUIT_COLUMNS = (
     'conduit', 'zones', 'sl_target', 'sl_achieved', 'enforced_by', 'accountable', 'flows', 'not_allowed',
     'unknown', 'allowed', 'risk_assessment', 'residual_risk', 'tolerable_risk', 'description',
+)
+REQUIREMENT_COLUMNS = (
+    'zone', 'conduit', 'requirement', 'foundational_requirement', 'applies_from_sl', 'applies_at_sl_t', 'status',
+    'countermeasure', 'evidence', 'risk_assessment', 'assessed_by', 'assessed_on',
 )
 FLOW_COLUMNS = (
     'flow', 'conduit', 'from_zone', 'to_zone', 'protocol', 'ports', 'connection', 'broker_zone', 'topics', 'access',
@@ -113,6 +119,7 @@ def build_register(site, user=None):
             '_object': f,
         })
     findings = run_checks(site=site, user=user)
+    requirement_rows = _requirement_rows(zones, conduits, visible)
     return {
         'site': site,
         'generated': timezone.now(),
@@ -120,14 +127,59 @@ def build_register(site, user=None):
         'zones': zone_rows,
         'conduits': conduit_rows,
         'flows': flow_rows,
+        'requirements': requirement_rows,
         'findings': findings,
         'summary': summary(findings),
     }
 
 
+def _requirement_key(requirement):
+    """SR 1.2 before SR 1.10, an enhancement right after its requirement."""
+    return [int(n) for n in re.findall(r'\d+', requirement.identifier)]
+
+
+def _requirement_rows(zones, conduits, visible):
+    """
+    Per zone and conduit: every requirement that applies at its SL-T (once the SL mapping is loaded), with or
+    without a status, and every other requirement it has a status for.
+    """
+    from .models import RequirementStatus, SystemRequirement
+
+    with_level = list(SystemRequirement.objects.filter(security_level__isnull=False))
+    statuses = visible(RequirementStatus.objects.filter(Q(zone__in=zones) | Q(conduit__in=conduits))).select_related(
+        'requirement', 'risk_assessment', 'assessed_by')
+    by_subject = {}
+    for rs in statuses:
+        by_subject.setdefault(('zone', rs.zone_id) if rs.zone_id else ('conduit', rs.conduit_id), {})[
+            rs.requirement_id] = rs
+    rows = []
+    for kind, objs in (('zone', zones), ('conduit', conduits)):
+        for obj in objs:
+            own = by_subject.get((kind, obj.pk), {})
+            applicable = {r.pk: r for r in with_level if r.applies_at(obj.sl_target)}
+            requirements = {**applicable, **{pk: rs.requirement for pk, rs in own.items()}}
+            for requirement in sorted(requirements.values(), key=_requirement_key):
+                rs = own.get(requirement.pk)
+                rows.append({
+                    'zone': obj.name if kind == 'zone' else '', 'conduit': obj.name if kind == 'conduit' else '',
+                    'requirement': requirement.identifier,
+                    'foundational_requirement': sl.FR_SHORT[requirement.fr_index],
+                    'applies_from_sl': requirement.security_level or '',
+                    'applies_at_sl_t': _yes(requirement.pk in applicable),
+                    'status': rs.get_status_display() if rs else '',
+                    'countermeasure': rs.countermeasure if rs else '', 'evidence': rs.evidence if rs else '',
+                    'risk_assessment': str(rs.risk_assessment or '') if rs else '',
+                    'assessed_by': str(rs.assessed_by or '') if rs else '',
+                    'assessed_on': _date(rs.assessed_on) if rs else '',
+                    '_object': rs, '_requirement': requirement, '_status': rs.status if rs else '',
+                })
+    return rows
+
+
 def register_csv(register, table):
-    """One table of the register ('zones', 'conduits' or 'flows') as CSV text."""
-    columns = {'zones': ZONE_COLUMNS, 'conduits': CONDUIT_COLUMNS, 'flows': FLOW_COLUMNS}[table]
+    """One table of the register ('zones', 'conduits', 'flows' or 'requirements') as CSV text."""
+    columns = {'zones': ZONE_COLUMNS, 'conduits': CONDUIT_COLUMNS, 'flows': FLOW_COLUMNS,
+               'requirements': REQUIREMENT_COLUMNS}[table]
     out = io.StringIO()
     writer = csv.DictWriter(out, fieldnames=columns, extrasaction='ignore')
     writer.writeheader()
@@ -146,6 +198,7 @@ def register_json(register):
         'zones': clean(register['zones']),
         'conduits': clean(register['conduits']),
         'flows': clean(register['flows']),
+        'requirements': clean(register['requirements']),
         'findings': [{'check': f.check, 'severity': f.severity, 'object': str(f.obj), 'message': f.message}
                      for f in register['findings']],
     }

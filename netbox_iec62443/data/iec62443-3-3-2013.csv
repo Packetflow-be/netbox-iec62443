@@ -1,0 +1,55 @@
+# IEC 62443-3-3:2013 system requirements: identifiers and foundational requirements only.
+# No requirement text, rationale or security-level mapping (copyrighted): load those from your own
+# licensed copy with manage.py iec62443_requirements --csv.
+identifier,foundational_requirement
+SR 1.1,iac
+SR 1.2,iac
+SR 1.3,iac
+SR 1.4,iac
+SR 1.5,iac
+SR 1.6,iac
+SR 1.7,iac
+SR 1.8,iac
+SR 1.9,iac
+SR 1.10,iac
+SR 1.11,iac
+SR 1.12,iac
+SR 1.13,iac
+SR 2.1,uc
+SR 2.2,uc
+SR 2.3,uc
+SR 2.4,uc
+SR 2.5,uc
+SR 2.6,uc
+SR 2.7,uc
+SR 2.8,uc
+SR 2.9,uc
+SR 2.10,uc
+SR 2.11,uc
+SR 2.12,uc
+SR 3.1,si
+SR 3.2,si
+SR 3.3,si
+SR 3.4,si
+SR 3.5,si
+SR 3.6,si
+SR 3.7,si
+SR 3.8,si
+SR 3.9,si
+SR 4.1,dc
+SR 4.2,dc
+SR 4.3,dc
+SR 5.1,rdf
+SR 5.2,rdf
+SR 5.3,rdf
+SR 5.4,rdf
+SR 6.1,tre
+SR 6.2,tre
+SR 7.1,ra
+SR 7.2,ra
+SR 7.3,ra
+SR 7.4,ra
+SR 7.5,ra
+SR 7.6,ra
+SR 7.7,ra
+SR 7.8,ra

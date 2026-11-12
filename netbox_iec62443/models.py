@@ -1,4 +1,5 @@
 import datetime
+import re
 
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
@@ -17,8 +18,11 @@ from .choices import (
     FieldbusMediumChoices,
     FlowAllowedChoices,
     FlowProtocolChoices,
+    FoundationalRequirementChoices,
     IndustrialProtocolChoices,
     PurdueLevelChoices,
+    RequirementEditionChoices,
+    RequirementStatusChoices,
     RiskAssessmentKindChoices,
     RiskAssessmentStatusChoices,
     RiskLevelChoices,
@@ -27,7 +31,8 @@ from .choices import (
 )
 
 __all__ = (
-    'Conduit', 'Fieldbus', 'Flow', 'FlowHop', 'IndustrialService', 'PluginSettings', 'RiskAssessment', 'Zone',
+    'Conduit', 'Fieldbus', 'Flow', 'FlowHop', 'IndustrialService', 'PluginSettings', 'RequirementStatus',
+    'RiskAssessment', 'SystemRequirement', 'Zone',
 )
 
 
@@ -875,6 +880,219 @@ class RiskAssessment(PrimaryModel):
 
     def get_residual_risk_color(self):
         return RiskLevelChoices.colors.get(self.residual_risk)
+
+
+REQUIREMENT_IDENTIFIER = re.compile(r'^(SR|CR) (\d+)\.(\d+)(?: RE (\d+))?$')
+
+
+class SystemRequirement(PrimaryModel):
+    """
+    An IEC 62443-3-3 system requirement (SR 1.1) or requirement enhancement (SR 1.1 RE 1), by identifier.
+
+    The plugin ships identifiers and their foundational requirement only. The wording and the lowest security level
+    at which a requirement applies are copyrighted parts of the standard: users load them from their own licensed
+    copy (manage.py iec62443_requirements --csv), into their own database.
+    """
+    edition = models.CharField(
+        verbose_name=_('edition'),
+        max_length=20,
+        choices=RequirementEditionChoices,
+        default=RequirementEditionChoices.IEC_62443_3_3_2013,
+    )
+    identifier = models.CharField(
+        verbose_name=_('identifier'),
+        max_length=30,
+        db_collation='natural_sort',
+        help_text=_('e.g. SR 1.1, or SR 1.1 RE 1 for a requirement enhancement'),
+    )
+    foundational_requirement = models.CharField(
+        verbose_name=_('foundational requirement'),
+        max_length=10,
+        choices=FoundationalRequirementChoices,
+        blank=True,
+        help_text=_('Left empty, it follows from the identifier'),
+    )
+    parent = models.ForeignKey(
+        to='self',
+        on_delete=models.PROTECT,
+        related_name='enhancements',
+        verbose_name=_('requirement'),
+        blank=True,
+        null=True,
+        help_text=_('The system requirement this enhancement belongs to'),
+    )
+    security_level = models.PositiveSmallIntegerField(
+        verbose_name=_('applies from SL'),
+        blank=True,
+        null=True,
+        help_text=_('The lowest security level (1-4) at which the requirement applies, from your copy of the '
+                    'standard; empty until loaded'),
+    )
+    wording = models.TextField(
+        verbose_name=_('wording'),
+        blank=True,
+        help_text=_('From your licensed copy of the standard; never shipped with the plugin'),
+    )
+
+    clone_fields = ('edition', 'foundational_requirement', 'parent', 'security_level')
+
+    class Meta:
+        ordering = ('edition', 'identifier')
+        verbose_name = _('system requirement')
+        verbose_name_plural = _('system requirements')
+        constraints = (
+            models.UniqueConstraint(
+                fields=('edition', 'identifier'),
+                name='%(app_label)s_%(class)s_unique_edition_identifier',
+                violation_error_message=_('This requirement already exists in this edition.'),
+            ),
+        )
+
+    def __str__(self):
+        return self.identifier
+
+    @property
+    def fr_index(self):
+        """Position of the requirement's FR in a security level vector (0 for IAC ... 6 for RA)."""
+        return FoundationalRequirementChoices.values().index(self.foundational_requirement)
+
+    @property
+    def is_enhancement(self):
+        return ' RE ' in self.identifier
+
+    def clean(self):
+        super().clean()
+        match = REQUIREMENT_IDENTIFIER.match(self.identifier or '')
+        if not match:
+            raise ValidationError({'identifier': _('Write it as SR 1.1, or SR 1.1 RE 1 for an enhancement.')})
+        fr_number = int(match.group(2))
+        frs = FoundationalRequirementChoices.values()
+        if not 1 <= fr_number <= len(frs):
+            raise ValidationError({'identifier': _('There are seven foundational requirements (SR 1.x to SR 7.x).')})
+        self.foundational_requirement = self.foundational_requirement or frs[fr_number - 1]
+        if self.foundational_requirement and self.foundational_requirement != frs[fr_number - 1]:
+            raise ValidationError({'foundational_requirement': _(
+                '{identifier} belongs to FR {number}.').format(identifier=self.identifier, number=fr_number)})
+        if match.group(4):
+            base = f'{match.group(1)} {match.group(2)}.{match.group(3)}'
+            if not self.parent_id or self.parent.identifier != base or self.parent.edition != self.edition:
+                raise ValidationError({'parent': _('An enhancement belongs to {base} of the same edition.').format(
+                    base=base)})
+        elif self.parent_id:
+            raise ValidationError({'parent': _('Only an enhancement (... RE n) has a parent requirement.')})
+        if self.security_level is not None and not 1 <= self.security_level <= 4:
+            raise ValidationError({'security_level': _('A security level from 1 to 4.')})
+
+    def save(self, *args, **kwargs):
+        if not self.foundational_requirement and (match := REQUIREMENT_IDENTIFIER.match(self.identifier or '')):
+            self.foundational_requirement = FoundationalRequirementChoices.values()[int(match.group(2)) - 1]
+        super().save(*args, **kwargs)
+
+    def applies_at(self, levels):
+        """True when this requirement applies at the security level vector `levels` (SL mapping loaded)."""
+        return bool(levels) and self.security_level is not None and levels[self.fr_index] >= self.security_level
+
+
+class RequirementStatus(PrimaryModel):
+    """
+    Where a zone or a conduit stands against one system requirement: met, met by a compensating countermeasure,
+    not met or not applicable, with the evidence and who assessed it. This is what backs a zone's SL-A.
+    """
+    zone = models.ForeignKey(
+        to=Zone,
+        on_delete=models.PROTECT,
+        related_name='requirement_statuses',
+        verbose_name=_('zone'),
+        blank=True,
+        null=True,
+    )
+    conduit = models.ForeignKey(
+        to=Conduit,
+        on_delete=models.PROTECT,
+        related_name='requirement_statuses',
+        verbose_name=_('conduit'),
+        blank=True,
+        null=True,
+    )
+    requirement = models.ForeignKey(
+        to=SystemRequirement,
+        on_delete=models.PROTECT,
+        related_name='statuses',
+        verbose_name=_('requirement'),
+    )
+    status = models.CharField(
+        verbose_name=_('status'),
+        max_length=20,
+        choices=RequirementStatusChoices,
+    )
+    countermeasure = models.TextField(
+        verbose_name=_('compensating countermeasure'),
+        blank=True,
+        help_text=_('What compensates when the requirement is met by another measure'),
+    )
+    evidence = models.TextField(
+        verbose_name=_('evidence'),
+        blank=True,
+        help_text=_('Configuration, test report, procedure, interview'),
+    )
+    risk_assessment = models.ForeignKey(
+        to='netbox_iec62443.RiskAssessment',
+        on_delete=models.SET_NULL,
+        related_name='requirement_statuses',
+        verbose_name=_('risk assessment'),
+        blank=True,
+        null=True,
+    )
+    assessed_by = models.ForeignKey(
+        to='tenancy.Contact',
+        on_delete=models.PROTECT,
+        related_name='iec62443_requirement_statuses',
+        verbose_name=_('assessed by'),
+        blank=True,
+        null=True,
+    )
+    assessed_on = models.DateField(verbose_name=_('assessed on'), blank=True, null=True)
+
+    clone_fields = ('zone', 'conduit', 'status', 'risk_assessment', 'assessed_by', 'assessed_on')
+
+    class Meta:
+        ordering = ('zone', 'conduit', 'requirement')
+        verbose_name = _('requirement status')
+        verbose_name_plural = _('requirement statuses')
+        constraints = (
+            models.UniqueConstraint(
+                fields=('zone', 'requirement'),
+                condition=Q(zone__isnull=False),
+                name='%(app_label)s_%(class)s_unique_zone_requirement',
+                violation_error_message=_('This zone already has a status for this requirement.'),
+            ),
+            models.UniqueConstraint(
+                fields=('conduit', 'requirement'),
+                condition=Q(conduit__isnull=False),
+                name='%(app_label)s_%(class)s_unique_conduit_requirement',
+                violation_error_message=_('This conduit already has a status for this requirement.'),
+            ),
+        )
+
+    def __str__(self):
+        return f'{self.subject} {self.requirement}'
+
+    @property
+    def subject(self):
+        return self.zone or self.conduit
+
+    def clean(self):
+        super().clean()
+        if bool(self.zone_id) == bool(self.conduit_id):
+            raise ValidationError(_('A requirement status is of either a zone or a conduit.'))
+        if self.status == RequirementStatusChoices.COMPENSATED and not self.countermeasure.strip():
+            raise ValidationError({'countermeasure': _('Name the countermeasure that compensates.')})
+        if self.risk_assessment_id and (self.risk_assessment.zone_id, self.risk_assessment.conduit_id) != (
+                self.zone_id, self.conduit_id):
+            raise ValidationError({'risk_assessment': _('The risk assessment is of another zone or conduit.')})
+
+    def get_status_color(self):
+        return RequirementStatusChoices.colors.get(self.status)
 
 
 class PluginSettings(models.Model):

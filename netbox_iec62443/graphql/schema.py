@@ -7,7 +7,9 @@ from .types import (
     FlowHopType,
     FlowType,
     IndustrialServiceType,
+    RequirementStatusType,
     RiskAssessmentType,
+    SystemRequirementType,
     ZoneType,
 )
 
@@ -28,6 +30,12 @@ class IEC62443Query:
 
     iec62443_risk_assessment: RiskAssessmentType = strawberry_django.field()
     iec62443_risk_assessment_list: list[RiskAssessmentType] = strawberry_django.field()
+
+    iec62443_system_requirement: SystemRequirementType = strawberry_django.field()
+    iec62443_system_requirement_list: list[SystemRequirementType] = strawberry_django.field()
+
+    iec62443_requirement_status: RequirementStatusType = strawberry_django.field()
+    iec62443_requirement_status_list: list[RequirementStatusType] = strawberry_django.field()
 
     iec62443_fieldbus: FieldbusType = strawberry_django.field()
     iec62443_fieldbus_list: list[FieldbusType] = strawberry_django.field()

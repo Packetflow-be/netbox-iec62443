@@ -12,7 +12,17 @@ from .. import filtersets
 from ..accessmap import access_map_flows
 from ..checks import SEVERITIES, run_checks
 from ..choices import PurdueLevelChoices
-from ..models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
+from ..models import (
+    Conduit,
+    Fieldbus,
+    Flow,
+    FlowHop,
+    IndustrialService,
+    RequirementStatus,
+    RiskAssessment,
+    SystemRequirement,
+    Zone,
+)
 from ..register import build_register, register_json
 from ..rules import build_rules
 from .serializers import (
@@ -21,7 +31,9 @@ from .serializers import (
     FlowHopSerializer,
     FlowSerializer,
     IndustrialServiceSerializer,
+    RequirementStatusSerializer,
     RiskAssessmentSerializer,
+    SystemRequirementSerializer,
     ZoneSerializer,
 )
 
@@ -52,6 +64,20 @@ class FlowHopViewSet(NetBoxModelViewSet):
     queryset = FlowHop.objects.select_related('flow', 'device', 'virtual_machine', 'tunnel').prefetch_related('tags')
     serializer_class = FlowHopSerializer
     filterset_class = filtersets.FlowHopFilterSet
+
+
+class SystemRequirementViewSet(NetBoxModelViewSet):
+    queryset = SystemRequirement.objects.select_related('parent').prefetch_related('tags')
+    serializer_class = SystemRequirementSerializer
+    filterset_class = filtersets.SystemRequirementFilterSet
+
+
+class RequirementStatusViewSet(NetBoxModelViewSet):
+    queryset = RequirementStatus.objects.select_related(
+        'zone', 'conduit', 'requirement', 'risk_assessment', 'assessed_by',
+    ).prefetch_related('tags')
+    serializer_class = RequirementStatusSerializer
+    filterset_class = filtersets.RequirementStatusFilterSet
 
 
 class RiskAssessmentViewSet(NetBoxModelViewSet):
