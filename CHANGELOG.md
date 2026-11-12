@@ -19,6 +19,10 @@
   broker as two rules into its zone, new column `connection`); the zone register, REST API, GraphQL, filters and
   CSV import carry the new fields; new check `brokered-write-without-topics`. The demo plant has one flow of
   each new kind. Migration `0012_flow_connection`.
+- Importer: observation files take `connection`, `broker` and `topic` per request. From Zeek logs, an OPC UA Reverse
+  Connect (ReverseHello) is now imported the right way round (it pointed out of the PLC's zone), and MQTT
+  publish/subscribe through a broker (`mqtt_publish`, `mqtt_subscribe`) becomes flows through the broker from
+  publisher to subscriber, with their topics; Sparkplug B commands count as write.
 
 ## 0.2.0 (2026-11-11)
 
