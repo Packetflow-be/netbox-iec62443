@@ -1,0 +1,83 @@
+name: Screenshots
+
+# Builds the README's demo.gif (and full-size frames) from the demo plant on the newest NetBox 4.7 release.
+# Download the "screenshots" artifact and commit docs/demo.gif when the UI changed.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/screenshots.yml'
+      - '.github/screenshots/**'
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: netbox
+          POSTGRES_PASSWORD: netbox
+          POSTGRES_DB: netbox
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - name: Resolve the newest NetBox 4.7 release
+        id: netbox
+        run: |
+          ref=$(git ls-remote --tags --refs https://github.com/netbox-community/netbox.git 'v4.7.*' \
+            | sed 's#.*/##' | grep -E '^v4\.7\.[0-9]+$' | sort -V | tail -1)
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox
+          ref: ${{ steps.netbox.outputs.ref }}
+          path: netbox
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: netbox/requirements.txt
+      - name: Install NetBox, the plugin, Playwright and Pillow
+        run: |
+          sed -i 's/psycopg\[c,pool\]/psycopg[binary,pool]/' netbox/requirements.txt
+          pip install -r netbox/requirements.txt
+          pip install -e plugin playwright pillow
+          python -m playwright install --with-deps chromium
+          cp plugin/.github/ci/configuration.py netbox/netbox/netbox/configuration.py
+          mkdir -p netbox/netbox/project-static/docs
+      - name: Demo plant and a user
+        working-directory: netbox/netbox
+        env:
+          DJANGO_SUPERUSER_PASSWORD: demo-password-for-ci
+        run: |
+          python manage.py migrate --no-input
+          python manage.py createsuperuser --no-input --username demo --email demo@example.com
+          python manage.py iec62443_demo
+          python manage.py shell < ../../plugin/.github/screenshots/urls.py > ../../urls.json
+          cat ../../urls.json
+      - name: Start NetBox
+        working-directory: netbox/netbox
+        run: |
+          nohup python manage.py runserver 127.0.0.1:8000 --insecure > ../../runserver.log 2>&1 &
+          for i in $(seq 30); do curl -sf http://127.0.0.1:8000/login/ > /dev/null && break; sleep 2; done
+      - name: Screenshots and GIF
+        run: python plugin/.github/screenshots/demo_gif.py http://127.0.0.1:8000 urls.json shots
+      - name: Icon as PNG
+        run: python plugin/.github/screenshots/icon.py plugin/docs/icon.svg shots
+      - if: always()
+        run: tail -50 runserver.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots/

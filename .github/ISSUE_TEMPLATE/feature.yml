@@ -1,0 +1,20 @@
+name: Feature request
+description: Something the plugin should record, show or export.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What do you need to record or see, and for whom (plant engineer, OT/IT team, integrator, auditor)?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How it could work. Mention the IEC 62443 part and clause if it comes from the standard.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workarounds or alternatives

@@ -1,0 +1,45 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: netbox
+    attributes:
+      label: NetBox version
+      placeholder: "4.7.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed with
+      options: [From source, netbox-docker, NetBox Cloud / Enterprise, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, step by step. The demo plant (`manage.py iec62443_demo`) is a good base.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behaviour
+      description: Include the error message or traceback. Remove addresses or names you cannot share.
+    validations:
+      required: true

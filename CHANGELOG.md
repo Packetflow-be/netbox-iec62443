@@ -1,22 +1,57 @@
 # Changelog
 
+Each release opens with what kind of release it is. Breaking changes are listed under **Breaking Changes**.
+Numbers link to the issue or pull request on GitHub; entries without a number predate the public repository.
+
+## Unreleased
+
+Documentation only; no code changes.
+
+- The README is a summary now, with the full documentation in [docs/](docs/README.md): installation and
+  configuration (with a complete netbox-docker recipe and a settings table), data model, access map, checks and
+  register, firewall rules, industrial systems, importer, API and commands, development.
+- README: compatibility matrix per plugin version, dependencies, where to report bugs and ask questions, a
+  demo GIF and the plugin icon (`docs/icon.svg`, CC BY 4.0).
+- `SECURITY.md`, `CONTRIBUTING.md` and issue templates.
+
 ## 0.2.0 (2026-11-11)
+
+Minor release with one new importer feature. No breaking changes; no new migrations.
+
+### New features
 
 - `iec62443_import --unknown-import DIR` writes the unknown hosts inside a zone as NetBox bulk-import files
   (devices, interfaces, IP addresses), for a first visit where NetBox does not know the plant's devices yet.
   The importer still creates no devices itself: a person names the role and device type first.
+  ([#8](https://github.com/Packetflow-be/netbox-iec62443/pull/8))
 
 ## 0.1.0 (2026-11-11)
 
-First release, for NetBox 4.7 (4.7.0 and later; 4.8 allowed).
+First release, for NetBox 4.7 (4.7.0 and later; 4.8 allowed): all features are new. Anyone who ran a
+0.1.0.dev0 development build should read the breaking changes below; a new install is not affected.
 
-- Packaging for PyPI, CI on NetBox 4.7.0, the newest 4.7 release and NetBox's development branch, and
-  publishing to PyPI from a version tag.
-- `manage.py iec62443_demo` creates a populated fictional plant (and `--delete` removes it), so a new user sees
-  the access map, register and checks within minutes.
+### Breaking Changes
+
+Only for installs of a 0.1.0.dev0 development build:
+
+- The old *conduit* model (a directed zone pair with a verdict) becomes the *flow* model, and *conduit* is now
+  the IEC 62443-3-2 object that joins zones. Migrations 0004-0007 move the data and delete nothing; see
+  [Upgrading from a 0.1.0.dev0 development build](docs/installation.md#from-a-010dev0-development-build) for
+  what happens to two-way conduits, free-text protocols and via, and industrial service ports. The data
+  migration writes no change-log entries.
+  ([#2](https://github.com/Packetflow-be/netbox-iec62443/pull/2))
+- The REST endpoint `access-map/` returns `flows` where it returned `conduits`, without the SVG diagram.
+  ([#2](https://github.com/Packetflow-be/netbox-iec62443/pull/2))
+- A single SL-T number on a zone or conduit becomes the vector with that level for every FR (migrations
+  0008-0010). ([#3](https://github.com/Packetflow-be/netbox-iec62443/pull/3))
+- Right after `migrate` the plugin extends every permission on flows to conduits and flow hops (not when it has
+  constraints) and rebuilds the search index of its models.
+  ([#7](https://github.com/Packetflow-be/netbox-iec62443/pull/7))
+
+### Features
 
 - Zone, Conduit, Flow and Flow hop models with UI views, bulk import/edit/delete, filters, search, REST API
-  and GraphQL.
+  and GraphQL. ([#2](https://github.com/Packetflow-be/netbox-iec62443/pull/2))
   - Zones have a type: OT, safety (SIS), DMZ, enterprise, external/supplier.
   - A conduit is the IEC 62443-3-2 object: it joins two or more zones, has its own SL-T and names the
     devices and VMs that enforce it.
@@ -29,8 +64,10 @@ First release, for NetBox 4.7 (4.7.0 and later; 4.8 allowed).
   accountable person (contact) on zones and conduits, sub-zones, and the IEC 62443-3-2 zone attributes wireless
   and temporarily connected devices (safety is a zone type). Risk assessments (initial/detailed, unmitigated,
   residual and tolerable risk, assessed/approved by and on, next review) with UI, API and GraphQL.
+  ([#3](https://github.com/Packetflow-be/netbox-iec62443/pull/3))
 - Consistency checks (UI page, REST `checks/`, `manage.py iec62443_check` with an exit code for CI) and a
   per-site zone register (site tab, printable, CSV per table, REST `register/`).
+  ([#3](https://github.com/Packetflow-be/netbox-iec62443/pull/3))
 - Purdue level custom field on devices and virtual machines, and an SL-C custom field on devices and device
   types, created after migrate. A zone's Purdue level is its most critical (lowest) level.
 - Access map per site (table and diagram) on flows, as a site tab and as a standalone page: not allowed first,
@@ -43,6 +80,7 @@ First release, for NetBox 4.7 (4.7.0 and later; 4.8 allowed).
   band).
   - Devices, VMs and prefixes are matched only at the import's site and in its VRF; ambiguous matches are
     skipped and reported. The importer links existing prefixes and never creates them.
+    ([#1](https://github.com/Packetflow-be/netbox-iec62443/pull/1))
   - It creates one flow per zone pair and protocol, with the ports, times and access classes from the
     input, and puts a flow in a conduit only when exactly one conduit joins both zones.
   - OT requests are classified as read, write, control or program by an explicit table per protocol
@@ -54,21 +92,22 @@ First release, for NetBox 4.7 (4.7.0 and later; 4.8 allowed).
   protocol logs (Modbus, S7comm, S7comm-plus, EtherNet/IP and CIP, DNP3, BACnet, OPC UA, Omron FINS, HART-IP,
   PROFINET CM) and `conn.log`, TSV or JSON, gzipped and rotated files included. Zones come from NetBox (zone
   prefixes and members in the site and VRF) plus an optional `--zone-map` CSV. Flows from an external zone are
-  remote access.
+  remote access. ([#4](https://github.com/Packetflow-be/netbox-iec62443/pull/4))
 - Every import reports the observed hosts that match nothing in NetBox; `--unknown-report` writes them to CSV.
+  ([#4](https://github.com/Packetflow-be/netbox-iec62443/pull/4))
 - Vendor-neutral firewall rules from the allowed flows (per site or per enforcing device; CSV or JSON): REST
   `firewall-rules/`, `manage.py iec62443_rules`, and a CSV on the site's zone register.
+  ([#4](https://github.com/Packetflow-be/netbox-iec62443/pull/4))
 - Deleting a zone that still has flows is refused, so verdicts and evidence are never lost.
+  ([#1](https://github.com/Packetflow-be/netbox-iec62443/pull/1))
 - Industrial services (protocol, role, NetBox application service with the ports, or fieldbus/address) and
   fieldbuses (medium, protocol, zone, gateway), with UI, API, GraphQL and the device panel.
+- `manage.py iec62443_demo` creates a populated fictional plant (and `--delete` removes it), so a new user sees
+  the access map, register and checks within minutes.
+  ([#5](https://github.com/Packetflow-be/netbox-iec62443/pull/5))
 - English only; all strings translatable, so the UI follows NetBox's language once translations exist.
 
-### Upgrading from a 0.1.0.dev0 development build
+### Packaging
 
-The old conduit model (a directed zone pair with a verdict) becomes the flow model; migrations 0004-0007
-move the data and delete nothing. See "Upgrading from a 0.1.0.dev0 development build" in the README for what
-happens to two-way conduits, free-text protocols and via, and industrial service ports. Migrations
-0008-0010 turn a single SL-T number into the vector with that level for every FR. The data migration
-writes no change-log entries. Right after `migrate` the plugin extends every permission on flows to conduits
-and flow hops (not when it has constraints) and rebuilds the search index of its models. The REST endpoint
-`access-map/` returns `flows` where it returned `conduits`, without the SVG diagram.
+- Packaging for PyPI, CI on NetBox 4.7.0, the newest 4.7 release and NetBox's development branch, and
+  publishing to PyPI from a version tag. ([#5](https://github.com/Packetflow-be/netbox-iec62443/pull/5))
