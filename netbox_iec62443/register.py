@@ -6,6 +6,7 @@ import csv
 import io
 import re
 
+from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
@@ -171,7 +172,9 @@ def _requirement_rows(zones, conduits, visible):
                     'risk_assessment': str(rs.risk_assessment or '') if rs else '',
                     'assessed_by': str(rs.assessed_by or '') if rs else '',
                     'assessed_on': _date(rs.assessed_on) if rs else '',
-                    '_object': rs, '_requirement': requirement, '_status': rs.status if rs else '',
+                    'status_code': rs.status if rs else '',
+                    # Model objects for the page; register_json() leaves them out
+                    'status_object': rs, 'requirement_object': requirement,
                 })
     return rows
 
@@ -191,7 +194,8 @@ def register_csv(register, table):
 def register_json(register):
     """The register without model objects, for the REST API."""
     def clean(rows):
-        return [{k: v for k, v in row.items() if not k.startswith('_')} for row in rows]
+        return [{k: v for k, v in row.items() if not k.startswith('_') and not isinstance(v, models.Model)}
+                for row in rows]
     return {
         'generated': register['generated'].isoformat(),
         'plugin_version': register['version'],

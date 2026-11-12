@@ -19,6 +19,13 @@
   broker as two rules into its zone, new column `connection`); the zone register, REST API, GraphQL, filters and
   CSV import carry the new fields; new check `brokered-write-without-topics`. The demo plant has one flow of
   each new kind. Migration `0012_flow_connection`.
+- System requirements (IEC 62443-3-3) and their status per zone or conduit (#6): met, met by a compensating
+  countermeasure, not met, not applicable, with countermeasure, evidence, risk assessment, assessed by and on.
+  The plugin ships identifiers and foundational requirements only; `manage.py iec62443_requirements` loads them
+  and, with `--csv`, the enhancements, levels and wording from the user's own licensed copy. New checks
+  `requirements-without-status` and `requirement-not-met-for-sl-a`; a requirements table and CSV in the zone
+  register; REST API `system-requirements/`, `requirement-statuses/`; GraphQL. Migration
+  `0013_system_requirements`.
 - Importer: observation files take `connection`, `broker` and `topic` per request. From Zeek logs, an OPC UA Reverse
   Connect (ReverseHello) is now imported the right way round (it pointed out of the PLC's zone), and MQTT
   publish/subscribe through a broker (`mqtt_publish`, `mqtt_subscribe`) becomes flows through the broker from

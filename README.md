@@ -37,6 +37,10 @@ conduits and flows](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62
 - **Risk assessment** (IEC 62443-3-2) of a zone or conduit: initial (ZCR 2) or detailed (ZCR 5), draft or
   approved, who assessed and approved it and when, next review, method, threats, vulnerabilities,
   consequences, countermeasures, **unmitigated, residual and tolerable risk**, a link to the report.
+- **System requirements** (IEC 62443-3-3) and their **status per zone or conduit**: met, met by a compensating
+  countermeasure, not met or not applicable, with the evidence, who assessed it and when, and the risk
+  assessment behind it. Identifiers only ship with the plugin; see
+  [System requirements](#system-requirements-iec-62443-3-3).
 - **Flow**: what actually runs between two zones, in one direction: source and destination zone,
   **protocol** and **ports** (`tcp/102`), **access** (read, write, control, program), remote access
   flag, the **ordered path** it takes (hops: devices, VMs or tunnels), the conduit that carries it,
@@ -51,8 +55,8 @@ conduits and flows](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62
   an address in another zone's prefix, an asset below its zone's level or in the wrong kind of zone, assets
   in no zone or in two, SL-A below SL-T, member SL-C below the zone's SL-T, a conduit below a zone it joins,
   conduits nobody enforces, expired or open-ended remote access, flows outside any conduit, writes through a
-  broker without their topics, verdicts
-  without a decider, stale flows, residual risk above tolerable, overdue risk assessments, and what an audit
+  broker without their topics, requirements that apply at the SL-T without a status, an SL-A claimed with a
+  requirement not met, verdicts without a decider, stale flows, residual risk above tolerable, overdue risk assessments, and what an audit
   will ask for and is missing (no SL-T, no accountable person, no approved risk assessment).
 - **Zone register** per site (a "Zone register" tab on the site, REST `register/`): zones, conduits and
   flows with their security levels, owners, risk and verdicts, plus the check results. Printable, and
@@ -238,6 +242,37 @@ the plugin.
 data, for reports and other tools: the flows into zones at that Purdue level or below, in access-map order,
 as full flow objects with their hops. Needs `view_flow` and view access to the site.
 
+## System requirements (IEC 62443-3-3)
+
+An auditor asks, per zone, which system requirements apply at its SL-T and how each is met. The plugin records
+that per zone and per conduit (a conduit has an SL-T of its own): *IEC 62443 > Requirement statuses*, a table on
+every zone and conduit page, a *System requirements* table and CSV in the zone register, and two checks.
+
+The requirement texts and the table of which requirement (or requirement enhancement) applies from which
+security level are copyrighted parts of the standard. The plugin ships **identifiers and foundational
+requirements only** (`netbox_iec62443/data/iec62443-3-3-2013.csv`: SR 1.1 to SR 7.8). Load them, and then
+whatever you take from your own licensed copy:
+
+```bash
+manage.py iec62443_requirements                    # the 51 identifiers, once
+manage.py iec62443_requirements --csv my-copy.csv  # enhancements, levels and wording from your copy
+```
+
+`my-copy.csv` has a header row and the columns `identifier` (`SR 1.1`, `SR 1.1 RE 1`), and optionally
+`security_level` (the lowest SL, 1 to 4, at which the requirement applies), `wording` and
+`foundational_requirement` (it follows from the identifier). An empty cell leaves what is stored; an
+enhancement gets its requirement as parent. `--dry-run` shows what would change; `--branch` works as for the
+other commands. Keep that file and your database to yourself: the wording stays in your installation.
+
+With the levels loaded, the checks find, per zone and conduit:
+
+- requirements that apply at its SL-T and have no status yet (warning);
+- a requirement marked *not met* that applies at the SL-A the zone or conduit claims (error).
+
+Without levels loaded the plugin cannot tell what applies, so these checks stay silent; statuses can still be
+recorded. Requirement identifiers are per edition (3-3:2013 today), so a later edition can be loaded next to it
+rather than migrated.
+
 ## Connection models
 
 Not every path into a controller zone is a connection into it. A flow says how its ends reach each other, in
@@ -330,8 +365,10 @@ enforceable by a routed firewall. The plugin writes no vendor syntax and reads n
   is a custom field on device types (with a per-device override), and the zone page shows the lowest SL-C of
   its members per FR next to the zone's SL-T and SL-A.
 - **The safety (SIS) attribute is the zone type**, not a separate flag: a safety zone is its own zone type.
-- **IEC 62443-3-3 requirement texts are not included.** They are copyrighted; the plugin does not track
-  system requirements (SR 1.1 ...) yet.
+- **IEC 62443-3-3 requirement texts are not included.** They are copyrighted, and so is the table of the
+  security levels at which each requirement applies. The plugin ships identifiers (`SR 1.1`) and their
+  foundational requirement only; you load the rest from your own licensed copy into your own database (see
+  [System requirements](#system-requirements-iec-62443-3-3)).
 - **A zone's Purdue level is its most critical (lowest) level.** A zone may hold a PLC (1) and an HMI (2);
   it counts as level 1, and the access map filters zones by it. The zone type says what kind of zone it is.
 - **Purdue level on devices/VMs is a custom field**, created by the plugin after `migrate` if it does
