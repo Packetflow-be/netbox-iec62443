@@ -6,9 +6,9 @@ who decided that is allowed.**
 *Formerly **netbox-iec62443**: 0.3.0 takes an existing installation over in place, see
 [Upgrading from netbox-iec62443](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/installation.md#from-netbox-iec62443).*
 
-[![PyPI](https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/badges/pypi.svg)](https://pypi.org/project/netbox-ot/)
+[![PyPI](https://img.shields.io/pypi/v/netbox-ot)](https://pypi.org/project/netbox-ot/)
 [![CI](https://github.com/Packetflow-be/netbox-ot/actions/workflows/ci.yml/badge.svg)](https://github.com/Packetflow-be/netbox-ot/actions/workflows/ci.yml)
-[![License](https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/badges/license.svg)](https://github.com/Packetflow-be/netbox-ot/blob/main/LICENSE)
+[![License](https://img.shields.io/pypi/l/netbox-ot)](https://github.com/Packetflow-be/netbox-ot/blob/main/LICENSE)
 
 A NetBox plugin for OT networks. It models **IEC 62443 zones and conduits**, the **flows** that run through
 them, and **Purdue levels** on devices and virtual machines. On top of that it builds an **access map**: every

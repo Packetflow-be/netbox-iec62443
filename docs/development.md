@@ -85,9 +85,7 @@ with "cannot pickle 'traceback' object" (a failure in a worker that cannot be re
 
 ## Releasing
 
-1. Set `__version__` in `netbox_ot/__init__.py`, put the same version in `docs/badges/pypi.svg` (the README's
-   badges are files, so they do not depend on a badge service; the build job checks this one) and move the
-   changelog entries under the new version.
+1. Set `__version__` in `netbox_ot/__init__.py` and move the changelog entries under the new version.
    Each release in `CHANGELOG.md` opens with one sentence saying whether it is a major, minor or patch release
    and whether it holds bug fixes, new features, enhancements or all of these; lists breaking changes under a
    bold **Breaking Changes** header with links to their issues or pull requests; and links every entry to its
