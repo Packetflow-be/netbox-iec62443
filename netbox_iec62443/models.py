@@ -822,7 +822,7 @@ class PluginSettings(models.Model):
     """
     branching_enabled = models.BooleanField(
         verbose_name=_('use a branch for imports'), default=False,
-        help_text=_('iec62443_import and iec62443_demo run in the default branch unless given --branch or --main'),
+        help_text=_('The import and demo commands run in the default branch'),
     )
     default_branch = models.CharField(
         verbose_name=_('default branch'), max_length=100, blank=True,
@@ -830,7 +830,7 @@ class PluginSettings(models.Model):
     )
     protect_main = models.BooleanField(
         verbose_name=_('refuse imports into main'), default=False,
-        help_text=_('iec62443_import and iec62443_demo refuse to write to main (a dry run still works)'),
+        help_text=_('The import and demo commands will not write to main'),
     )
     last_updated = models.DateTimeField(auto_now=True, null=True)
     updated_by = models.CharField(max_length=150, blank=True)

@@ -202,3 +202,11 @@ class BranchCommandTest(TransactionTestCase):
         _, err = _run('iec62443_demo', '--main')
         self.assertIn('Working in main', err)
         self.assertTrue(Site.objects.filter(slug=DEMO_SITE).exists())
+
+    def test_merge_brings_logged_changes_to_main(self):
+        _run('iec62443_demo', '--branch', 'trial')
+        self.assertFalse(Site.objects.filter(slug=DEMO_SITE).exists())
+        self.branch.merge(user=User.objects.get(username='admin'), commit=True)
+        site = Site.objects.get(slug=DEMO_SITE)
+        self.assertTrue(Zone.objects.filter(site=site).exists())
+        self.assertTrue(Flow.objects.filter(destination_zone__site=site).exists())

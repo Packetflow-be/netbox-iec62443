@@ -951,7 +951,7 @@ class PluginSettingsForm(forms.ModelForm):
             choices.append((current, _('{name} (no longer ready)').format(name=current)))
         self.fields['default_branch'].choices = choices
         self.fields['default_branch'].help_text = _(
-            'Commands without --branch or --main run here. Only branches that are ready are listed.'
+            'Only branches that are ready are listed.'
         )
 
     def clean_default_branch(self):

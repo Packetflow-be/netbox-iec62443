@@ -9,7 +9,8 @@ Commands that write (`iec62443_import`, `iec62443_demo`) also follow the plugin 
 with "use a branch for imports" on they run in the default branch unless given `--branch` or `--main`, and with
 "refuse imports into main" on they will not write to main at all.
 """
-from contextlib import contextmanager
+import uuid
+from contextlib import contextmanager, nullcontext
 
 from django.apps import apps
 from django.core.management.base import BaseCommand, CommandError, OutputWrapper
@@ -32,6 +33,30 @@ def plugin_settings():
     """The saved settings, or None while nobody has saved any (reading never creates the row)."""
     from .models import PluginSettings
     return PluginSettings.objects.order_by('pk').first()
+
+
+def changelog_user(username=None, required=True):
+    """The user a command's changes are logged under: `username`, or the first superuser (None if not required)."""
+    from users.models import User
+    users = User.objects.filter(username=username) if username else \
+        User.objects.filter(is_superuser=True).order_by('pk')
+    user = users.first()
+    if user is None and (required or username):
+        raise CommandError(f'User {username!r} not found' if username else 'No user for the change log (use --user)')
+    return user
+
+
+def change_logging(user):
+    """
+    Record what the block saves in NetBox's change log under `user`, as a web request would. In a branch that is
+    what netbox-branching shows in the branch's diff and replays on a merge: unlogged writes would never reach main.
+    """
+    from netbox.context_managers import event_tracking
+    from utilities.request import NetBoxFakeRequest
+    if user is None:
+        return nullcontext()
+    return event_tracking(NetBoxFakeRequest({'id': uuid.uuid4(), 'user': user, 'META': {}, 'path': '', 'GET': {},
+                                             'POST': {}, 'FILES': {}}))
 
 
 @contextmanager

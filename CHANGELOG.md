@@ -9,6 +9,8 @@
   - *IEC 62443 > Settings* (with netbox-branching only): a default branch that `iec62443_import` and
     `iec62443_demo` use without `--branch` (`--main` forces main), and a guard that refuses imports into main.
   - README section "Working in a branch"; CI runs the tests once more with netbox-branching installed.
+- `iec62443_demo` now writes to the change log (under `--user`, default the first superuser), like the importer.
+  Without that, demo data made in a branch was invisible in the branch's diff and was not carried over by a merge.
 - New migration `0011_plugin_settings` (one table for the settings).
 
 ## 0.2.0 (2026-11-11)

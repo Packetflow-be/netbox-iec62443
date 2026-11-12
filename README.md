@@ -214,8 +214,8 @@ or throw it away. The plugin's models are change-logged, so they are branched li
 
 Things to know: NetBox's `CUSTOM_VALIDATORS` (naming rules, for example) apply inside a branch as they do in
 main, so an import that would be refused in main is refused in the branch too. Changes in a branch are only
-visible in its *Diff* and *Changes ahead* tabs when they were change-logged, which the importer does (under
-`--user`). After a NetBox upgrade, branches need migrating before commands can use them (they are not *ready*
+visible in its *Diff* and *Changes ahead* tabs, and only carried to main by a merge, when they were
+change-logged; the importer and the demo do that (under `--user`, default the first superuser). After a NetBox upgrade, branches need migrating before commands can use them (they are not *ready*
 until then).
 
 ## Compatibility

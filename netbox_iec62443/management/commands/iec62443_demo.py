@@ -7,10 +7,10 @@ and --delete removes exactly that.
 import datetime
 
 from django.core.management.base import CommandError
-from django.db import transaction
+from django.db import DEFAULT_DB_ALIAS, transaction
 from django.utils import timezone
 
-from netbox_iec62443.branching import BranchCommand
+from netbox_iec62443.branching import BranchCommand, change_logging, changelog_user
 
 SITE_SLUG = 'iec62443-demo'
 PREFIX = 'IEC 62443 demo'
@@ -22,17 +22,23 @@ class Command(BranchCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--delete', action='store_true', help='Remove the demo data instead')
+        parser.add_argument('--user', help='Record the changes under this user (default: the first superuser)')
 
     def handle(self, *args, **options):
         from dcim.models import Site
+        # Change-logged like an edit in the GUI: in a branch, only logged changes show in its diff and merge
+        user = changelog_user(options['user'], required=False)
+        if user is None and self.db_alias != DEFAULT_DB_ALIAS:
+            self.stderr.write('No superuser to log the changes under (use --user): a merge of this branch will not '
+                              'bring the demo to main', self.style.WARNING)
         if options['delete']:
-            with transaction.atomic(using=self.db_alias):
+            with transaction.atomic(using=self.db_alias), change_logging(user):
                 self._delete()
             self.stdout.write(self.style.SUCCESS('Demo data removed'))
             return
         if Site.objects.filter(slug=SITE_SLUG).exists():
             raise CommandError(f'The demo site "{SITE_SLUG}" already exists; remove it first with --delete')
-        with transaction.atomic(using=self.db_alias):
+        with transaction.atomic(using=self.db_alias), change_logging(user):
             site = self._create()
         self.stdout.write(self.style.SUCCESS(
             f'Demo plant created: open the site "{site}" and its Access map and Zone register tabs, or '
