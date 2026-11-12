@@ -14,6 +14,7 @@ from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connections
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 
@@ -140,6 +141,9 @@ class BranchCommandTest(TransactionTestCase):
         self.branch.refresh_from_db()
 
     def tearDown(self):
+        # The branch's connection is not one Django's test runner knows about: close it, or the test database
+        # cannot be dropped at the end of the run ("being accessed by other users")
+        connections[self.branch.connection_name].close()
         self.branch.delete()  # drops the branch's schema
 
     def in_branch(self, queryset_fn):
