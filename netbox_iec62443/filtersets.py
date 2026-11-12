@@ -163,12 +163,12 @@ class ConduitFilterSet(SecurityLevelFilterMixin, PrimaryModelFilterSet):
         )
 
 
-@register_filterset
 def _topics_text():
     """A flow's topics as one text, so "a topic contains X" stays a plain filter in one query."""
     return Func('topics', Value('\n'), function='array_to_string', output_field=TextField())
 
 
+@register_filterset
 class FlowFilterSet(PrimaryModelFilterSet):
     conduit_id = django_filters.ModelMultipleChoiceFilter(
         queryset=Conduit.objects.all(),
