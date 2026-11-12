@@ -1,6 +1,4 @@
-<img src="https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/icon.svg" alt="" width="96" align="right">
-
-# netbox-ot
+<h1><img src="https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/icon.svg" alt="" width="44" height="44" align="absmiddle">&nbsp;netbox-ot</h1>
 
 **An OT asset and security register in NetBox: IEC 62443 zones, conduits and flows, who can reach your PLCs and
 who decided that is allowed.**
