@@ -80,7 +80,7 @@ images = []
 for frame, _ in shots:
     im = Image.open(frame).convert('RGB')
     im = im.resize((GIF_WIDTH, round(im.height * GIF_WIDTH / im.width)), Image.LANCZOS)
-    images.append(im.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE))
+    images.append(im.quantize(colors=256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE))
 images[0].save(out / 'demo.gif', save_all=True, append_images=images[1:], loop=0, optimize=True,
                duration=[int(seconds * 1000) for _, seconds in shots], disposal=1)
 print(f"demo.gif: {(out / 'demo.gif').stat().st_size // 1024} KiB")

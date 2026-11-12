@@ -3,12 +3,12 @@
   <!-- Two zones joined by a conduit with a checkpoint. CC BY 4.0, Packetflow. -->
   <rect width="512" height="512" rx="112" fill="#1A1815"/>
   <!-- conduit -->
-  <rect x="232" y="176" width="48" height="160" fill="#F5F1EA"/>
+  <rect x="236" y="150" width="40" height="210" fill="#F5F1EA"/>
   <!-- upper zone (enterprise / supplier side) -->
-  <rect x="100" y="84" width="312" height="108" rx="30" fill="#1A1815" stroke="#F5F1EA" stroke-width="28"/>
+  <rect x="104" y="72" width="304" height="92" rx="28" fill="#1A1815" stroke="#F5F1EA" stroke-width="26"/>
   <!-- lower zone (controllers) -->
-  <rect x="86" y="320" width="340" height="122" rx="34" fill="#E2620F"/>
+  <rect x="88" y="344" width="336" height="108" rx="32" fill="#E2620F"/>
   <!-- checkpoint on the conduit -->
-  <circle cx="256" cy="256" r="50" fill="#1A1815" stroke="#E2620F" stroke-width="22"/>
-  <path d="M233 257 l16 16 l30 -34" fill="none" stroke="#F5F1EA" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="254" r="38" fill="#1A1815" stroke="#E2620F" stroke-width="18"/>
+  <path d="M239 255 l12 12 l23 -26" fill="none" stroke="#F5F1EA" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
