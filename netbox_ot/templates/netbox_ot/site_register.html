@@ -78,7 +78,12 @@
           {% for f in register.flows %}
             <tr>
               <td>{{ f.from_zone }}</td><td>{{ f.to_zone }}</td>
-              <td>{{ f.protocol|placeholder }}{% if f.ports %} <span class="text-muted small">{{ f.ports }}</span>{% endif %}</td>
+              <td>
+                {{ f.protocol|placeholder }}{% if f.ports %} <span class="text-muted small">{{ f.ports }}</span>{% endif %}
+                {% if f.connection != default_connection %}
+                  <div class="small text-muted">{{ f.connection }}{% if f.broker_zone %}, {% trans "broker in" %} {{ f.broker_zone }}{% endif %}{% if f.topics %}: {{ f.topics }}{% endif %}</div>
+                {% endif %}
+              </td>
               <td>{{ f.access|placeholder }}</td><td>{{ f.remote_access }}</td><td class="small">{{ f.path|placeholder }}</td>
               <td>{{ f.conduit|placeholder }}</td><td>{{ f.allowed }}</td>
               <td class="small">{{ f.decided_by|placeholder }}{% if f.decided_on %}, {{ f.decided_on }}{% endif %}</td>

@@ -13,6 +13,7 @@ from netbox.models import PrimaryModel
 from . import sl
 from .choices import (
     AccessChoices,
+    ConnectionChoices,
     FieldbusMediumChoices,
     FlowAllowedChoices,
     FlowProtocolChoices,
@@ -287,6 +288,9 @@ class Flow(PrimaryModel):
     A directed communication path from one zone into another: protocol and ports, what the requests do, the ordered
     hops it runs through, and the verdict (is it allowed?) with who decided it and until when. Tools supply the
     evidence and the first/last seen times; a person decides. A flow belongs to the conduit that carries it.
+
+    The source is the side whose requests or data act on the destination. Usually it also opens the connection;
+    `connection` says when it does not (reverse connect) or when a broker sits in between (`broker_zone`).
     """
     name = models.CharField(
         verbose_name=_('name'),
@@ -322,12 +326,37 @@ class Flow(PrimaryModel):
         choices=FlowProtocolChoices,
         blank=True,
     )
+    connection = models.CharField(
+        verbose_name=_('connection'),
+        max_length=20,
+        choices=ConnectionChoices,
+        default=ConnectionChoices.CLIENT_SERVER,
+        help_text=_('Who opens the connection, and whether a broker sits in between'),
+    )
+    broker_zone = models.ForeignKey(
+        to=Zone,
+        on_delete=models.PROTECT,
+        related_name='flows_brokered',
+        verbose_name=_('broker zone'),
+        blank=True,
+        null=True,
+        help_text=_('The zone of the broker both ends connect to (only for a flow through a broker)'),
+    )
+    topics = ArrayField(
+        base_field=models.CharField(max_length=255),
+        verbose_name=_('topics'),
+        blank=True,
+        default=list,
+        help_text=_('MQTT topics or OPC UA PubSub data sets this flow carries, e.g. spBv1.0/line1/DCMD/#'),
+    )
     port_mappings = ArrayField(
         base_field=models.CharField(max_length=63),
         verbose_name=_('ports'),
         blank=True,
         default=list,
-        help_text=_('Destination ports as protocol/port, e.g. tcp/102; empty for layer-2 protocols'),
+        help_text=_('Ports of the side that accepts the connection, as protocol/port, e.g. tcp/102: the '
+                    'destination, the source for reverse connect, the broker for a brokered flow; empty for '
+                    'layer-2 protocols'),
     )
     access = ArrayField(
         base_field=models.CharField(max_length=20, choices=AccessChoices),
@@ -383,7 +412,8 @@ class Flow(PrimaryModel):
     )
 
     clone_fields = (
-        'conduit', 'source_zone', 'destination_zone', 'protocol', 'port_mappings', 'access', 'remote_access',
+        'conduit', 'source_zone', 'destination_zone', 'protocol', 'connection', 'broker_zone', 'port_mappings',
+        'access', 'remote_access',
     )
 
     class Meta:
@@ -418,10 +448,16 @@ class Flow(PrimaryModel):
             self.port_mappings = validate_port_mappings(self.port_mappings or [])
         except ValidationError as e:
             raise ValidationError({'port_mappings': e.messages})
+        if self.connection == ConnectionChoices.BROKERED and not self.broker_zone_id:
+            raise ValidationError({'broker_zone': _('A flow through a broker names the zone of the broker.')})
+        if self.connection != ConnectionChoices.BROKERED and self.broker_zone_id:
+            raise ValidationError({'broker_zone': _('Only a flow through a broker has a broker zone.')})
         if self.conduit_id and self.source_zone_id and self.destination_zone_id:
             joined = set(self.conduit.zones.values_list('pk', flat=True))
             if not {self.source_zone_id, self.destination_zone_id} <= joined:
                 raise ValidationError({'conduit': _('The conduit does not join both zones of this flow.')})
+            if self.broker_zone_id and self.broker_zone_id not in joined:
+                raise ValidationError({'conduit': _('The conduit does not join the broker zone of this flow.')})
         if self.first_seen and self.last_seen and self.first_seen > self.last_seen:
             raise ValidationError({'last_seen': _('Last seen is before first seen.')})
 
@@ -471,6 +507,34 @@ class Flow(PrimaryModel):
 
     def get_allowed_color(self):
         return FlowAllowedChoices.colors.get(self.allowed)
+
+    def get_connection_color(self):
+        return ConnectionChoices.colors.get(self.connection)
+
+    @property
+    def is_outbound_only(self):
+        """The destination's zone takes no inbound connection for this flow (reverse connect, brokered)."""
+        return self.connection in ConnectionChoices.OUTBOUND_ONLY
+
+    @property
+    def connection_description(self):
+        return ConnectionChoices.DESCRIPTIONS.get(self.connection, '')
+
+    @property
+    def transport_legs(self):
+        """
+        The connections a firewall sees for this flow, as (initiating zone, accepting zone) pairs: the source to
+        the destination; the destination to the source for reverse connect; both ends to the broker zone.
+        """
+        if self.connection == ConnectionChoices.REVERSE_CONNECT:
+            return [(self.destination_zone, self.source_zone)]
+        if self.connection == ConnectionChoices.BROKERED and self.broker_zone_id:
+            legs = []
+            for zone in (self.source_zone, self.destination_zone):
+                if zone.pk != self.broker_zone_id:
+                    legs.append((zone, self.broker_zone))
+            return legs
+        return [(self.source_zone, self.destination_zone)]
 
     def get_access_display(self):
         labels = dict(AccessChoices.CHOICES)

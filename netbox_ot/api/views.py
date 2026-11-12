@@ -42,7 +42,7 @@ class ConduitViewSet(NetBoxModelViewSet):
 
 
 class FlowViewSet(NetBoxModelViewSet):
-    queryset = Flow.objects.select_related('conduit', 'source_zone', 'destination_zone', 'decided_by') \
+    queryset = Flow.objects.select_related('conduit', 'source_zone', 'destination_zone', 'broker_zone', 'decided_by') \
         .prefetch_related('tags', *FLOW_HOPS)
     serializer_class = FlowSerializer
     filterset_class = filtersets.FlowFilterSet

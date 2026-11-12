@@ -16,6 +16,7 @@ from vpn.api.serializers import TunnelSerializer
 
 from ..choices import (
     AccessChoices,
+    ConnectionChoices,
     FieldbusMediumChoices,
     FlowAllowedChoices,
     FlowProtocolChoices,
@@ -152,6 +153,9 @@ class FlowSerializer(PrimaryModelSerializer):
     access = serializers.ListField(
         child=serializers.ChoiceField(choices=AccessChoices.values()), required=False,
     )
+    connection = ChoiceField(choices=ConnectionChoices, required=False)
+    broker_zone = ZoneSerializer(nested=True, required=False, allow_null=True)
+    topics = serializers.ListField(child=serializers.CharField(max_length=255), required=False)
     allowed = ChoiceField(choices=FlowAllowedChoices, required=False)
     decided_by = ContactSerializer(nested=True, required=False, allow_null=True)
     hops = serializers.SerializerMethodField(read_only=True)
@@ -162,10 +166,10 @@ class FlowSerializer(PrimaryModelSerializer):
     class Meta:
         model = Flow
         fields = (
-            'id', 'url', 'display_url', 'display', 'name', 'conduit', 'source_zone', 'destination_zone', 'protocol',
-            'port_mappings', 'access', 'remote_access', 'hops', 'allowed', 'decided_by', 'decided_on', 'review_by',
-            'expires', 'expired', 'review_due', 'first_seen', 'last_seen', 'stale', 'evidence', 'description',
-            'owner', 'comments', 'tags', 'custom_fields', 'created', 'last_updated',
+            'id', 'url', 'display_url', 'display', 'name', 'conduit', 'source_zone', 'destination_zone', 'connection',
+            'broker_zone', 'topics', 'protocol', 'port_mappings', 'access', 'remote_access', 'hops', 'allowed',
+            'decided_by', 'decided_on', 'review_by', 'expires', 'expired', 'review_due', 'first_seen', 'last_seen',
+            'stale', 'evidence', 'description', 'owner', 'comments', 'tags', 'custom_fields', 'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'name', 'allowed', 'description')
 

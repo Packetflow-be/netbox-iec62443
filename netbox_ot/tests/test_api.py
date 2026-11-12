@@ -106,7 +106,9 @@ class FlowAPITest(APIViewTestCases.APIViewTestCase):
              'decided_by': contact.pk},
             {'name': 'Flow 5', 'source_zone': remote.pk, 'destination_zone': cell.pk, 'remote_access': True,
              'conduit': conduit.pk, 'protocol': 'rdp', 'expires': '2027-01-31'},
-            {'name': 'Flow 6', 'source_zone': cell.pk, 'destination_zone': remote.pk, 'evidence': 'interview'},
+            {'name': 'Flow 6', 'source_zone': office.pk, 'destination_zone': cell.pk, 'evidence': 'interview',
+             'protocol': 'mqtt', 'connection': 'brokered', 'broker_zone': remote.pk,
+             'topics': ['spBv1.0/line1/DCMD/#']},
         ]
 
 

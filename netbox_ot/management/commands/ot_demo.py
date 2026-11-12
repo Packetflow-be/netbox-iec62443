@@ -213,6 +213,14 @@ class Command(BranchCommand):
         flow(msp, cell, 'teamviewer', ['tcp/5938'], [], 'yes', remote_access=True, decided_by=manager,
              expires=today - datetime.timedelta(days=10), name='Supplier TeamViewer (expired)')
         flow(cell, dmz, 'syslog', ['udp/514'], [], 'yes', conduit=c_dmz, decided_by=ot_lead)
+        # The line's gateway opens the connection to the MES (no inbound port into the cell), and the MES then reads
+        # and writes over it; the ports are those of the MES, which listens
+        flow(dmz, cell, 'opc-ua', ['tcp/4843'], ['read', 'write'], connection='reverse-connect', conduit=c_dmz,
+             name='MES over OPC UA reverse connect')
+        # Office dashboard and the line's gateway both connect out to the broker in the DMZ; what the dashboard
+        # publishes on the command topic reaches the gateway
+        flow(office, cell, 'mqtt', ['tcp/8883'], ['write'], connection='brokered', broker_zone=dmz,
+             topics=['spBv1.0/line1/DCMD/demo-gw-1'], name='Recipe changes through the MQTT broker')
 
         tunnel = Tunnel.objects.create(name=f'{PREFIX} MSP IPsec', status='active', encapsulation='ipsec-tunnel')
         for position, hop in enumerate((tunnel, jump, fw), start=1):

@@ -12,12 +12,16 @@ is allowed?**
   requests had (read, write, control, program), the hops it runs through, remote access, the verdict, when the
   flow was last seen and the evidence.
 - **Needs attention** sums up expired access, verdicts due for review, flows not seen for `stale_after_days`
-  (default 90) and flows that run outside any documented conduit.
+  (default 90), flows that run outside any documented conduit, and flows that reach their zone over a connection
+  opened from inside it (reverse connect, a broker: see [Connection models](data-model.md#connection-models)).
+- A flow with another [connection model](data-model.md#connection-models) than client/server shows it under the
+  protocol, with the broker's zone and the topics.
 - A small server-rendered **diagram** draws the zones by Purdue level with one arrow per zone pair: red for
-  not allowed or expired, amber for unknown, green for allowed; dashed for remote access. The number on an
-  arrow is how many flows it carries.
+  not allowed or expired, amber for unknown, green for allowed; dashed for remote access, dotted when the
+  destination opens the connection itself. Arrows point from the side that acts to the side acted upon. The
+  number on an arrow is how many flows it carries.
 
-It is an *Access map* tab on the site page and a standalone page under *IEC 62443 > Access map*. It needs the
+It is an *Access map* tab on the site page and a standalone page under *OT > Access map*. It needs the
 `view_flow` permission.
 
 ## API

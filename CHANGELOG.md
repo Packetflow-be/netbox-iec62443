@@ -15,6 +15,17 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 - `ot_demo` writes to the change log (under `--user`, default the first superuser), like the importer, so demo
   data made in a branch shows in its diff and is carried over by a merge.
 - Migration `0002_plugin_settings` (one table for the settings).
+- Connection models on flows ([#11](https://github.com/Packetflow-be/netbox-ot/issues/11)): client/server
+  (default), reverse connect (OPC UA Reverse Connect), through a broker (MQTT, Sparkplug B, OPC UA PubSub over a
+  broker) with a broker zone and topics, and published without a session (OPC UA PubSub over UDP). The access map
+  draws flows without an inbound connection dotted and lists them under *Needs attention*; firewall rules follow
+  the connection (reverse connect from the destination zone, a broker as two rules into its zone, new column
+  `connection`); register, REST API, GraphQL, filters and CSV import carry the new fields; new check
+  `brokered-write-without-topics`; the demo plant has one flow of each new kind. Migration `0003_flow_connection`.
+- Importer: observation files take `connection`, `broker` and `topic` per request. From Zeek logs an OPC UA Reverse
+  Connect (ReverseHello) is imported the right way round (it pointed out of the PLC's zone), and MQTT
+  publish/subscribe through a broker (`mqtt_publish`, `mqtt_subscribe`) becomes flows through the broker from
+  publisher to subscriber, with their topics; Sparkplug B commands count as write.
 
 ## 0.3.0 (unreleased)
 

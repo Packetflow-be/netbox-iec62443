@@ -13,6 +13,14 @@ import like any other source. No database access here: zones come in as a ZoneMa
             is guessed from the port). TCP attempts that were never answered (S0, REJ, ...) are skipped; one-way
             UDP counts. Answered TCP ports become the responder's open ports.
   assets    every IPv4 address seen that the zone map places in a zone. Others go to the outside zone.
+  OPC UA    a connection whose originator sent a ReverseHello (RHE) is a Reverse Connect: the server opened it
+            and the client sends the requests, so its records count from the responder (the client) to the
+            originator (the server), with connection "reverse-connect" and the client's listening port.
+  MQTT      from Zeek's mqtt_publish and mqtt_subscribe logs, per broker (the responder of the MQTT
+            connection): every client that published a topic, to every other client the broker delivered it
+            to or that subscribed to a matching filter, becomes a request through the broker (connection
+            "brokered"), function PUBLISH and the topic. Sparkplug B commands (NCMD, DCMD) count as write.
+            The clients' own connections to the broker stay ordinary flows from conn.log.
 
 Multicast and broadcast destinations are skipped, as are IPv6 addresses (the import format is IPv4).
 """
@@ -125,7 +133,8 @@ def _ipv4(value):
     return ip if ip.version == 4 else None
 
 
-OPCUA_MESSAGES = {'HEL': 'Hello', 'ACK': 'Acknowledge', 'OPN': 'OpenSecureChannel', 'CLO': 'CloseSecureChannel'}
+OPCUA_MESSAGES = {'HEL': 'Hello', 'ACK': 'Acknowledge', 'OPN': 'OpenSecureChannel', 'CLO': 'CloseSecureChannel',
+                  'RHE': 'ReverseHello'}
 
 
 def _function(record, fields):
@@ -219,15 +228,20 @@ def to_observations(logs, zone_map, captures=None):
         return src and dst and not dst.is_multicast and dst != ipaddress.IPv4Address('255.255.255.255') \
             and not zone_map.is_broadcast(dst)
 
-    def add(src, dst, proto, port, transport, func, ts):
-        key = (str(src), str(dst), proto, port, transport, func)
+    def add(src, dst, proto, port, transport, func, ts, connection='', broker='', topic='', access='', count=1,
+            last=None):
+        key = (str(src), str(dst), proto, port, transport, func, connection, str(broker or ''), topic, access)
         entry = requests[key]
-        entry['count'] += 1
-        if ts:
-            entry['first'] = min(entry['first'], ts) if entry['first'] else ts
-            entry['last'] = max(entry['last'], ts) if entry['last'] else ts
-            times.append(ts)
-        seen.update((str(src), str(dst)))
+        entry['count'] += count
+        for t in (ts, last):
+            if t:
+                entry['first'] = min(entry['first'], t) if entry['first'] else t
+                entry['last'] = max(entry['last'], t) if entry['last'] else t
+                times.append(t)
+        seen.update(str(ip) for ip in (src, dst, broker) if ip)
+
+    # OPC UA connections opened by the server (Reverse Connect): it sends a ReverseHello first
+    reverse_uids = {r['uid'] for r in logs.get('opcua_binary', []) if r.get('msg_type') == 'RHE' and r.get('uid')}
 
     for stream, (proto, func_fields, request) in STREAMS.items():
         for record in logs.get(stream, []):
@@ -239,10 +253,19 @@ def to_observations(logs, zone_map, captures=None):
             if not keep(src, dst):
                 continue
             port = record.get('id.resp_p')
+            connection = ''
+            if record.get('uid') in reverse_uids:
+                # The responder is the client: it listens on id.resp_p and sends the requests to the server
+                src, dst, connection = dst, src, 'reverse-connect'
             add(src, dst, proto, int(port) if port and str(port).isdigit() else None, record.get('proto'),
-                _function(record, func_fields), _ts(record.get('ts')))
+                _function(record, func_fields), _ts(record.get('ts')), connection=connection)
             if record.get('uid'):
                 covered.add(record['uid'])
+
+    for publisher, subscriber, broker, port, topic, (count, first, last) in _mqtt_through_brokers(logs):
+        if keep(publisher, subscriber) and keep(subscriber, broker):
+            add(publisher, subscriber, 'mqtt', port, 'tcp', 'PUBLISH', first, connection='brokered', broker=broker,
+                topic=topic, access='write' if _sparkplug_command(topic) else '', count=count, last=last)
 
     zone_pairs = defaultdict(int)
     for record in logs.get('conn', []):
@@ -278,10 +301,18 @@ def to_observations(logs, zone_map, captures=None):
                 asset['open_ports'] = sorted(open_ports[ip])
             assets.append(asset)
     flows = []
-    for (src, dst, proto, port, transport, func), entry in requests.items():
+    for (src, dst, proto, port, transport, func, connection, broker, topic, access), entry in requests.items():
         flow = {'src': src, 'dst': dst, 'proto': proto, 'count': entry['count']}
         if func:
             flow['func'] = func
+        if connection:
+            flow['connection'] = connection
+        if broker:
+            flow['broker'] = broker
+        if topic:
+            flow['topic'] = topic
+        if access:
+            flow['access'] = access
         if port:
             flow['port'] = port
             if transport in ('tcp', 'udp'):
@@ -300,3 +331,72 @@ def to_observations(logs, zone_map, captures=None):
         summary.update(start=start.isoformat(), end=end.isoformat(),
                        hours=round((end - start).total_seconds() / 3600, 1))
     return assets, flows, summary
+
+
+def topic_matches(topic_filter, topic):
+    """MQTT topic filter matching: '+' is one level, a final '#' any number of levels (also none)."""
+    parts, levels = topic_filter.split('/'), topic.split('/')
+    for i, part in enumerate(parts):
+        if part == '#':
+            return i == len(parts) - 1
+        if i >= len(levels) or (part != '+' and part != levels[i]):
+            return False
+    return len(parts) == len(levels)
+
+
+def _sparkplug_command(topic):
+    """Sparkplug B node and device commands (spBv1.0/<group>/NCMD|DCMD/...) change the receiver."""
+    levels = topic.split('/')
+    return len(levels) >= 4 and levels[0].startswith('spB') and levels[2] in ('NCMD', 'DCMD')
+
+
+def _is_true(value):
+    return value in (True, 'T', 'true', 'True', 1, '1')
+
+
+def _topics(value):
+    if isinstance(value, list):
+        return [str(t) for t in value if t not in UNSET]
+    return [t for t in str(value or '').split(',') if t and t not in UNSET]
+
+
+def _mqtt_through_brokers(logs):
+    """
+    (publisher, subscriber, broker, broker port, topic, (publishes, first, last)) for every topic a client published
+    on a broker that reached, or was subscribed to by, another client of the same broker. The broker is the
+    responder of each MQTT connection; a PUBLISH from the client is published, a PUBLISH from the broker
+    (from_client F) is a delivery.
+    """
+    published = defaultdict(dict)  # (broker, port) -> {(publisher, topic): [count, first, last]}
+    delivered = defaultdict(set)  # (broker, port) -> {(subscriber, topic)}
+    filters = defaultdict(set)  # (broker, port) -> {(subscriber, filter)}
+    for record in logs.get('mqtt_publish', []):
+        client, broker = _ipv4(record.get('id.orig_h')), _ipv4(record.get('id.resp_h'))
+        port, topic = record.get('id.resp_p'), record.get('topic')
+        if not (client and broker and topic and port and str(port).isdigit()):
+            continue
+        key = (broker, int(port))
+        if _is_true(record.get('from_client')):
+            ts = _ts(record.get('ts'))
+            entry = published[key].setdefault((client, topic), [0, None, None])
+            entry[0] += 1
+            if ts:
+                entry[1] = min(entry[1], ts) if entry[1] else ts
+                entry[2] = max(entry[2], ts) if entry[2] else ts
+        else:
+            delivered[key].add((client, topic))
+    for record in logs.get('mqtt_subscribe', []):
+        action = str(record.get('action') or '').upper()
+        if 'UNSUBSCRIBE' in action or 'SUBSCRIBE' not in action:
+            continue
+        client, broker = _ipv4(record.get('id.orig_h')), _ipv4(record.get('id.resp_h'))
+        port = record.get('id.resp_p')
+        if client and broker and port and str(port).isdigit():
+            for topic_filter in _topics(record.get('topics')):
+                filters[(broker, int(port))].add((client, topic_filter))
+    for (broker, port), sent in published.items():
+        for (publisher, topic), stats in sent.items():
+            subscribers = {s for s, t in delivered[(broker, port)] if t == topic}
+            subscribers |= {s for s, f in filters[(broker, port)] if topic_matches(f, topic)}
+            for subscriber in sorted(subscribers - {publisher}):
+                yield publisher, subscriber, broker, port, topic, tuple(stats)

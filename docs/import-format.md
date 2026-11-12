@@ -37,6 +37,9 @@ have it).
 | `transport` | no | `tcp` or `udp` for `port`. Default: the protocol's usual transport (UDP for BACnet/IP, KNXnet/IP, Omron FINS, PROFINET CM, DNS, NTP, SNMP, Syslog, IPsec, OpenVPN, WireGuard; TCP otherwise) |
 | `func` | no | Function as the tool names it, e.g. "Read Variable", "WRITE_SINGLE_COIL", "Force Single Coil", "PLC Stop", "DIRECT_OPERATE", "C_SC_NA_1". Classified as read, write, control, program or other by an explicit table per protocol (`importers/functions.py`); a name not in the table stays *unclassified* |
 | `access` | no | The class itself, if the tool knows it: `read`, `write`, `control` (commands, run/stop, reset, restart), `program` (logic, firmware or file download) or `other`. Overrides the table. Senders of write, control and program requests are listed in the flow's evidence |
+| `connection` | no | How the two ends reach each other: `client-server` (default: `src` connects to `dst`), `reverse-connect` (`dst` opens the connection and `src` sends its requests over it, as in OPC UA Reverse Connect; `port` is then the one `src` listens on), `brokered` (both connect to a broker, see `broker`), `publish` (datagrams without a session). `src` is always the side whose requests or data act on `dst` |
+| `broker` | with `brokered` | IPv4 address of the broker; the flow gets the broker's zone, and `port` is the broker's |
+| `topic` | no | MQTT topic or OPC UA PubSub data set the request carried; collected in the flow's topics |
 | `count` | no | Number of requests (default 1) |
 | `first_seen`, `last_seen` | no | When these requests were seen. Default: summary.json `start` and `end` |
 
@@ -60,7 +63,9 @@ assets.json   [{"ip": "10.10.10.10", "zone": "Cell A", "purdue_level": 1, "role"
                {"ip": "10.99.0.5",   "zone": "Supplier", "role": "4G router", "remote_access": true}]
 flows.json    [{"src": "10.10.10.20", "dst": "10.10.10.10", "proto": "S7comm", "port": 102,
                 "func": "Read Variable", "count": 5500},
-               {"src": "10.99.0.5", "dst": "10.10.10.10", "proto": "S7comm", "port": 102, "func": "PLC Stop"}]
+               {"src": "10.99.0.5", "dst": "10.10.10.10", "proto": "S7comm", "port": 102, "func": "PLC Stop"},
+               {"src": "10.20.0.15", "dst": "10.10.10.20", "proto": "MQTT", "connection": "brokered",
+                "broker": "10.30.0.9", "port": 1883, "topic": "spBv1.0/line1/DCMD/hmi", "access": "write"}]
 summary.json  {"zone_pairs": [{"from": "Office", "to": "Cell A", "count": 300}],
                "zones": [{"name": "Supplier", "type": "external"}],
                "start": "2026-11-03T08:00:00Z", "end": "2026-11-03T16:00:00Z"}
@@ -68,5 +73,7 @@ summary.json  {"zone_pairs": [{"from": "Office", "to": "Cell A", "count": 300}],
 
 `--split "Cell A"` then gives zones *Cell A (control)* and *Cell A (supervisory)*, a flow *Cell A
 (supervisory) -> Cell A (control) S7comm* (read, tcp/102) for the HMI, a remote-access flow *Supplier ->
-Cell A (control) S7comm* (control) for the 4G router, and a flow *Office -> Cell A (control)
-(unidentified)* for the office traffic.
+Cell A (control) S7comm* (control) for the 4G router, a flow *Office -> Cell A (supervisory) MQTT via broker in
+Outside* (write, topic `spBv1.0/line1/DCMD/hmi`, port tcp/1883: the broker's address is in no listed zone) for a
+dashboard command through a broker, and a flow *Office -> Cell A (control) (unidentified)* for the office
+traffic.

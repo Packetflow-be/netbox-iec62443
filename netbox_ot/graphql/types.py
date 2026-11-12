@@ -44,6 +44,7 @@ class ZoneType(PrimaryObjectType):
     conduits: list[Annotated['ConduitType', strawberry.lazy('netbox_ot.graphql.types')]]
     flows_out: list[Annotated['FlowType', strawberry.lazy('netbox_ot.graphql.types')]]
     flows_in: list[Annotated['FlowType', strawberry.lazy('netbox_ot.graphql.types')]]
+    flows_brokered: list[Annotated['FlowType', strawberry.lazy('netbox_ot.graphql.types')]]
 
 
 @register_type(models.Conduit, fields='__all__', filters=ConduitFilter, pagination=True)
@@ -66,10 +67,12 @@ class FlowType(PrimaryObjectType):
     conduit: Annotated['ConduitType', strawberry.lazy('netbox_ot.graphql.types')] | None
     source_zone: Annotated['ZoneType', strawberry.lazy('netbox_ot.graphql.types')]
     destination_zone: Annotated['ZoneType', strawberry.lazy('netbox_ot.graphql.types')]
+    broker_zone: Annotated['ZoneType', strawberry.lazy('netbox_ot.graphql.types')] | None
     decided_by: Annotated['ContactType', strawberry.lazy('tenancy.graphql.types')] | None
     hops: list[Annotated['FlowHopType', strawberry.lazy('netbox_ot.graphql.types')]]
     port_mappings: list[str]
     access: list[str]
+    topics: list[str]
 
 
 @register_type(models.FlowHop, fields='__all__', filters=FlowHopFilter, pagination=True)

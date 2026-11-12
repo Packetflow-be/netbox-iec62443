@@ -30,7 +30,8 @@ zone register.
   levels, SL-T and SL-A vectors over the seven foundational requirements, accountable people, sub-zones, the
   devices that enforce a conduit, and risk assessments. [Data model](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/data-model.md)
 - **Flows**: what actually runs from one zone into another (protocol, ports, read/write/control/program access,
-  remote access, the path of hops it takes) with a verdict: allowed yes/no/unknown, decided by whom, review
+  remote access, the path of hops it takes, how the ends connect: client/server, OPC UA Reverse Connect or
+  through an MQTT broker) with a verdict: allowed yes/no/unknown, decided by whom, review
   and expiry dates.
 - **Access map** per site: the flows into the controller zones, worst first, with what needs attention and a
   diagram. [Access map](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/access-map.md)
