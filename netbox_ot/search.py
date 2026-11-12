@@ -1,6 +1,15 @@
 from netbox.search import SearchIndex
 
-from .models import Conduit, Fieldbus, Flow, IndustrialService, RiskAssessment, Zone
+from .models import (
+    Conduit,
+    Fieldbus,
+    Flow,
+    IndustrialService,
+    RequirementStatus,
+    RiskAssessment,
+    SystemRequirement,
+    Zone,
+)
 
 
 class ZoneIndex(SearchIndex):
@@ -70,4 +79,28 @@ class RiskAssessmentIndex(SearchIndex):
     display_attrs = ('zone', 'conduit', 'kind', 'status', 'assessed_on', 'residual_risk')
 
 
-indexes = (ZoneIndex, ConduitIndex, FlowIndex, RiskAssessmentIndex, FieldbusIndex, IndustrialServiceIndex)
+class SystemRequirementIndex(SearchIndex):
+    model = SystemRequirement
+    fields = (
+        ('identifier', 100),
+        ('description', 500),
+        ('comments', 5000),
+    )
+    display_attrs = ('edition', 'foundational_requirement', 'security_level')
+
+
+class RequirementStatusIndex(SearchIndex):
+    model = RequirementStatus
+    fields = (
+        ('countermeasure', 2000),
+        ('evidence', 2000),
+        ('description', 500),
+        ('comments', 5000),
+    )
+    display_attrs = ('zone', 'conduit', 'requirement', 'status')
+
+
+indexes = (
+    ZoneIndex, ConduitIndex, FlowIndex, RiskAssessmentIndex, SystemRequirementIndex, RequirementStatusIndex,
+    FieldbusIndex, IndustrialServiceIndex,
+)

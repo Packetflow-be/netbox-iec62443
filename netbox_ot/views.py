@@ -17,7 +17,18 @@ from .branching import branch_names, branching_installed
 from .checks import CHECKS, run_checks, summary
 from .choices import ConnectionChoices, PurdueLevelChoices
 from .customfields import get_sl_capability
-from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, PluginSettings, RiskAssessment, Zone
+from .models import (
+    Conduit,
+    Fieldbus,
+    Flow,
+    FlowHop,
+    IndustrialService,
+    PluginSettings,
+    RequirementStatus,
+    RiskAssessment,
+    SystemRequirement,
+    Zone,
+)
 from .register import build_register, register_csv
 from .rules import build_rules, rules_csv
 
@@ -91,6 +102,17 @@ class RiskLevelsPanel(panels.ObjectAttributesPanel):
     residual_risk = attrs.ChoiceAttr('residual_risk', label=_('Residual risk'))
     tolerable_risk = attrs.ChoiceAttr('tolerable_risk', label=_('Tolerable risk'))
     residual_above_tolerable = attrs.BooleanAttr('residual_above_tolerable', label=_('Residual above tolerable'))
+
+
+def _requirement_statuses_panel(field):
+    return panels.ObjectsTablePanel(
+        'netbox_ot.requirementstatus',
+        filters={f'{field}_id': lambda ctx: ctx['object'].pk},
+        exclude_columns=['subject'],
+        title=_('System requirements (IEC 62443-3-3)'),
+        actions=[actions.AddObject('netbox_ot.requirementstatus', label=_('Add'),
+                                   url_params={field: lambda ctx: ctx['object'].pk})],
+    )
 
 
 def _risk_assessments_panel(field):
@@ -172,6 +194,7 @@ class ZoneView(generic.ObjectView):
         ],
         bottom_panels=[
             _risk_assessments_panel('zone'),
+            _requirement_statuses_panel('zone'),
             panels.ObjectsTablePanel(
                 'netbox_ot.zone',
                 filters={'parent_id': lambda ctx: ctx['object'].pk},
@@ -272,6 +295,7 @@ class ConduitView(generic.ObjectView):
                 title=_('Zones'),
             ),
             _risk_assessments_panel('conduit'),
+            _requirement_statuses_panel('conduit'),
             panels.ObjectsTablePanel(
                 'dcim.device',
                 filters={'id': lambda ctx: _ids_or_none(ctx['object'].enforcing_devices.all())},
@@ -523,6 +547,162 @@ class RiskAssessmentBulkDeleteView(generic.BulkDeleteView):
     queryset = RiskAssessment.objects.all()
     filterset = filtersets.RiskAssessmentFilterSet
     table = tables.RiskAssessmentTable
+
+
+#
+# System requirements and their status per zone or conduit
+#
+
+class SystemRequirementPanel(panels.ObjectAttributesPanel):
+    identifier = attrs.TextAttr('identifier')
+    edition = attrs.ChoiceAttr('edition')
+    foundational_requirement = attrs.ChoiceAttr('foundational_requirement', label=_('Foundational requirement'))
+    parent = attrs.RelatedObjectAttr('parent', linkify=True, label=_('Requirement'))
+    security_level = attrs.TextAttr('security_level', label=_('Applies from SL'))
+    description = attrs.TextAttr('description')
+
+
+class RequirementStatusPanel(panels.ObjectAttributesPanel):
+    zone = attrs.RelatedObjectAttr('zone', linkify=True)
+    conduit = attrs.RelatedObjectAttr('conduit', linkify=True)
+    requirement = attrs.RelatedObjectAttr('requirement', linkify=True)
+    status = attrs.ChoiceAttr('status')
+    risk_assessment = attrs.RelatedObjectAttr('risk_assessment', linkify=True, label=_('Risk assessment'))
+    assessed_by = attrs.RelatedObjectAttr('assessed_by', linkify=True, label=_('Assessed by'))
+    assessed_on = attrs.DateTimeAttr('assessed_on', spec='date', label=_('Assessed on'))
+    description = attrs.TextAttr('description')
+
+
+@register_model_view(SystemRequirement, 'list', path='', detail=False)
+class SystemRequirementListView(generic.ObjectListView):
+    queryset = SystemRequirement.objects.select_related('parent').annotate(status_count=Count('statuses'))
+    filterset = filtersets.SystemRequirementFilterSet
+    filterset_form = forms.SystemRequirementFilterForm
+    table = tables.SystemRequirementTable
+
+
+@register_model_view(SystemRequirement)
+class SystemRequirementView(generic.ObjectView):
+    queryset = SystemRequirement.objects.all()
+    template_name = 'generic/object.html'
+    layout = layout.SimpleLayout(
+        left_panels=[
+            SystemRequirementPanel(),
+            TagsPanel(),
+        ],
+        right_panels=[
+            panels.TextCodePanel('wording', title=_('Wording (from your copy of the standard)')),
+            CustomFieldsPanel(),
+            panels.CommentsPanel(),
+        ],
+        bottom_panels=[
+            panels.ObjectsTablePanel(
+                'netbox_ot.systemrequirement',
+                filters={'parent_id': lambda ctx: ctx['object'].pk},
+                title=_('Requirement enhancements'),
+            ),
+            panels.ObjectsTablePanel(
+                'netbox_ot.requirementstatus',
+                filters={'requirement_id': lambda ctx: ctx['object'].pk},
+                exclude_columns=['requirement'],
+                title=_('Status per zone and conduit'),
+            ),
+        ],
+    )
+
+
+@register_model_view(SystemRequirement, 'add', detail=False)
+@register_model_view(SystemRequirement, 'edit')
+class SystemRequirementEditView(generic.ObjectEditView):
+    queryset = SystemRequirement.objects.all()
+    form = forms.SystemRequirementForm
+
+
+@register_model_view(SystemRequirement, 'delete')
+class SystemRequirementDeleteView(generic.ObjectDeleteView):
+    queryset = SystemRequirement.objects.all()
+
+
+@register_model_view(SystemRequirement, 'bulk_import', path='import', detail=False)
+class SystemRequirementBulkImportView(generic.BulkImportView):
+    queryset = SystemRequirement.objects.all()
+    model_form = forms.SystemRequirementImportForm
+
+
+@register_model_view(SystemRequirement, 'bulk_edit', path='edit', detail=False)
+class SystemRequirementBulkEditView(generic.BulkEditView):
+    queryset = SystemRequirement.objects.annotate(status_count=Count('statuses'))
+    filterset = filtersets.SystemRequirementFilterSet
+    table = tables.SystemRequirementTable
+    form = forms.SystemRequirementBulkEditForm
+
+
+@register_model_view(SystemRequirement, 'bulk_delete', path='delete', detail=False)
+class SystemRequirementBulkDeleteView(generic.BulkDeleteView):
+    queryset = SystemRequirement.objects.annotate(status_count=Count('statuses'))
+    filterset = filtersets.SystemRequirementFilterSet
+    table = tables.SystemRequirementTable
+
+
+@register_model_view(RequirementStatus, 'list', path='', detail=False)
+class RequirementStatusListView(generic.ObjectListView):
+    queryset = RequirementStatus.objects.select_related(
+        'zone', 'conduit', 'requirement', 'risk_assessment', 'assessed_by',
+    )
+    filterset = filtersets.RequirementStatusFilterSet
+    filterset_form = forms.RequirementStatusFilterForm
+    table = tables.RequirementStatusTable
+
+
+@register_model_view(RequirementStatus)
+class RequirementStatusView(generic.ObjectView):
+    queryset = RequirementStatus.objects.all()
+    template_name = 'generic/object.html'
+    layout = layout.SimpleLayout(
+        left_panels=[
+            RequirementStatusPanel(),
+            TagsPanel(),
+        ],
+        right_panels=[
+            panels.TextCodePanel('countermeasure', title=_('Compensating countermeasure')),
+            panels.TextCodePanel('evidence', title=_('Evidence')),
+            CustomFieldsPanel(),
+            panels.CommentsPanel(),
+        ],
+    )
+
+
+@register_model_view(RequirementStatus, 'add', detail=False)
+@register_model_view(RequirementStatus, 'edit')
+class RequirementStatusEditView(generic.ObjectEditView):
+    queryset = RequirementStatus.objects.all()
+    form = forms.RequirementStatusForm
+
+
+@register_model_view(RequirementStatus, 'delete')
+class RequirementStatusDeleteView(generic.ObjectDeleteView):
+    queryset = RequirementStatus.objects.all()
+
+
+@register_model_view(RequirementStatus, 'bulk_import', path='import', detail=False)
+class RequirementStatusBulkImportView(generic.BulkImportView):
+    queryset = RequirementStatus.objects.all()
+    model_form = forms.RequirementStatusImportForm
+
+
+@register_model_view(RequirementStatus, 'bulk_edit', path='edit', detail=False)
+class RequirementStatusBulkEditView(generic.BulkEditView):
+    queryset = RequirementStatus.objects.all()
+    filterset = filtersets.RequirementStatusFilterSet
+    table = tables.RequirementStatusTable
+    form = forms.RequirementStatusBulkEditForm
+
+
+@register_model_view(RequirementStatus, 'bulk_delete', path='delete', detail=False)
+class RequirementStatusBulkDeleteView(generic.BulkDeleteView):
+    queryset = RequirementStatus.objects.all()
+    filterset = filtersets.RequirementStatusFilterSet
+    table = tables.RequirementStatusTable
 
 
 #
@@ -789,7 +969,7 @@ class SiteRegisterView(generic.ObjectView):
             response = HttpResponse(rules_csv(rules), content_type='text/csv; charset=utf-8')
             response['Content-Disposition'] = f'attachment; filename="{site.slug}-ot-firewall-rules.csv"'
             return response
-        if table in ('zones', 'conduits', 'flows'):
+        if table in ('zones', 'conduits', 'flows', 'requirements'):
             site = self.get_object(**kwargs)
             data = register_csv(build_register(site, user=request.user), table)
             response = HttpResponse(data, content_type='text/csv; charset=utf-8')

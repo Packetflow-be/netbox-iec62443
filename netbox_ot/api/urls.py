@@ -10,6 +10,8 @@ router.register('conduits', views.ConduitViewSet)
 router.register('flows', views.FlowViewSet)
 router.register('flow-hops', views.FlowHopViewSet)
 router.register('risk-assessments', views.RiskAssessmentViewSet)
+router.register('system-requirements', views.SystemRequirementViewSet)
+router.register('requirement-statuses', views.RequirementStatusViewSet)
 router.register('fieldbuses', views.FieldbusViewSet)
 router.register('industrial-services', views.IndustrialServiceViewSet)
 

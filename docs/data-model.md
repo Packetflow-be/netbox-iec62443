@@ -14,6 +14,8 @@
 - **Risk assessment** (IEC 62443-3-2) of a zone or conduit: initial (ZCR 2) or detailed (ZCR 5), draft or
   approved, who assessed and approved it and when, next review, method, threats, vulnerabilities,
   consequences, countermeasures, **unmitigated, residual and tolerable risk**, a link to the report.
+- **System requirement** (IEC 62443-3-3) and its **status per zone or conduit**: see
+  [System requirements](requirements.md).
 - **Flow**: what actually runs between two zones, in one direction: source and destination zone,
   **protocol** and **ports** (`tcp/102`), **access** (read, write, control, program), remote access
   flag, the **ordered path** it takes (hops: devices, VMs or tunnels), the conduit that carries it,
@@ -89,8 +91,10 @@ observation files and detects OPC UA Reverse Connect and MQTT through a broker i
   is a custom field on device types (with a per-device override), and the zone page shows the lowest SL-C of
   its members per FR next to the zone's SL-T and SL-A.
 - **The safety (SIS) attribute is the zone type**, not a separate flag: a safety zone is its own zone type.
-- **IEC 62443-3-3 requirement texts are not included.** They are copyrighted; the plugin does not track
-  system requirements (SR 1.1 ...) yet.
+- **IEC 62443-3-3 requirement texts are not included.** They are copyrighted, and so is the table of the
+  security levels at which each requirement applies. The plugin ships identifiers (`SR 1.1`) and their
+  foundational requirement only; you load the rest from your own licensed copy into your own database (see
+  [System requirements](requirements.md)).
 - **A zone's Purdue level is its most critical (lowest) level.** A zone may hold a PLC (1) and an HMI (2);
   it counts as level 1, and the access map filters zones by it. The zone type says what kind of zone it is.
 - **Purdue level on devices/VMs is a custom field**, created by the plugin after `migrate` if it does

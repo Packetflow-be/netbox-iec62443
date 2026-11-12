@@ -40,7 +40,7 @@ version = { attr = "netbox_ot.__version__" }
 include = ["netbox_ot*"]
 
 [tool.setuptools.package-data]
-netbox_ot = ["templates/**/*.html", "tests/*.json"]
+netbox_ot = ["templates/**/*.html", "tests/*.json", "data/*.csv"]
 
 [tool.ruff]
 line-length = 120

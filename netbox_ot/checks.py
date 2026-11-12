@@ -20,7 +20,8 @@ from django.utils.translation import gettext_lazy as _
 from . import lifecycle, sl
 from .choices import AccessChoices, ConnectionChoices, FlowAllowedChoices, RiskAssessmentStatusChoices, ZoneTypeChoices
 from .customfields import get_purdue_level, get_sl_capability
-from .models import Conduit, Flow, RiskAssessment, Zone, stale_after_days
+from .models import Conduit, Flow, RequirementStatus, RiskAssessment, SystemRequirement, Zone, stale_after_days
+from .requirements import open_requirements
 
 ERROR, WARNING, INFO = 'error', 'warning', 'info'
 SEVERITIES = (ERROR, WARNING, INFO)
@@ -114,6 +115,28 @@ class Scope:
         for ra in qs.select_related('zone', 'conduit'):
             latest.setdefault(('zone', ra.zone_id) if ra.zone_id else ('conduit', ra.conduit_id), ra)
         return latest
+
+
+    def requirement_statuses(self):
+        """
+        (requirements with a loaded security level, {('zone' | 'conduit', pk): {requirement pk: status}}) for the
+        zones and conduits in scope. Empty requirements when nobody has loaded the SL mapping.
+        """
+        requirements = list(SystemRequirement.objects.filter(security_level__isnull=False))
+        statuses = defaultdict(dict)
+        if requirements:
+            qs = self.visible(RequirementStatus.objects.filter(
+                Q(zone__in=self.zones) | Q(conduit__in=self.conduits)
+            ))
+            for rs in qs:
+                key = ('zone', rs.zone_id) if rs.zone_id else ('conduit', rs.conduit_id)
+                statuses[key][rs.requirement_id] = rs
+        return requirements, statuses
+
+
+def _identifiers(requirements, limit=6):
+    names = [str(r) for r in requirements]
+    return ', '.join(names[:limit]) + (f' (+{len(names) - limit})' if len(names) > limit else '')
 
 
 def _level(value):
@@ -319,6 +342,37 @@ def risk_assessment_due(scope):
         if ra.next_review and ra.next_review <= today:
             yield ra, _('{subject}: the risk assessment of {date} was due for review on {due}').format(
                 subject=ra.subject, date=ra.assessed_on, due=ra.next_review)
+
+
+#
+# System requirements (IEC 62443-3-3)
+#
+
+@check('requirements-without-status', _('Requirements at the SL-T without a status'), WARNING)
+def requirements_without_status(scope):
+    requirements, statuses = scope.requirement_statuses()
+    if not requirements:
+        return
+    for kind, objs in (('zone', scope.zones), ('conduit', scope.conduits)):
+        for obj in objs:
+            missing, _claimed = open_requirements(obj, requirements, statuses[(kind, obj.pk)])
+            if missing:
+                yield obj, _('{obj}: {n} requirements apply at SL-T {sl} without a status: {ids}').format(
+                    obj=obj, n=len(missing), sl=sl.display(obj.sl_target), ids=_identifiers(missing))
+
+
+@check('requirement-not-met-for-sl-a', _('SL-A claimed with a requirement not met'), ERROR)
+def requirement_not_met_for_sl_a(scope):
+    requirements, statuses = scope.requirement_statuses()
+    if not requirements:
+        return
+    for kind, objs in (('zone', scope.zones), ('conduit', scope.conduits)):
+        for obj in objs:
+            _missing, claimed = open_requirements(obj, requirements, statuses[(kind, obj.pk)])
+            for requirement in claimed:
+                yield obj, _('{obj} claims SL-A {sl} in {fr} but {requirement} is not met').format(
+                    obj=obj, sl=obj.sl_achieved[requirement.fr_index],
+                    fr=sl.FR_SHORT[requirement.fr_index], requirement=requirement)
 
 
 #

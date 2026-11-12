@@ -57,6 +57,7 @@ Each object has a single and a list query: `ot_zone` / `ot_zone_list`, `ot_condu
 | `ot_import <dir> --site <slug> ...` | Imports Zeek logs or observation files ([Importer](importer.md)) |
 | `ot_check [--site <slug>] [--fail-on ...] [--json]` | Runs the consistency checks; exit status 1 on findings |
 | `ot_rules [--site <slug>] [--device <firewall>] [--format csv\|json]` | Exports firewall rules |
+| `ot_requirements [--csv FILE] [--dry-run]` | Loads the IEC 62443-3-3 requirement identifiers, and levels and wording from your copy ([System requirements](requirements.md)) |
 
 With netbox-branching installed, all four take `--branch NAME`, and `ot_demo` and `ot_import` also `--main`
 (see [Working in a branch](branching.md)). `ot_demo` takes `--user` for the change log.

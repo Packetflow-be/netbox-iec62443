@@ -13,6 +13,8 @@
 - expired or open-ended remote access, flows outside any conduit, writes through a broker without their
   topics, verdicts without a decider, stale flows;
 - residual risk above tolerable, overdue risk assessments;
+- IEC 62443-3-3 requirements that apply at the SL-T without a status, and an SL-A claimed with a requirement
+  not met ([System requirements](requirements.md));
 - what an audit will ask for and is missing: no SL-T, no accountable person, no approved risk assessment;
 - with [netbox-lifecycle](companions.md#end-of-support): devices past, or within a year of, their end of
   support in zones with SL-T 2 or more.
@@ -34,5 +36,9 @@ From the API and the command line:
 The *Zone register* tab on a site is the audit deliverable: the site's zones, conduits and flows with their
 security levels, owners, risk and verdicts, plus the check results. It is printable, and exported as CSV per
 table or as JSON.
+
+With [system requirements](requirements.md) recorded, the register also lists, per zone and conduit, the
+requirements that apply at its SL-T (missing statuses highlighted) and any other requirement with a status, with
+its own CSV.
 
 `GET /api/plugins/ot/register/?site_id=<id>` returns the same register as JSON. Needs `view_zone`.

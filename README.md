@@ -41,6 +41,9 @@ zone register.
   more, linked to NetBox application services. [Industrial systems](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/industrial.md)
 - **Importer** for passive captures: Zeek logs (with or without CISA ICSNPP) or a documented JSON format, with
   a list of the hosts NetBox does not know yet. [Importer](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/importer.md)
+- **System requirements** (IEC 62443-3-3) and their status per zone or conduit, for the audit; identifiers ship,
+  the texts and levels come from your own copy of the standard.
+  [System requirements](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/requirements.md)
 - **Vendor-neutral firewall rules** from the allowed flows. [Firewall rules](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/firewall-rules.md)
 - **Lifecycle**: end of support per device from netbox-lifecycle (device type and modules), checks for
   unsupported devices in secure zones, and a firmware version field on devices and modules.
