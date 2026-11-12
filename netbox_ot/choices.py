@@ -363,3 +363,29 @@ class RiskAssessmentStatusChoices(ChoiceSet):
         Choice(DRAFT, _('Draft'), color='gray'),
         Choice(APPROVED, _('Approved'), color='green'),
     )
+
+
+class RequirementStatusChoices(ChoiceSet):
+    """How a zone or conduit stands against one system requirement (IEC 62443-3-3) at its target level."""
+    MET = 'met'
+    COMPENSATED = 'compensated'
+    NOT_MET = 'not-met'
+    NOT_APPLICABLE = 'not-applicable'
+
+    CHOICES = (
+        Choice(MET, _('Met'), color='green'),
+        Choice(COMPENSATED, _('Met by a compensating countermeasure'), color='teal'),
+        Choice(NOT_MET, _('Not met'), color='red'),
+        Choice(NOT_APPLICABLE, _('Not applicable'), color='gray'),
+    )
+    # A status that supports the security level the requirement belongs to
+    SATISFIED = (MET, COMPENSATED, NOT_APPLICABLE)
+
+
+class RequirementEditionChoices(ChoiceSet):
+    """Editions of the requirement sets. Identifiers only: the texts are the standard's, loaded by the user."""
+    IEC_62443_3_3_2013 = '3-3:2013'
+
+    CHOICES = (
+        (IEC_62443_3_3_2013, 'IEC 62443-3-3:2013'),
+    )

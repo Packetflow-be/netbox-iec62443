@@ -6,6 +6,7 @@
     <a href="?export=zones" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-download"></i> {% trans "Zones (CSV)" %}</a>
     <a href="?export=conduits" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-download"></i> {% trans "Conduits (CSV)" %}</a>
     <a href="?export=flows" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-download"></i> {% trans "Flows (CSV)" %}</a>
+    {% if register.requirements %}<a href="?export=requirements" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-download"></i> {% trans "Requirements (CSV)" %}</a>{% endif %}
     <a href="?export=rules" class="btn btn-sm btn-outline-primary" title="{% trans 'Vendor-neutral rules from the allowed flows' %}"><i class="mdi mdi-wall-fire"></i> {% trans "Firewall rules (CSV)" %}</a>
     <a href="{% url 'plugins-api:netbox_ot-api:register' %}?site_id={{ object.pk }}" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-code-json"></i> JSON</a>
     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="mdi mdi-printer"></i> {% trans "Print" %}</button>
@@ -94,6 +95,33 @@
       </table>
     </div>
   </div>
+
+  {% if register.requirements %}
+    <div class="card">
+      <h2 class="card-header">{% trans "System requirements (IEC 62443-3-3)" %} <span class="badge text-bg-secondary ms-1">{{ register.requirements|length }}</span></h2>
+      <div class="table-responsive">
+        <table class="table table-hover table-sm">
+          <thead><tr>
+            <th>{% trans "Zone / conduit" %}</th><th>{% trans "Requirement" %}</th><th>{% trans "FR" %}</th>
+            <th>{% trans "From SL" %}</th><th>{% trans "Status" %}</th><th>{% trans "Countermeasure / evidence" %}</th>
+            <th>{% trans "Assessed" %}</th>
+          </tr></thead>
+          <tbody>
+            {% for r in register.requirements %}
+              <tr{% if r.applies_at_sl_t == 'yes' and not r.status_code %} class="table-warning"{% endif %}>
+                <td>{{ r.zone|default:r.conduit }}</td>
+                <td><a href="{{ r.requirement_object.get_absolute_url }}">{{ r.requirement }}</a></td>
+                <td>{{ r.foundational_requirement }}</td><td>{{ r.applies_from_sl|placeholder }}</td>
+                <td>{% if r.status_object %}<a href="{{ r.status_object.get_absolute_url }}">{% badge r.status bg_color=r.status_object.get_status_color %}</a>{% else %}<span class="text-warning">{% trans "no status" %}</span>{% endif %}</td>
+                <td class="small">{{ r.countermeasure|default:r.evidence|truncatechars:120|placeholder }}</td>
+                <td class="small">{{ r.assessed_by|placeholder }}{% if r.assessed_on %}, {{ r.assessed_on }}{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
 
   <h2 class="mt-4">{% trans "Consistency checks" %}</h2>
   {% with findings=register.findings summary=register.summary %}

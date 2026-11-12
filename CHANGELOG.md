@@ -22,6 +22,13 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   the connection (reverse connect from the destination zone, a broker as two rules into its zone, new column
   `connection`); register, REST API, GraphQL, filters and CSV import carry the new fields; new check
   `brokered-write-without-topics`; the demo plant has one flow of each new kind. Migration `0003_flow_connection`.
+- System requirements (IEC 62443-3-3) and their status per zone or conduit
+  ([#6](https://github.com/Packetflow-be/netbox-ot/issues/6)): met, met by a compensating countermeasure, not
+  met, not applicable, with countermeasure, evidence, risk assessment, assessed by and on. The plugin ships
+  identifiers and foundational requirements only; `ot_requirements` loads them and, with `--csv`, the
+  enhancements, levels and wording from the user's own licensed copy. Checks `requirements-without-status` and
+  `requirement-not-met-for-sl-a`; a requirements table and CSV in the zone register; REST API, GraphQL;
+  [docs/requirements.md](docs/requirements.md). Migration `0004_system_requirements`.
 - Importer: observation files take `connection`, `broker` and `topic` per request. From Zeek logs an OPC UA Reverse
   Connect (ReverseHello) is imported the right way round (it pointed out of the PLC's zone), and MQTT
   publish/subscribe through a broker (`mqtt_publish`, `mqtt_subscribe`) becomes flows through the broker from

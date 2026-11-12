@@ -13,7 +13,7 @@ from utilities.testing import create_test_device
 
 from netbox_ot.checks import CHECKS, run_checks
 from netbox_ot.customfields import PURDUE_CF_NAME, SLC_CF_NAME
-from netbox_ot.models import Conduit, Flow, RiskAssessment, Zone
+from netbox_ot.models import Conduit, Flow, RequirementStatus, RiskAssessment, SystemRequirement, Zone
 
 TODAY = timezone.localdate()
 
@@ -80,6 +80,10 @@ class ChecksTest(TestCase):
         return {f.message for f in run_checks(site=self.site, checks=[check_id])}
 
     def test_every_check_runs_and_finds_its_case(self):
+        # IEC 62443-3-3 requirements with a loaded SL: one not met although the cell claims its SL-A, one unassessed
+        sr11 = SystemRequirement.objects.create(identifier='SR 1.1', foundational_requirement='iac', security_level=1)
+        SystemRequirement.objects.create(identifier='SR 1.2', foundational_requirement='iac', security_level=2)
+        RequirementStatus.objects.create(zone=self.cell, requirement=sr11, status='not-met')
         found = {f.check for f in run_checks(site=self.site)}
         # The end-of-support checks need netbox-lifecycle data: test_lifecycle.py
         self.assertEqual(found, set(CHECKS) - {'end-of-support', 'end-of-support-ahead'})

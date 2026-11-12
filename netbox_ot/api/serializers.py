@@ -20,19 +20,32 @@ from ..choices import (
     FieldbusMediumChoices,
     FlowAllowedChoices,
     FlowProtocolChoices,
+    FoundationalRequirementChoices,
     IndustrialProtocolChoices,
     PurdueLevelChoices,
+    RequirementEditionChoices,
+    RequirementStatusChoices,
     RiskAssessmentKindChoices,
     RiskAssessmentStatusChoices,
     RiskLevelChoices,
     ServiceRoleChoices,
     ZoneTypeChoices,
 )
-from ..models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
+from ..models import (
+    Conduit,
+    Fieldbus,
+    Flow,
+    FlowHop,
+    IndustrialService,
+    RequirementStatus,
+    RiskAssessment,
+    SystemRequirement,
+    Zone,
+)
 
 __all__ = (
     'ConduitSerializer', 'FieldbusSerializer', 'FlowHopSerializer', 'FlowSerializer', 'IndustrialServiceSerializer',
-    'RiskAssessmentSerializer', 'ZoneSerializer',
+    'RequirementStatusSerializer', 'RiskAssessmentSerializer', 'SystemRequirementSerializer', 'ZoneSerializer',
 )
 
 
@@ -256,3 +269,43 @@ class RiskAssessmentSerializer(PrimaryModelSerializer):
             'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'kind', 'status', 'assessed_on', 'description')
+
+
+class SystemRequirementSerializer(PrimaryModelSerializer):
+    edition = ChoiceField(choices=RequirementEditionChoices, required=False)
+    foundational_requirement = ChoiceField(choices=FoundationalRequirementChoices, read_only=True)
+    security_level = serializers.IntegerField(min_value=1, max_value=4, required=False, allow_null=True)
+
+    class Meta:
+        model = SystemRequirement
+        fields = (
+            'id', 'url', 'display_url', 'display', 'edition', 'identifier', 'foundational_requirement', 'parent',
+            'security_level', 'wording', 'description', 'owner', 'comments', 'tags', 'custom_fields',
+            'created', 'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'edition', 'identifier', 'description')
+
+
+# The requirement an enhancement belongs to, nested like any other related object (a serializer cannot name itself
+# in its own class body)
+SystemRequirementSerializer._declared_fields['parent'] = SystemRequirementSerializer(
+    nested=True, required=False, allow_null=True,
+)
+
+
+class RequirementStatusSerializer(PrimaryModelSerializer):
+    zone = ZoneSerializer(nested=True, required=False, allow_null=True)
+    conduit = ConduitSerializer(nested=True, required=False, allow_null=True)
+    requirement = SystemRequirementSerializer(nested=True)
+    status = ChoiceField(choices=RequirementStatusChoices)
+    risk_assessment = RiskAssessmentSerializer(nested=True, required=False, allow_null=True)
+    assessed_by = ContactSerializer(nested=True, required=False, allow_null=True)
+
+    class Meta:
+        model = RequirementStatus
+        fields = (
+            'id', 'url', 'display_url', 'display', 'zone', 'conduit', 'requirement', 'status', 'countermeasure',
+            'evidence', 'risk_assessment', 'assessed_by', 'assessed_on', 'description', 'owner', 'comments', 'tags',
+            'custom_fields', 'created', 'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'status', 'description')
