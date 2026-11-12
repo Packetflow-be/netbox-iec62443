@@ -50,12 +50,26 @@ A zone named only in the zone map is created by the import, with the type given 
 | `omron_fins_general` (ICSNPP) | Omron FINS | `command_code` | `icf_data_type` = Command |
 | `hart_ip_general` (ICSNPP) | HART-IP | none | every record |
 | `profinet_io_cm` (ICSNPP) | PROFINET (CM) | `operation_type` | every record |
+| `mqtt_publish`, `mqtt_subscribe` (Zeek) | MQTT through a broker | `PUBLISH` and the topic | see below |
 | `conn` | from Zeek's payload detection (`service`), else none | none | see below |
 
 Every request runs from the connection's originator to its responder (`id.orig_h` -> `id.resp_h`, destination
 port `id.resp_p`). Functions are classified as read, write, control or program by the table in
 `netbox_iec62443/importers/functions.py`; the names above were checked against the ICSNPP parsers' own test
 output.
+
+**OPC UA Reverse Connect.** When the originator of an OPC UA connection sent a ReverseHello (`RHE`), the server
+opened the connection and the client sends the requests over it. Those records then count the other way round:
+from the responder (the client) to the originator (the server), with the client's listening port and connection
+*reverse connect*. Without this the flow would point out of the PLC's zone and miss the access map.
+
+**MQTT through a broker.** The responder of an MQTT connection is the broker. A topic a client published
+(`mqtt_publish`, `from_client` T) that the broker delivered to another client (`from_client` F) or that another
+client subscribed to (`mqtt_subscribe`, MQTT wildcards `+` and `#` honoured) becomes a request from the
+publisher to the subscriber *through the broker*: connection *brokered*, the broker's address, its port and the
+topic. Sparkplug B commands (`spBv1.0/<group>/NCMD|DCMD/...`) count as write; other topics are left
+unclassified. The clients' own connections to the broker remain ordinary flows from `conn.log`. MQTT over TLS
+(8883) shows only those connections: there is no topic to see.
 
 From `conn.log`, a connection that no protocol log covers becomes a request with the protocol Zeek identified
 from the payload (`rdp`, `ssh`, `ssl`, `modbus`, ...) or, when Zeek identified nothing, `tcp/<port>`: the
