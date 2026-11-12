@@ -13,8 +13,8 @@ do, and the devices that enforce the conduit. One rule per flow and transport.
 Where to get it:
 
 - *Firewall rules (CSV)* on a site's *Zone register* tab.
-- `GET /api/plugins/iec62443/firewall-rules/?site_id=<id>[&device_id=<id>][&include_denied=true]`.
-- `manage.py iec62443_rules [--site <slug>] [--device <firewall>] [--include-denied] [--format csv|json]
+- `GET /api/plugins/ot/firewall-rules/?site_id=<id>[&device_id=<id>][&include_denied=true]`.
+- `manage.py ot_rules [--site <slug>] [--device <firewall>] [--include-denied] [--format csv|json]
   [--output FILE]`.
 
 `device_id` / `--device` limits the export to the conduits one firewall enforces.

@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report security issues privately, not in a public issue or discussion: use
-[Report a vulnerability](https://github.com/Packetflow-be/netbox-iec62443/security/advisories/new) on the
+[Report a vulnerability](https://github.com/Packetflow-be/netbox-ot/security/advisories/new) on the
 repository's *Security* tab (GitHub private vulnerability reporting).
 
 Include the plugin and NetBox versions, what an attacker can do, and the steps to reproduce. We aim to answer

@@ -18,9 +18,9 @@ Each finding has a check id, a severity (error, warning, info), a message and th
 
 From the API and the command line:
 
-- `GET /api/plugins/iec62443/checks/?site_id=<id>[&severity=error,warning][&check=<id>,...]`: the findings of a
+- `GET /api/plugins/ot/checks/?site_id=<id>[&severity=error,warning][&check=<id>,...]`: the findings of a
   site. Needs `view_zone`.
-- `manage.py iec62443_check [--site <slug>] [--severity ...] [--check ...] [--fail-on error|warning|info|never]
+- `manage.py ot_check [--site <slug>] [--severity ...] [--check ...] [--fail-on error|warning|info|never]
   [--json]` runs the same checks and exits with status 1 when there is a finding at `--fail-on` or worse
   (default: error), so a nightly job or a CI pipeline can watch the model.
 
@@ -32,4 +32,4 @@ The *Zone register* tab on a site is the audit deliverable: the site's zones, co
 security levels, owners, risk and verdicts, plus the check results. It is printable, and exported as CSV per
 table or as JSON.
 
-`GET /api/plugins/iec62443/register/?site_id=<id>` returns the same register as JSON. Needs `view_zone`.
+`GET /api/plugins/ot/register/?site_id=<id>` returns the same register as JSON. Needs `view_zone`.

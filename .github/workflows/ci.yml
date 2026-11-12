@@ -83,16 +83,78 @@ jobs:
         working-directory: netbox/netbox
         env:
           DEVELOPER: 'True'
-        run: python manage.py makemigrations netbox_iec62443 --check --dry-run
+        run: python manage.py makemigrations netbox_ot --check --dry-run
       - name: Tests
         working-directory: netbox/netbox
         run: |
           if [ '${{ matrix.netbox }}' = 'latest-4.7' ]; then
-            python manage.py test netbox_iec62443 --noinput --parallel auto
+            python manage.py test netbox_ot --noinput --parallel auto
           else
             # Query counts differ between NetBox releases; record them instead of asserting (needs a serial run)
-            UPDATE_QUERY_COUNTS=1 python manage.py test netbox_iec62443 --noinput
+            UPDATE_QUERY_COUNTS=1 python manage.py test netbox_ot --noinput
           fi
+
+  upgrade:
+    # A real netbox-iec62443 0.2.0 installation with the demo plant, taken over by this version (netbox_ot/adopt.py)
+    name: Upgrade from netbox-iec62443 0.2.0
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: netbox
+          POSTGRES_PASSWORD: netbox
+          POSTGRES_DB: netbox
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+    env:
+      UPGRADE_SNAPSHOT: ${{ github.workspace }}/before.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox
+          ref: v4.7.2
+          path: netbox
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: netbox/requirements.txt
+      - name: Install NetBox and netbox-iec62443 0.2.0
+        run: |
+          sed -i 's/psycopg\[c,pool\]/psycopg[binary,pool]/' netbox/requirements.txt
+          pip install -r netbox/requirements.txt
+          pip install netbox-iec62443==0.2.0
+          cp plugin/.github/ci/configuration.py netbox/netbox/netbox/configuration.py
+          mkdir -p netbox/netbox/project-static/docs
+      - name: The old installation, with the demo plant
+        working-directory: netbox/netbox
+        env:
+          CI_PLUGIN: netbox_iec62443
+          UPGRADE_STEP: before
+        run: |
+          python manage.py migrate --no-input
+          python manage.py iec62443_demo
+          python manage.py nbshell -c "exec(open('../../plugin/.github/ci/upgrade_check.py').read())"
+      - name: Upgrade to this version
+        working-directory: netbox/netbox
+        run: |
+          pip uninstall -y netbox-iec62443
+          pip install -e ../../plugin
+          python manage.py migrate --no-input
+          python manage.py showmigrations netbox_ot
+      - name: Everything is still there
+        working-directory: netbox/netbox
+        env:
+          UPGRADE_STEP: after
+        run: python manage.py nbshell -c "exec(open('../../plugin/.github/ci/upgrade_check.py').read())"
 
   build:
     runs-on: ubuntu-latest
@@ -109,10 +171,10 @@ jobs:
           python - <<'PY'
           import glob, zipfile
           names = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist()
-          for needed in ('netbox_iec62443/templates/netbox_iec62443/accessmap.html',
-                         'netbox_iec62443/templates/netbox_iec62443/inc/sl_panel.html',
-                         'netbox_iec62443/migrations/0001_initial.py',
-                         'netbox_iec62443/tests/query_counts.json'):
+          for needed in ('netbox_ot/templates/netbox_ot/accessmap.html',
+                         'netbox_ot/templates/netbox_ot/inc/sl_panel.html',
+                         'netbox_ot/migrations/0001_initial.py',
+                         'netbox_ot/tests/query_counts.json'):
               assert needed in names, f'{needed} missing from the wheel'
           print(f'{len(names)} files in the wheel')
           PY
@@ -124,7 +186,7 @@ jobs:
   publish:
     # A tag vX.Y.Z publishes to PyPI with trusted publishing (no token stored; see docs/development.md)
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [lint, test, build]
+    needs: [lint, test, upgrade, build]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -137,6 +199,6 @@ jobs:
       - name: The tag matches the package version
         run: |
           version="${GITHUB_REF_NAME#v}"
-          ls dist/ | grep -q "netbox_iec62443-${version}-py3-none-any.whl" \
+          ls dist/ | grep -q "netbox_ot-${version}-py3-none-any.whl" \
             || { echo "Tag $GITHUB_REF_NAME does not match the built version: $(ls dist/)"; exit 1; }
       - uses: pypa/gh-action-pypi-publish@release/v1

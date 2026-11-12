@@ -20,8 +20,8 @@
   first/last seen and evidence. Its verdict: **allowed** (yes / no / unknown), **decided by** (a NetBox
   contact) and **on**, **review by** and **expires**.
 - **Industrial service** and **fieldbus**: see [Industrial systems and protocols](industrial.md).
-- **Purdue level on devices and VMs** as a custom field (`iec62443_purdue_level`, group "IEC 62443"), and
-  **SL-C** (security level capability) on devices and device types (`iec62443_sl_capability`, e.g.
+- **Purdue level on devices and VMs** as a custom field (`ot_purdue_level`, group "IEC 62443"), and
+  **SL-C** (security level capability) on devices and device types (`ot_sl_capability`, e.g.
   `2,2,2,1,2,1,1`; a device's own value overrides its type's).
 - An **IEC 62443 panel on device and VM pages**: the asset's Purdue level, its zones and their flows,
   the conduits it enforces, the flows that run through it, its industrial services and the buses it is

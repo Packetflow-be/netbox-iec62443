@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "netbox-iec62443"
+name = "netbox-ot"
 dynamic = ["version"]
 description = "IEC 62443 zones, conduits and flows, Purdue levels, an access map and a zone register for NetBox"
 readme = "README.md"
@@ -27,20 +27,20 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Packetflow-be/netbox-iec62443"
-Documentation = "https://github.com/Packetflow-be/netbox-iec62443/blob/main/docs/README.md"
-Discussions = "https://github.com/Packetflow-be/netbox-iec62443/discussions"
-Issues = "https://github.com/Packetflow-be/netbox-iec62443/issues"
-Changelog = "https://github.com/Packetflow-be/netbox-iec62443/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/Packetflow-be/netbox-ot"
+Documentation = "https://github.com/Packetflow-be/netbox-ot/blob/main/docs/README.md"
+Discussions = "https://github.com/Packetflow-be/netbox-ot/discussions"
+Issues = "https://github.com/Packetflow-be/netbox-ot/issues"
+Changelog = "https://github.com/Packetflow-be/netbox-ot/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
-version = { attr = "netbox_iec62443.__version__" }
+version = { attr = "netbox_ot.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["netbox_iec62443*"]
+include = ["netbox_ot*"]
 
 [tool.setuptools.package-data]
-netbox_iec62443 = ["templates/**/*.html", "tests/*.json"]
+netbox_ot = ["templates/**/*.html", "tests/*.json"]
 
 [tool.ruff]
 line-length = 120
@@ -49,10 +49,10 @@ line-length = 120
 select = ["E", "F", "W", "I"]
 
 [tool.ruff.lint.per-file-ignores]
-"netbox_iec62443/migrations/*" = ["E501", "I001"]
+"netbox_ot/migrations/*" = ["E501", "I001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["netbox_iec62443"]
+known-first-party = ["netbox_ot"]
 section-order = ["future", "standard-library", "third-party", "netbox", "first-party", "local-folder"]
 
 [tool.ruff.lint.isort.sections]

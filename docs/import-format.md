@@ -1,6 +1,6 @@
 # Import format (observation files)
 
-`manage.py iec62443_import <dir> --site <slug>` reads a directory with two or three JSON files. They
+`manage.py ot_import <dir> --site <slug>` reads a directory with two or three JSON files. They
 describe what was seen on an OT network; any tool can write them: an export from an asset-discovery tool, a
 script over another sensor's output, or a spreadsheet you convert. Zeek logs need no conversion: the importer
 reads them directly (see [zeek.md](zeek.md)).

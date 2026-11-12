@@ -63,7 +63,7 @@ jobs:
         run: |
           python manage.py migrate --no-input
           python manage.py createsuperuser --no-input --username demo --email demo@example.com
-          python manage.py iec62443_demo
+          python manage.py ot_demo
           python manage.py shell < ../../plugin/.github/screenshots/urls.py > ../../urls.json
           cat ../../urls.json
       - name: Start NetBox

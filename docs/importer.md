@@ -1,14 +1,14 @@
 # Importer: Zeek logs and observation files
 
 ```
-manage.py iec62443_import <dir> --site <slug> [--vrf <name or RD>] [--user <name>] [--dry-run]
+manage.py ot_import <dir> --site <slug> [--vrf <name or RD>] [--user <name>] [--dry-run]
     [--format auto|zeek|observations] [--zone-map CSV] [--unknown-report CSV] [--unknown-import DIR]
     [--outside-zone NAME] [--split ZONE ... | --split-all]
 ```
 
 ```bash
-sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_import ./observations --site <site-slug> --dry-run
-sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_import ./observations --site <site-slug>
+sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py ot_import ./observations --site <site-slug> --dry-run
+sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py ot_import ./observations --site <site-slug>
 ```
 
 Reads either a directory of **Zeek logs** (`conn.log` plus the protocol logs of Zeek and the CISA ICSNPP
@@ -35,7 +35,7 @@ It creates:
   more than one zone;
 - a flow per source zone, destination zone and protocol seen, with the ports the input gives (none
   are assumed), first/last seen, and the requests as evidence. Every request is classified as read,
-  write, control or program by an explicit table per protocol (`netbox_iec62443/importers/functions.py`);
+  write, control or program by an explicit table per protocol (`netbox_ot/importers/functions.py`);
   the senders of write, control and program requests are listed in the evidence, and *remote access* is
   set when an asset marked `remote_access` in the input sent requests across. A flow is put in a conduit
   only when exactly one conduit joins both of its zones;
