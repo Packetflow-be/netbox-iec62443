@@ -1,5 +1,5 @@
 {% load i18n %}
-{% if attention.expired or attention.review_due or attention.stale or attention.no_conduit %}
+{% if attention.expired or attention.review_due or attention.stale or attention.no_conduit or attention.outbound_only %}
   <div class="alert alert-warning">
     <div class="fw-bold mb-1">{% trans "Needs attention" %}</div>
     <ul class="mb-0">
@@ -7,6 +7,7 @@
       {% if attention.review_due %}<li><a href="{% url 'plugins:netbox_iec62443:flow_list' %}?review_due=true{% if site %}&site_id={{ site.pk }}{% endif %}">{% blocktrans count n=attention.review_due %}{{ n }} verdict is due for review{% plural %}{{ n }} verdicts are due for review{% endblocktrans %}</a></li>{% endif %}
       {% if attention.stale %}<li><a href="{% url 'plugins:netbox_iec62443:flow_list' %}?stale=true{% if site %}&site_id={{ site.pk }}{% endif %}">{% blocktrans count n=attention.stale with days=attention.stale_after_days %}{{ n }} flow not seen for {{ days }} days{% plural %}{{ n }} flows not seen for {{ days }} days{% endblocktrans %}</a></li>{% endif %}
       {% if attention.no_conduit %}<li><a href="{% url 'plugins:netbox_iec62443:flow_list' %}?has_conduit=false{% if site %}&site_id={{ site.pk }}{% endif %}">{% blocktrans count n=attention.no_conduit %}{{ n }} flow runs outside any documented conduit{% plural %}{{ n }} flows run outside any documented conduit{% endblocktrans %}</a></li>{% endif %}
+      {% if attention.outbound_only %}<li><a href="{% url 'plugins:netbox_iec62443:flow_list' %}?outbound_only=true{% if site %}&site_id={{ site.pk }}{% endif %}">{% blocktrans count n=attention.outbound_only %}{{ n }} flow reaches its zone over a connection opened from inside (reverse connect or a broker): a firewall rule on inbound traffic does not stop it{% plural %}{{ n }} flows reach their zone over connections opened from inside (reverse connect or a broker): a firewall rule on inbound traffic does not stop them{% endblocktrans %}</a></li>{% endif %}
     </ul>
   </div>
 {% endif %}
@@ -40,7 +41,16 @@
               {% if show_site %}<td>{{ f.destination_zone.site|linkify|placeholder }}</td>{% endif %}
               <td>{{ f.source_zone|linkify }}{% if f.source_zone.purdue_level %} {% badge f.source_zone.purdue_level bg_color=f.source_zone.get_purdue_level_color %}{% endif %}</td>
               <td>{{ f.destination_zone|linkify }}{% if f.destination_zone.purdue_level %} {% badge f.destination_zone.purdue_level bg_color=f.destination_zone.get_purdue_level_color %}{% endif %}</td>
-              <td>{{ f.get_protocol_display|placeholder }}{% if f.port_mappings %} <span class="text-muted small">{{ f.ports_display }}</span>{% endif %}</td>
+              <td>
+                {{ f.get_protocol_display|placeholder }}{% if f.port_mappings %} <span class="text-muted small">{{ f.ports_display }}</span>{% endif %}
+                {% if f.connection != 'client-server' %}
+                  <div class="small">
+                    {% badge f.get_connection_display bg_color=f.get_connection_color %}
+                    {% if f.broker_zone %}{% trans "in" %} {{ f.broker_zone|linkify }}{% endif %}
+                  </div>
+                  {% if f.topics %}<div class="small text-muted text-break">{{ f.topics|join:", " }}</div>{% endif %}
+                {% endif %}
+              </td>
               <td>{% for value, label, color in f.get_access_display %}{% badge label bg_color=color %} {% empty %}{{ ''|placeholder }}{% endfor %}</td>
               <td>{% for hop in f.hops.all %}{{ hop.hop|linkify }}{% if not forloop.last %} &rarr; {% endif %}{% empty %}{{ ''|placeholder }}{% endfor %}</td>
               <td>{% checkmark f.remote_access %}</td>
@@ -74,7 +84,7 @@
     <div class="card-body">
       {{ svg }}
       <div class="small text-muted mt-2">
-        {% trans "One arrow per zone pair; the number is how many flows it carries. Red: not allowed or expired, amber: unknown, green: allowed. Dashed: remote access." %}
+        {% trans "One arrow per zone pair, from the side that acts to the side acted upon; the number is how many flows it carries. Red: not allowed or expired, amber: unknown, green: allowed. Dashed: remote access. Dotted: the destination opens the connection itself (reverse connect, or both ends meet at a broker)." %}
       </div>
     </div>
   </div>

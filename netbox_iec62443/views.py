@@ -109,6 +109,11 @@ class FlowPanel(panels.ObjectAttributesPanel):
     source_zone = attrs.RelatedObjectAttr('source_zone', linkify=True, label=_('From zone'))
     destination_zone = attrs.RelatedObjectAttr('destination_zone', linkify=True, label=_('To zone'))
     conduit = attrs.RelatedObjectAttr('conduit', linkify=True)
+    connection = attrs.TemplatedAttr(
+        'connection', label=_('Connection'), template_name='netbox_iec62443/inc/connection_attr.html',
+    )
+    broker_zone = attrs.RelatedObjectAttr('broker_zone', linkify=True, label=_('Broker zone'))
+    topics = attrs.ArrayAttr('topics', label=_('Topics'))
     protocol = attrs.ChoiceAttr('protocol')
     ports = attrs.TextAttr('ports_display', label=_('Ports'))
     access = attrs.TemplatedAttr('access', label=_('Access'), template_name='netbox_iec62443/inc/access_attr.html')

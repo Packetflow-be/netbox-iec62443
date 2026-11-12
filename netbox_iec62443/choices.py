@@ -96,6 +96,36 @@ class AccessChoices(ChoiceSet):
     MODIFYING = (WRITE, CONTROL, PROGRAM)
 
 
+class ConnectionChoices(ChoiceSet):
+    """
+    How a flow's two ends reach each other, independent of vendor. The flow always points from the side whose
+    requests or data act on the other (the client, the publisher) to the side they act on; the connection model
+    says which side opens the transport connection, and whether a broker sits in between.
+    """
+    CLIENT_SERVER = 'client-server'
+    REVERSE_CONNECT = 'reverse-connect'
+    BROKERED = 'brokered'
+    PUBLISH = 'publish'
+
+    CHOICES = (
+        Choice(CLIENT_SERVER, _('Client/server'), color='gray'),
+        Choice(REVERSE_CONNECT, _('Reverse connect'), color='blue'),
+        Choice(BROKERED, _('Through a broker'), color='purple'),
+        Choice(PUBLISH, _('Published, no session'), color='cyan'),
+    )
+    DESCRIPTIONS = {
+        CLIENT_SERVER: _('The source connects to the destination and sends its requests (Modbus, S7, OPC UA).'),
+        REVERSE_CONNECT: _('The destination opens the connection to the source, which then sends its requests '
+                           'over it (OPC UA Reverse Connect). No inbound connection into the destination zone.'),
+        BROKERED: _('Both ends connect out to a broker in the broker zone; what the source publishes reaches the '
+                    'destination (MQTT, Sparkplug B, OPC UA PubSub over MQTT or AMQP).'),
+        PUBLISH: _('The source sends datagrams the destination listens for, without a session (OPC UA PubSub '
+                   'over UDP, multicast).'),
+    }
+    # The destination opens no port to the source: its zone has no inbound connection for this flow
+    OUTBOUND_ONLY = (REVERSE_CONNECT, BROKERED)
+
+
 class IndustrialProtocolChoices(ChoiceSet):
     """Industrial protocols. `DEFAULT_PORTS` are the usual TCP/UDP ports; `SERIAL` run on a fieldbus."""
     MODBUS_TCP = 'modbus-tcp'

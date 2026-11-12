@@ -66,10 +66,12 @@ class FlowType(PrimaryObjectType):
     conduit: Annotated['ConduitType', strawberry.lazy('netbox_iec62443.graphql.types')] | None
     source_zone: Annotated['ZoneType', strawberry.lazy('netbox_iec62443.graphql.types')]
     destination_zone: Annotated['ZoneType', strawberry.lazy('netbox_iec62443.graphql.types')]
+    broker_zone: Annotated['ZoneType', strawberry.lazy('netbox_iec62443.graphql.types')] | None
     decided_by: Annotated['ContactType', strawberry.lazy('tenancy.graphql.types')] | None
     hops: list[Annotated['FlowHopType', strawberry.lazy('netbox_iec62443.graphql.types')]]
     port_mappings: list[str]
     access: list[str]
+    topics: list[str]
 
 
 @register_type(models.FlowHop, fields='__all__', filters=FlowHopFilter, pagination=True)

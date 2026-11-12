@@ -12,6 +12,13 @@
 - `iec62443_demo` now writes to the change log (under `--user`, default the first superuser), like the importer.
   Without that, demo data made in a branch was invisible in the branch's diff and was not carried over by a merge.
 - New migration `0011_plugin_settings` (one table for the settings).
+- Connection models on flows (#11): client/server (default), reverse connect (OPC UA Reverse Connect), through a
+  broker (MQTT, Sparkplug B, OPC UA PubSub over a broker) with a broker zone and topics, and published without a
+  session (OPC UA PubSub over UDP). The access map draws flows without an inbound connection dotted and lists them
+  under *Needs attention*; firewall rules follow the connection (reverse connect from the destination zone, a
+  broker as two rules into its zone, new column `connection`); the zone register, REST API, GraphQL, filters and
+  CSV import carry the new fields; new check `brokered-write-without-topics`. The demo plant has one flow of
+  each new kind. Migration `0012_flow_connection`.
 
 ## 0.2.0 (2026-11-11)
 

@@ -1,7 +1,7 @@
 import datetime
 
 import django_filters
-from django.db.models import Q
+from django.db.models import Func, Q, TextField, Value
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
@@ -17,6 +17,7 @@ from vpn.models import Tunnel
 from . import sl
 from .choices import (
     AccessChoices,
+    ConnectionChoices,
     FieldbusMediumChoices,
     FlowAllowedChoices,
     FlowProtocolChoices,
@@ -163,6 +164,11 @@ class ConduitFilterSet(SecurityLevelFilterMixin, PrimaryModelFilterSet):
 
 
 @register_filterset
+def _topics_text():
+    """A flow's topics as one text, so "a topic contains X" stays a plain filter in one query."""
+    return Func('topics', Value('\n'), function='array_to_string', output_field=TextField())
+
+
 class FlowFilterSet(PrimaryModelFilterSet):
     conduit_id = django_filters.ModelMultipleChoiceFilter(
         queryset=Conduit.objects.all(),
@@ -198,6 +204,16 @@ class FlowFilterSet(PrimaryModelFilterSet):
         choices=AccessChoices, method='filter_access', label=_('Access (any of)'),
     )
     modifying = django_filters.BooleanFilter(method='filter_modifying', label=_('Writes, controls or programs'))
+    connection = django_filters.MultipleChoiceFilter(choices=ConnectionChoices, distinct=False)
+    broker_zone_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Zone.objects.all(),
+        distinct=False,
+        label=_('Broker zone (ID)'),
+    )
+    outbound_only = django_filters.BooleanFilter(
+        method='filter_outbound_only', label=_('No inbound connection into the destination zone'),
+    )
+    topic = django_filters.CharFilter(method='filter_topic', label=_('Topic (contains)'))
     allowed = django_filters.MultipleChoiceFilter(choices=FlowAllowedChoices, distinct=False)
     remote_access = django_filters.BooleanFilter()
     decided_by_id = django_filters.ModelMultipleChoiceFilter(
@@ -231,22 +247,35 @@ class FlowFilterSet(PrimaryModelFilterSet):
     def search(self, queryset, name, value):
         if not value.strip():
             return queryset
-        return queryset.filter(
+        return queryset.annotate(_topics=_topics_text()).filter(
             Q(name__icontains=value) |
             Q(evidence__icontains=value) |
             Q(description__icontains=value) |
-            Q(comments__icontains=value)
+            Q(comments__icontains=value) |
+            Q(_topics__icontains=value)
         )
 
     def filter_zone(self, queryset, name, value):
         if not value:
             return queryset
-        return queryset.filter(Q(source_zone__in=value) | Q(destination_zone__in=value))
+        return queryset.filter(Q(source_zone__in=value) | Q(destination_zone__in=value) | Q(broker_zone__in=value))
 
     def filter_site(self, queryset, name, value):
         if not value:
             return queryset
         return queryset.filter(Q(source_zone__site__in=value) | Q(destination_zone__site__in=value))
+
+    def filter_outbound_only(self, queryset, name, value):
+        if value is None:
+            return queryset
+        q = Q(connection__in=ConnectionChoices.OUTBOUND_ONLY)
+        return queryset.filter(q) if value else queryset.exclude(q)
+
+    def filter_topic(self, queryset, name, value):
+        value = value.strip()
+        if not value:
+            return queryset
+        return queryset.annotate(_topics=_topics_text()).filter(_topics__icontains=value)
 
     def filter_port(self, queryset, name, value):
         if value is None:

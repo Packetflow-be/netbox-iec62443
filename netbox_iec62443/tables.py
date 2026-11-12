@@ -76,7 +76,8 @@ class ConduitTable(PrimaryModelTable):
         model = Conduit
         fields = (
             'pk', 'id', 'name', 'site', 'zones', 'sl_target', 'sl_achieved', 'accountable', 'enforcing_devices',
-            'enforcing_virtual_machines', 'flow_count', 'description', 'comments', 'tags', 'created', 'last_updated',
+            'enforcing_virtual_machines', 'flow_count', 'description', 'comments', 'tags', 'created',
+            'last_updated',
         )
         default_columns = (
             'pk', 'name', 'site', 'zones', 'sl_target', 'sl_achieved', 'enforcing_devices', 'flow_count',
@@ -89,6 +90,9 @@ class FlowTable(PrimaryModelTable):
     source_zone = tables.Column(verbose_name=_('From zone'), linkify=True)
     destination_zone = tables.Column(verbose_name=_('To zone'), linkify=True)
     protocol = columns.ChoiceFieldColumn(verbose_name=_('Protocol'))
+    connection = columns.ChoiceFieldColumn(verbose_name=_('Connection'))
+    broker_zone = tables.Column(verbose_name=_('Broker zone'), linkify=True)
+    topics = columns.ArrayColumn(verbose_name=_('Topics'), orderable=False)
     ports = tables.Column(verbose_name=_('Ports'), accessor=tables.A('ports_display'), orderable=False)
     access = columns.TemplateColumn(verbose_name=_('Access'), template_code=ACCESS_BADGES, orderable=False)
     remote_access = columns.BooleanColumn(verbose_name=_('Remote access'))
@@ -105,9 +109,10 @@ class FlowTable(PrimaryModelTable):
     class Meta(PrimaryModelTable.Meta):
         model = Flow
         fields = (
-            'pk', 'id', 'name', 'conduit', 'source_zone', 'destination_zone', 'protocol', 'ports', 'access',
-            'remote_access', 'hops', 'allowed', 'decided_by', 'decided_on', 'review_by', 'expires', 'first_seen',
-            'last_seen', 'evidence', 'description', 'comments', 'tags', 'created', 'last_updated',
+            'pk', 'id', 'name', 'conduit', 'source_zone', 'destination_zone', 'connection', 'broker_zone', 'topics',
+            'protocol', 'ports', 'access', 'remote_access', 'hops', 'allowed', 'decided_by', 'decided_on', 'review_by',
+            'expires', 'first_seen', 'last_seen', 'evidence', 'description', 'comments', 'tags', 'created',
+            'last_updated',
         )
         default_columns = (
             'pk', 'name', 'source_zone', 'destination_zone', 'protocol', 'ports', 'access', 'remote_access', 'hops',

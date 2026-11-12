@@ -13,7 +13,7 @@ from django.utils.html import escape
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
 
-from .choices import FlowAllowedChoices, PurdueLevelChoices
+from .choices import ConnectionChoices, FlowAllowedChoices, PurdueLevelChoices
 from .models import Flow, Zone, stale_after_days
 
 
@@ -32,7 +32,7 @@ def access_map_flows(queryset=None, site=None, max_level=PurdueLevelChoices.LEVE
     """Flows into zones at Purdue level <= max_level, from any zone of the site or into one."""
     levels = PurdueLevelChoices.at_or_below(max_level)
     qs = (queryset if queryset is not None else Flow.objects.all()).select_related(
-        'source_zone__site', 'destination_zone__site', 'conduit',
+        'source_zone__site', 'destination_zone__site', 'broker_zone', 'conduit',
     ).prefetch_related('hops__device', 'hops__virtual_machine', 'hops__tunnel')
     if site is not None:
         qs = qs.filter(Q(source_zone__site=site) | Q(destination_zone__site=site))
@@ -43,7 +43,11 @@ def access_map_flows(queryset=None, site=None, max_level=PurdueLevelChoices.LEVE
 
 
 def attention(queryset):
-    """Counts of flows that need a person: allowed but expired, review due, not seen for a while, no conduit."""
+    """
+    Counts of flows that need a person: allowed but expired, review due, not seen for a while, no conduit; and the
+    flows that reach their destination over a connection opened from its own side (reverse connect, a broker),
+    which a firewall rule on inbound traffic into that zone does not stop.
+    """
     today = timezone.localdate()
     stale_before = timezone.now() - datetime.timedelta(days=stale_after_days())
     return {
@@ -51,6 +55,7 @@ def attention(queryset):
         'review_due': queryset.filter(review_by__lte=today).count(),
         'stale': queryset.filter(last_seen__lt=stale_before).count(),
         'no_conduit': queryset.filter(conduit__isnull=True).count(),
+        'outbound_only': queryset.filter(connection__in=ConnectionChoices.OUTBOUND_ONLY).count(),
         'stale_after_days': stale_after_days(),
     }
 
@@ -79,6 +84,14 @@ def _level_rows(zones):
 
 def _verdict(flow):
     return 'expired' if flow.is_expired else flow.allowed
+
+
+def _flow_title(flow):
+    if flow.connection == ConnectionChoices.BROKERED and flow.broker_zone_id:
+        return _('{flow} (through a broker in {zone})').format(flow=flow, zone=flow.broker_zone)
+    if flow.connection != ConnectionChoices.CLIENT_SERVER:
+        return f'{flow} ({flow.get_connection_display().lower()})'
+    return str(flow)
 
 
 def access_map_svg(flows, zones=()):
@@ -141,8 +154,12 @@ def access_map_svg(flows, zones=()):
             lx, ly = x2 - (x2 - x1) / length * 18, y2 - (y2 - y1) / length * 18
         worst = min((_verdict(f) for f in members), key=WORST.index)
         color = LINE_COLORS.get(worst, '#888')
-        dash = ' stroke-dasharray="6 4"' if any(f.remote_access for f in members) else ''
-        title = escape('\n'.join(str(f) for f in members))
+        # Dashed: remote access. Dotted: no inbound connection (reverse connect or a broker). Both: dash-dot.
+        remote = any(f.remote_access for f in members)
+        outbound = any(f.is_outbound_only for f in members)
+        pattern = {(True, False): '6 4', (False, True): '2 4', (True, True): '6 3 2 3'}.get((remote, outbound))
+        dash = f' stroke-dasharray="{pattern}"' if pattern else ''
+        title = escape('\n'.join(_flow_title(f) for f in members))
         lines.append(
             f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2.5"{dash} '
             f'marker-end="url(#iec-arrow)"><title>{title}</title></path>'

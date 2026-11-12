@@ -52,6 +52,8 @@ class FlowFilter(PrimaryModelFilter):
     )
     destination_zone_id: ID | None = strawberry_django.filter_field()
     protocol: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    connection: StrFilterLookup[str] | None = strawberry_django.filter_field()
+    broker_zone_id: ID | None = strawberry_django.filter_field()
     allowed: StrFilterLookup[str] | None = strawberry_django.filter_field()
     remote_access: FilterLookup[bool] | None = strawberry_django.filter_field()
     decided_by_id: ID | None = strawberry_django.filter_field()

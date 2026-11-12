@@ -128,6 +128,7 @@ class FlowViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
             'source_zone': remote.pk,
             'destination_zone': cell.pk,
             'conduit': conduit.pk,
+            'connection': 'reverse-connect',
             'protocol': 's7comm',
             'port_mappings': '[{"protocol": "tcp", "ports": "102"}]',
             'access': ['read', 'write'],
@@ -139,10 +140,11 @@ class FlowViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):
             'tags': [t.pk for t in tags],
         }
         cls.csv_data = (
-            'site,name,source_zone,destination_zone,conduit,protocol,port_mappings,access,allowed,remote_access',
-            'Site 1,Flow 4,Office,Cell,,s7comm,tcp/102,"read,write",no,false',
-            'Site 1,Flow 5,Remote,Cell,Remote - Cell,rdp,tcp/3389,,unknown,true',
-            'Site 1,Flow 6,Cell,Remote,,,,,yes,false',
+            'site,name,source_zone,destination_zone,conduit,protocol,port_mappings,access,allowed,remote_access,'
+            'connection,broker_zone,topics',
+            'Site 1,Flow 4,Office,Cell,,s7comm,tcp/102,"read,write",no,false,,,',
+            'Site 1,Flow 5,Remote,Cell,Remote - Cell,rdp,tcp/3389,,unknown,true,client-server,,',
+            'Site 1,Flow 6,Cell,Remote,,mqtt,tcp/8883,write,yes,false,brokered,Office,"line1/cmd/#,line1/recipe"',
         )
         cls.csv_update_data = (
             'id,allowed,description',

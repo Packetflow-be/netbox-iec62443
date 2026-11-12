@@ -40,7 +40,9 @@ conduits and flows](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62
 - **Flow**: what actually runs between two zones, in one direction: source and destination zone,
   **protocol** and **ports** (`tcp/102`), **access** (read, write, control, program), remote access
   flag, the **ordered path** it takes (hops: devices, VMs or tunnels), the conduit that carries it,
-  first/last seen and evidence. Its verdict: **allowed** (yes / no / unknown), **decided by** (a NetBox
+  the **connection model** (client/server, reverse connect, through a broker with the broker's zone and the
+  topics, or published without a session; see [Connection models](#connection-models)), first/last seen and
+  evidence. Its verdict: **allowed** (yes / no / unknown), **decided by** (a NetBox
   contact) and **on**, **review by** and **expires**.
 - **Purdue level on devices and VMs** as a custom field (`iec62443_purdue_level`, group "IEC 62443"), and
   **SL-C** (security level capability) on devices and device types (`iec62443_sl_capability`, e.g.
@@ -48,7 +50,8 @@ conduits and flows](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62
 - **Consistency checks** (*IEC 62443 > Consistency checks*, REST `checks/`, `manage.py iec62443_check`):
   an address in another zone's prefix, an asset below its zone's level or in the wrong kind of zone, assets
   in no zone or in two, SL-A below SL-T, member SL-C below the zone's SL-T, a conduit below a zone it joins,
-  conduits nobody enforces, expired or open-ended remote access, flows outside any conduit, verdicts
+  conduits nobody enforces, expired or open-ended remote access, flows outside any conduit, writes through a
+  broker without their topics, verdicts
   without a decider, stale flows, residual risk above tolerable, overdue risk assessments, and what an audit
   will ask for and is missing (no SL-T, no accountable person, no approved risk assessment).
 - **Zone register** per site (a "Zone register" tab on the site, REST `register/`): zones, conduits and
@@ -56,8 +59,8 @@ conduits and flows](https://raw.githubusercontent.com/Packetflow-be/netbox-iec62
   exported as CSV per table or as JSON. This is the audit deliverable.
 - **Access map**: per site, all flows into zones at Purdue level <= 2 (selectable): not allowed first,
   then allowed-but-expired, unknown and allowed, with what needs attention (expired access, verdicts
-  due for review, flows not seen for a while, flows outside any documented conduit) and a small
-  server-rendered diagram. Available as an "Access map" tab on the site page and under
+  due for review, flows not seen for a while, flows outside any documented conduit, flows that reach a zone
+  over a connection opened from inside it) and a small server-rendered diagram. Available as an "Access map" tab on the site page and under
   *IEC 62443 > Access map*.
 - An **IEC 62443 panel on device and VM pages**: the asset's Purdue level, its zones and their flows,
   the conduits it enforces and the flows that run through it.
@@ -235,11 +238,32 @@ the plugin.
 data, for reports and other tools: the flows into zones at that Purdue level or below, in access-map order,
 as full flow objects with their hops. Needs `view_flow` and view access to the site.
 
+## Connection models
+
+Not every path into a controller zone is a connection into it. A flow says how its ends reach each other, in
+vendor-neutral terms:
+
+| Connection | Who opens the connection | Ports on the flow | Firewall rules | Typical |
+|---|---|---|---|---|
+| Client/server (default) | the source, to the destination | the destination's | source zone -> destination zone | Modbus, S7comm, OPC UA client/server |
+| Reverse connect | the destination, to the source | the source's (it listens) | destination zone -> source zone | OPC UA Reverse Connect |
+| Through a broker | both ends, to a broker in the **broker zone** | the broker's | source zone -> broker zone and destination zone -> broker zone | MQTT, Sparkplug B, OPC UA PubSub over MQTT or AMQP |
+| Published, no session | the source sends, the destination listens | the destination's | source zone -> destination zone | OPC UA PubSub over UDP, multicast |
+
+A flow through a broker also lists its **topics** (MQTT topic filters, OPC UA PubSub data sets), because the
+broker's access rules decide who may publish them: a brokered flow that writes or controls without its topics
+recorded is a check warning. On the access map such flows, and reverse-connect ones, are drawn dotted and
+listed under *Needs attention*: a firewall rule on traffic into the destination zone does not stop them, the
+rules at the broker or at the client do. Filters: `connection`, `broker_zone_id`, `topic` and `outbound_only`
+(no inbound connection into the destination zone).
+
 ## Firewall rules
 
 The flows a person allowed become vendor-neutral firewall rules: source and destination zone with their
 networks (the zone's prefixes, else its members' addresses), transport, ports, the protocol, what the requests
-do, and the devices that enforce the conduit. One rule per flow and transport. Flows without a verdict are
+do, and the devices that enforce the conduit. One rule per flow and transport. A rule follows the connection
+the firewall sees: a reverse-connect flow is opened by its destination zone, and a flow through a broker gives
+one rule from each end's zone to the broker zone. Flows without a verdict are
 not exported; not-allowed and expired flows become deny rules on request. Ports the capture did not show are
 filled in from the protocol's defaults and flagged; a layer-2 protocol (GOOSE, EtherCAT) is flagged as not
 enforceable by a routed firewall. The plugin writes no vendor syntax and reads no vendor configuration.
@@ -290,8 +314,12 @@ enforceable by a routed firewall. The plugin writes no vendor syntax and reads n
   is one directed path through it: protocol, ports, what the requests do, and a verdict. The access map
   and the importer work on flows; conduits are a design decision a person makes. A flow without a conduit
   is a path nobody documented, and the access map says so.
-- **Flows are directed.** The source starts the conversation. A path that is opened from both ends is
-  two flows, each with its own verdict, which is also what a firewall rule needs.
+- **Flows are directed, from the side that acts to the side acted upon.** The source is the side whose
+  requests or data reach the destination: the client, the publisher. Usually it also opens the connection;
+  the connection model says when it does not. That keeps the access map honest: a PLC that opens an OPC UA
+  Reverse Connect to the MES, or a gateway that subscribes to a command topic on a broker, can be written to
+  from outside although nothing connects into its zone. A path that acts in both directions is two flows,
+  each with its own verdict.
 - **Zone members are plain many-to-many fields** (`devices`, `virtual_machines`, `prefixes`) rather
   than a generic assignment model. That is the simplest thing NetBox supports end to end (forms,
   REST API, GraphQL, change log) and it lets an asset sit in more than one zone when reality is

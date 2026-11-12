@@ -34,6 +34,7 @@ from vpn.models import Tunnel
 from . import sl
 from .choices import (
     AccessChoices,
+    ConnectionChoices,
     FieldbusMediumChoices,
     FlowAllowedChoices,
     FlowProtocolChoices,
@@ -387,15 +388,26 @@ class FlowForm(PrimaryModelForm):
         query_params={'zone_id': '$source_zone'},
     )
     protocol = forms.ChoiceField(label=_('Protocol'), choices=add_blank_choice(FlowProtocolChoices), required=False)
-    port_mappings = PortMappingField(label=_('Ports'), required=False)
+    port_mappings = PortMappingField(
+        label=_('Ports'), required=False, help_text=Flow._meta.get_field('port_mappings').help_text,
+    )
     access = forms.MultipleChoiceField(
         label=_('Access'), choices=AccessChoices, required=False,
         help_text=Flow._meta.get_field('access').help_text,
+    )
+    broker_zone = DynamicModelChoiceField(
+        label=_('Broker zone'), queryset=Zone.objects.all(), required=False,
+        help_text=Flow._meta.get_field('broker_zone').help_text,
+    )
+    topics = SimpleArrayField(
+        base_field=forms.CharField(), label=_('Topics'), required=False,
+        help_text=_('Comma-separated MQTT topics or OPC UA PubSub data sets, e.g. spBv1.0/line1/DCMD/#'),
     )
     decided_by = DynamicModelChoiceField(label=_('Decided by'), queryset=Contact.objects.all(), required=False)
 
     fieldsets = (
         FieldSet('name', 'source_zone', 'destination_zone', 'conduit', 'description', 'tags', name=_('Flow')),
+        FieldSet('connection', 'broker_zone', 'topics', name=_('Connection')),
         FieldSet('protocol', 'port_mappings', 'access', 'remote_access', name=_('Traffic')),
         FieldSet('allowed', 'decided_by', 'decided_on', 'review_by', 'expires', name=_('Verdict')),
         FieldSet('first_seen', 'last_seen', 'evidence', name=_('Evidence')),
@@ -404,9 +416,9 @@ class FlowForm(PrimaryModelForm):
     class Meta:
         model = Flow
         fields = (
-            'name', 'source_zone', 'destination_zone', 'conduit', 'protocol', 'port_mappings', 'access',
-            'remote_access', 'allowed', 'decided_by', 'decided_on', 'review_by', 'expires', 'first_seen', 'last_seen',
-            'evidence', 'description', 'owner', 'comments', 'tags',
+            'name', 'source_zone', 'destination_zone', 'conduit', 'connection', 'broker_zone', 'topics', 'protocol',
+            'port_mappings', 'access', 'remote_access', 'allowed', 'decided_by', 'decided_on', 'review_by', 'expires',
+            'first_seen', 'last_seen', 'evidence', 'description', 'owner', 'comments', 'tags',
         )
         widgets = {
             'decided_on': DatePicker(),
@@ -421,6 +433,10 @@ class FlowForm(PrimaryModelForm):
 class FlowBulkEditForm(PrimaryModelBulkEditForm):
     conduit = DynamicModelChoiceField(label=_('Conduit'), queryset=Conduit.objects.all(), required=False)
     protocol = forms.ChoiceField(label=_('Protocol'), choices=add_blank_choice(FlowProtocolChoices), required=False)
+    connection = forms.ChoiceField(
+        label=_('Connection'), choices=add_blank_choice(ConnectionChoices), required=False,
+    )
+    broker_zone = DynamicModelChoiceField(label=_('Broker zone'), queryset=Zone.objects.all(), required=False)
     remote_access = forms.NullBooleanField(
         label=_('Remote access'), required=False, widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
     )
@@ -433,9 +449,12 @@ class FlowBulkEditForm(PrimaryModelBulkEditForm):
     model = Flow
     fieldsets = (
         FieldSet('conduit', 'protocol', 'remote_access', 'description', name=_('Flow')),
+        FieldSet('connection', 'broker_zone', name=_('Connection')),
         FieldSet('allowed', 'decided_by', 'decided_on', 'review_by', 'expires', name=_('Verdict')),
     )
-    nullable_fields = ('conduit', 'protocol', 'decided_by', 'review_by', 'expires', 'description', 'comments')
+    nullable_fields = (
+        'conduit', 'protocol', 'broker_zone', 'decided_by', 'review_by', 'expires', 'description', 'comments',
+    )
 
 
 class FlowImportForm(ServicePortMappingsImportMixin, PrimaryModelImportForm):
@@ -459,6 +478,17 @@ class FlowImportForm(ServicePortMappingsImportMixin, PrimaryModelImportForm):
         label=_('Access'), choices=AccessChoices, required=False,
         help_text=_('Comma-separated, in double quotes, e.g. "read,write"'),
     )
+    connection = CSVChoiceField(
+        label=_('Connection'), choices=ConnectionChoices, required=False,
+        help_text=_('client-server (default), reverse-connect, brokered or publish'),
+    )
+    broker_zone = CSVModelChoiceField(
+        label=_('Broker zone'), queryset=Zone.objects.all(), required=False, to_field_name='name',
+    )
+    topics = SimpleArrayField(
+        base_field=forms.CharField(), label=_('Topics'), required=False,
+        help_text=_('Comma-separated, in double quotes'),
+    )
     allowed = CSVChoiceField(label=_('Allowed'), choices=FlowAllowedChoices, required=False)
     decided_by = CSVModelChoiceField(
         label=_('Decided by'), queryset=Contact.objects.all(), required=False, to_field_name='name',
@@ -467,15 +497,19 @@ class FlowImportForm(ServicePortMappingsImportMixin, PrimaryModelImportForm):
     class Meta:
         model = Flow
         fields = (
-            'site', 'name', 'source_zone', 'destination_zone', 'conduit', 'protocol', 'port_mappings', 'access',
-            'remote_access', 'allowed', 'decided_by', 'decided_on', 'review_by', 'expires', 'first_seen', 'last_seen',
-            'evidence', 'description', 'owner', 'comments', 'tags',
+            'site', 'name', 'source_zone', 'destination_zone', 'conduit', 'connection', 'broker_zone', 'topics',
+            'protocol', 'port_mappings', 'access', 'remote_access', 'allowed', 'decided_by', 'decided_on', 'review_by',
+            'expires', 'first_seen', 'last_seen', 'evidence', 'description', 'owner', 'comments', 'tags',
         )
 
     def __init__(self, data=None, *args, **kwargs):
         super().__init__(data, *args, **kwargs)
         if data:
-            _scope_zones_to_site(self, data, ('source_zone', 'destination_zone', 'conduit'))
+            _scope_zones_to_site(self, data, ('source_zone', 'destination_zone', 'broker_zone', 'conduit'))
+
+    def clean_connection(self):
+        # An empty CSV cell means the default, not "no connection model"
+        return self.cleaned_data.get('connection') or ConnectionChoices.CLIENT_SERVER
 
 
 class FlowFilterForm(PrimaryModelFilterSetForm):
@@ -485,6 +519,7 @@ class FlowFilterForm(PrimaryModelFilterSetForm):
         FieldSet('site_id', 'zone_id', 'source_zone_id', 'destination_zone_id', 'conduit_id', 'has_conduit',
                  name=_('Zones')),
         FieldSet('protocol', 'port', 'access', 'modifying', 'remote_access', name=_('Traffic')),
+        FieldSet('connection', 'broker_zone_id', 'outbound_only', 'topic', name=_('Connection')),
         FieldSet('allowed', 'decided_by_id', 'expired', 'review_due', 'stale', name=_('Verdict')),
         FieldSet('hop_device_id', 'hop_virtual_machine_id', 'hop_tunnel_id', name=_('Path')),
         FieldSet('owner_group_id', 'owner_id', name=_('Ownership')),
@@ -504,6 +539,14 @@ class FlowFilterForm(PrimaryModelFilterSetForm):
     protocol = forms.MultipleChoiceField(label=_('Protocol'), choices=FlowProtocolChoices, required=False)
     port = forms.IntegerField(label=_('Port'), min_value=1, max_value=65535, required=False)
     access = forms.MultipleChoiceField(label=_('Access'), choices=AccessChoices, required=False)
+    connection = forms.MultipleChoiceField(label=_('Connection'), choices=ConnectionChoices, required=False)
+    broker_zone_id = DynamicModelMultipleChoiceField(
+        queryset=Zone.objects.all(), required=False, label=_('Broker zone'),
+    )
+    outbound_only = forms.NullBooleanField(
+        label=_('No inbound connection'), required=False, widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
+    )
+    topic = forms.CharField(label=_('Topic'), required=False)
     modifying = forms.NullBooleanField(
         label=_('Writes, controls or programs'), required=False,
         widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
