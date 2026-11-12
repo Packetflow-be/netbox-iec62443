@@ -5,6 +5,17 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 
 ## Unreleased
 
+## 0.4.1 (2026-11-12)
+
+Patch release: one enhancement to the demo plant. No migrations.
+
+### Enhancements
+
+- `ot_demo` gives the demo controllers, operator panel, gateway and firewall a firmware version (custom field
+  `ot_firmware_version`), so the demo shows the field filled in and one PLC a release behind the other. Setting
+  them afterwards through the API fails on a NetBox whose custom validators reject the demo's device names.
+- README: the logo sits in the title line ([#27](https://github.com/Packetflow-be/netbox-ot/pull/27)).
+
 ## 0.4.0 (2026-11-12)
 
 Minor release: system requirements (IEC 62443-3-3) with their status per zone or conduit, connection models on

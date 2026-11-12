@@ -34,6 +34,13 @@ class DemoCommandTest(TestCase):
                          ['IEC 62443 demo MSP IPsec', 'demo-jump-1', 'demo-fw-1'])
         self.assertTrue(IndustrialService.objects.filter(service__isnull=False).exists())
         self.assertEqual(RiskAssessment.objects.count(), 3)
+        # Firmware versions on the controllers, panel, gateway and firewall; none where nobody recorded one
+        firmware = {d.name: d.custom_field_data.get('ot_firmware_version')
+                    for d in Device.objects.filter(name__startswith='demo-')}
+        self.assertEqual(firmware['demo-plc-1'], 'V2.8.3')
+        self.assertEqual(firmware['demo-plc-2'], 'V2.6.0')
+        self.assertEqual(sum(1 for v in firmware.values() if v), 6)
+        self.assertIsNone(firmware['demo-unzoned-camera'])
         # The demo shows the checks at work, errors included
         found = {f.check for f in run_checks(site=site)}
         self.assertTrue({'expired-access', 'residual-above-tolerable', 'asset-without-zone', 'sl-gap',

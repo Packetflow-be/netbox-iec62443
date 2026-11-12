@@ -99,7 +99,7 @@ class Command(BranchCommand):
         from virtualization.models import VirtualMachine, VMInterface
         from vpn.models import Tunnel
 
-        from netbox_ot.customfields import PURDUE_CF_NAME, SLC_CF_NAME
+        from netbox_ot.customfields import FIRMWARE_CF_NAME, PURDUE_CF_NAME, SLC_CF_NAME
         from netbox_ot.models import (
             Conduit,
             Fieldbus,
@@ -135,9 +135,10 @@ class Command(BranchCommand):
         def prefix(cidr, label):
             return Prefix.objects.create(prefix=cidr, scope=site, description=f'{PREFIX} {label}')
 
-        def device(name, kind, role, ip, level):
+        def device(name, kind, role, ip, level, firmware=None):
             d = Device.objects.create(name=name, site=site, device_type=types[kind], role=roles[role],
-                                      custom_field_data={PURDUE_CF_NAME: level or None})
+                                      custom_field_data={PURDUE_CF_NAME: level or None,
+                                                         FIRMWARE_CF_NAME: firmware})
             iface = Interface.objects.create(device=d, name='eth0', type='1000base-t')
             d.primary_ip4 = IPAddress.objects.create(address=f'{ip}/24', assigned_object=iface,
                                                      description=PREFIX)
@@ -172,13 +173,13 @@ class Command(BranchCommand):
         msp.prefixes.add(Prefix.objects.create(prefix='192.0.2.0/24', description=f'{PREFIX} MSP'))
 
         # Assets
-        plc1 = device('demo-plc-1', 'plc', 'PLC', '10.61.1.10', '1')
-        plc2 = device('demo-plc-2', 'plc', 'PLC', '10.61.1.11', '1')
-        sis_plc = device('demo-sis-1', 'plc', 'PLC', '10.61.1.50', '1')
-        gw = device('demo-gw-1', 'box', 'Gateway', '10.61.1.20', '1')
-        hmi = device('demo-hmi-1', 'hmi', 'HMI', '10.61.2.10', '2')
+        plc1 = device('demo-plc-1', 'plc', 'PLC', '10.61.1.10', '1', 'V2.8.3')
+        plc2 = device('demo-plc-2', 'plc', 'PLC', '10.61.1.11', '1', 'V2.6.0')  # one release behind
+        sis_plc = device('demo-sis-1', 'plc', 'PLC', '10.61.1.50', '1', 'V2.8.3')
+        gw = device('demo-gw-1', 'box', 'Gateway', '10.61.1.20', '1', '3.2.1')
+        hmi = device('demo-hmi-1', 'hmi', 'HMI', '10.61.2.10', '2', 'V15.1')
         es = device('demo-es-1', 'box', 'Laptop', '10.61.2.20', '2')
-        fw = device('demo-fw-1', 'fw', 'Firewall', '10.61.35.1', '3.5')
+        fw = device('demo-fw-1', 'fw', 'Firewall', '10.61.35.1', '3.5', '7.4.2')
         historian = vm('demo-historian', '10.61.35.10', '3.5')
         jump = vm('demo-jump-1', '10.61.35.20', '3.5')
         laptop = device('demo-office-laptop', 'box', 'Laptop', '10.61.4.30', '4')
