@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>netbox-iec62443</title>
+  <!-- Two zones joined by a conduit with a checkpoint. CC BY 4.0, Packetflow. -->
+  <rect width="512" height="512" rx="112" fill="#1A1815"/>
+  <!-- conduit -->
+  <rect x="232" y="176" width="48" height="160" fill="#F5F1EA"/>
+  <!-- upper zone (enterprise / supplier side) -->
+  <rect x="100" y="84" width="312" height="108" rx="30" fill="#1A1815" stroke="#F5F1EA" stroke-width="28"/>
+  <!-- lower zone (controllers) -->
+  <rect x="86" y="320" width="340" height="122" rx="34" fill="#E2620F"/>
+  <!-- checkpoint on the conduit -->
+  <circle cx="256" cy="256" r="50" fill="#1A1815" stroke="#E2620F" stroke-width="22"/>
+  <path d="M233 257 l16 16 l30 -34" fill="none" stroke="#F5F1EA" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

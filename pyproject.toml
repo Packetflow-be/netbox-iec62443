@@ -28,7 +28,8 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/Packetflow-be/netbox-iec62443"
-Documentation = "https://github.com/Packetflow-be/netbox-iec62443#readme"
+Documentation = "https://github.com/Packetflow-be/netbox-iec62443/blob/main/docs/README.md"
+Discussions = "https://github.com/Packetflow-be/netbox-iec62443/discussions"
 Issues = "https://github.com/Packetflow-be/netbox-iec62443/issues"
 Changelog = "https://github.com/Packetflow-be/netbox-iec62443/blob/main/CHANGELOG.md"
 

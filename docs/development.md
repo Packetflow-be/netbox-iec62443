@@ -86,6 +86,11 @@ with "cannot pickle 'traceback' object" (a failure in a worker that cannot be re
 ## Releasing
 
 1. Set `__version__` in `netbox_iec62443/__init__.py` and move the changelog entries under the new version.
+   Each release in `CHANGELOG.md` opens with one sentence saying whether it is a major, minor or patch release
+   and whether it holds bug fixes, new features, enhancements or all of these; lists breaking changes under a
+   bold **Breaking Changes** header with links to their issues or pull requests; and links every entry to its
+   issue or pull request. Add a row to the compatibility table in `README.md` when the supported NetBox range
+   changes.
 2. Merge to `main`, then tag: `git tag v0.1.0 && git push origin v0.1.0`.
 3. The `publish` job builds the package and uploads it to PyPI once lint, tests and build pass, and only if the
    tag matches `__version__`.
@@ -94,3 +99,15 @@ Publishing uses PyPI trusted publishing, so no token is stored in GitHub. Once, 
 on PyPI, add a trusted publisher for the project `netbox-iec62443` (owner `Packetflow-be`, repository
 `netbox-iec62443`, workflow `ci.yml`, environment `pypi`), and in the GitHub repository create the environment
 `pypi` (Settings > Environments), optionally with required reviewers.
+
+## Query-count baselines
+
+The view and API tests assert how many queries a list page takes. The baselines live in
+`netbox_iec62443/tests/query_counts.json`, recorded on the newest 4.7 release; re-record them with
+`UPDATE_QUERY_COUNTS=1` (from a writable checkout, without `--parallel`).
+
+## Translations
+
+Every user-facing string goes through Django's translation functions. A translation goes in
+`netbox_iec62443/locale/<lang>/LC_MESSAGES/django.po`: run `manage.py makemessages -l <lang>` in the plugin
+directory, translate, then `manage.py compilemessages`. Pull requests with a translation are welcome.
