@@ -1,6 +1,6 @@
 # REST API and GraphQL
 
-All endpoints live under `/api/plugins/iec62443/` and use NetBox's own authentication, permissions, filtering,
+All endpoints live under `/api/plugins/ot/` and use NetBox's own authentication, permissions, filtering,
 pagination and `brief` mode. The browsable API and NetBox's OpenAPI schema (`/api/schema/`) describe every
 field.
 
@@ -33,13 +33,13 @@ Useful flow filters: `site_id`, `source_zone_id`, `destination_zone_id`, `condui
 
 ## GraphQL
 
-Each object has a single and a list query: `iec62443_zone` / `iec62443_zone_list`, `iec62443_conduit(_list)`,
-`iec62443_flow(_list)`, `iec62443_flow_hop(_list)`, `iec62443_risk_assessment(_list)`,
-`iec62443_fieldbus(_list)` and `iec62443_industrial_service(_list)`.
+Each object has a single and a list query: `ot_zone` / `ot_zone_list`, `ot_conduit(_list)`,
+`ot_flow(_list)`, `ot_flow_hop(_list)`, `ot_risk_assessment(_list)`,
+`ot_fieldbus(_list)` and `ot_industrial_service(_list)`.
 
 ```graphql
 {
-  iec62443_flow_list(filters: {remote_access: {exact: true}}) {
+  ot_flow_list(filters: {remote_access: {exact: true}}) {
     source_zone { name }
     destination_zone { name }
     protocol
@@ -53,7 +53,7 @@ Each object has a single and a list query: `iec62443_zone` / `iec62443_zone_list
 
 | Command | Does |
 |---|---|
-| `iec62443_demo [--delete]` | Creates (or removes) the fictional demo plant |
-| `iec62443_import <dir> --site <slug> ...` | Imports Zeek logs or observation files ([Importer](importer.md)) |
-| `iec62443_check [--site <slug>] [--fail-on ...] [--json]` | Runs the consistency checks; exit status 1 on findings |
-| `iec62443_rules [--site <slug>] [--device <firewall>] [--format csv\|json]` | Exports firewall rules |
+| `ot_demo [--delete]` | Creates (or removes) the fictional demo plant |
+| `ot_import <dir> --site <slug> ...` | Imports Zeek logs or observation files ([Importer](importer.md)) |
+| `ot_check [--site <slug>] [--fail-on ...] [--json]` | Runs the consistency checks; exit status 1 on findings |
+| `ot_rules [--site <slug>] [--device <firewall>] [--format csv\|json]` | Exports firewall rules |

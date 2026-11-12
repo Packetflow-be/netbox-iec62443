@@ -22,7 +22,7 @@ It is an *Access map* tab on the site page and a standalone page under *IEC 6244
 
 ## API
 
-`GET /api/plugins/iec62443/access-map/?site_id=<id>[&max_level=<level>]` returns the site's access map as
+`GET /api/plugins/ot/access-map/?site_id=<id>[&max_level=<level>]` returns the site's access map as
 data, for reports and other tools: the flows into zones at that Purdue level or below, in access-map order,
 as full flow objects with their hops. Needs `view_flow` and view access to the site. The diagram is only on
 the page, not in the API.

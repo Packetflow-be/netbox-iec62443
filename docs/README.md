@@ -1,4 +1,4 @@
-# netbox-iec62443 documentation
+# netbox-ot documentation
 
 1. [Installation and configuration](installation.md): from source or netbox-docker, settings, permissions,
    upgrading, removing.

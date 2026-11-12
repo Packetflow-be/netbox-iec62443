@@ -1,0 +1,31 @@
+{% extends 'generic/_base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "Access map" %}{% if site %}: {{ site }}{% endif %}{% endblock %}
+
+{% block subtitle %}
+  <div class="text-secondary">
+    {% trans "Every known flow into the controller zones, and whether it is allowed." %}
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label" for="{{ form.site_id.id_for_label }}">{{ form.site_id.label }}</label>
+          {{ form.site_id }}
+        </div>
+        <div class="col-md-5">
+          <label class="form-label" for="{{ form.max_level.id_for_label }}">{{ form.max_level.label }}</label>
+          {{ form.max_level }}
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary w-100"><i class="mdi mdi-filter"></i> {% trans "Show" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% include 'netbox_ot/inc/accessmap_table.html' %}
+{% endblock %}

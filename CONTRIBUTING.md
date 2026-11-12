@@ -1,8 +1,8 @@
 # Contributing
 
 Thank you for helping. Before you start on something larger than a small fix, open an
-[issue](https://github.com/Packetflow-be/netbox-iec62443/issues) or a
-[discussion](https://github.com/Packetflow-be/netbox-iec62443/discussions) so we can agree on the approach.
+[issue](https://github.com/Packetflow-be/netbox-ot/issues) or a
+[discussion](https://github.com/Packetflow-be/netbox-ot/discussions) so we can agree on the approach.
 
 - **Bugs**: open an issue with the NetBox and plugin versions, what you did, what you expected and what
   happened. A traceback or the failing API request helps.

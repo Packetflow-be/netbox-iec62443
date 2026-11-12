@@ -16,7 +16,7 @@
   HART-IP, EtherCAT, CANopen, Omron FINS, MELSEC. Flows also take the IT protocols seen on OT paths
   (RDP, SSH, VNC, TeamViewer, AnyDesk, IPsec, OpenVPN, WireGuard, HTTP(S), SMB, DNS, NTP, SNMP, Syslog).
 - Both have the usual list/detail/edit/bulk views, filters (by protocol, role, port, zone, site,
-  fieldbus), REST API (`/api/plugins/iec62443/industrial-services/`, `/fieldbuses/`) and GraphQL. The
+  fieldbus), REST API (`/api/plugins/ot/industrial-services/`, `/fieldbuses/`) and GraphQL. The
   device and VM panel lists an asset's services and the buses it is gateway for.
 - The [importer](importer.md) creates services from the analysis: a server for every protocol an asset
   answered or that the input names for it, a client for every protocol it sent requests in. An open port

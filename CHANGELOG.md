@@ -3,9 +3,31 @@
 Each release opens with what kind of release it is. Breaking changes are listed under **Breaking Changes**.
 Numbers link to the issue or pull request on GitHub; entries without a number predate the public repository.
 
-## Unreleased
+## 0.3.0 (unreleased)
 
-Documentation only; no code changes.
+Minor release: **the plugin is renamed netbox-ot** (it was netbox-iec62443), because it grows beyond IEC 62443
+into an OT asset and lifecycle register. An installation of netbox-iec62443 0.2.0 is taken over in place by the
+first migration; see [Upgrading from netbox-iec62443](docs/installation.md#from-netbox-iec62443).
+
+### Breaking Changes
+
+- Package `netbox-ot`, Django app and `PLUGINS` entry `netbox_ot`, URLs `/plugins/ot/` and `/api/plugins/ot/`,
+  menu *OT*.
+- Commands `ot_import`, `ot_demo`, `ot_check`, `ot_rules` (were `iec62443_*`).
+- Custom fields `ot_purdue_level` and `ot_sl_capability` (were `iec62443_*`; renamed with their values).
+- Related names on NetBox models (`device.ot_zones`, ...) and the site tab URL `ot-register/`.
+- The migrations are squashed into one `0001_initial`; the upgrade path from 0.1.0.dev0 development builds is
+  gone (upgrade those to netbox-iec62443 0.2.0 first).
+
+### Enhancements
+
+- NetBox refuses to start with both `netbox_iec62443` and `netbox_ot` in `PLUGINS`, with a message that says
+  what to do.
+- CI upgrades a real netbox-iec62443 0.2.0 installation with the demo plant to this version on every run.
+
+### Documentation
+
+Changes from before the rename, documentation only:
 
 - The README is a summary now, with the full documentation in [docs/](docs/README.md): installation and
   configuration (with a complete netbox-docker recipe and a settings table), data model, access map, checks and

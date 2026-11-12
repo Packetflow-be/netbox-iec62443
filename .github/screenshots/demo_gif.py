@@ -1,7 +1,7 @@
 """Screenshots of the demo plant and the README's demo.gif.
 
 Usage: demo_gif.py <base url> <urls.json> <out dir>
-Needs a NetBox with the plugin, `manage.py iec62443_demo` run, and a user demo/demo-password-for-ci.
+Needs a NetBox with the plugin, `manage.py ot_demo` run, and a user demo/demo-password-for-ci.
 Writes <out>/frame-N.png (full size) and <out>/demo.gif.
 """
 import json
@@ -31,9 +31,9 @@ FRAMES = [
      'Its verdict: allowed, by whom, until when, and the path it takes: tunnel, jump host, firewall', 4.0),
     (urls['cell_zone'], None,
      'A zone: type, Purdue level, accountable person, SL-T, SL-A and SL-C per foundational requirement', 4.0),
-    (f'/dcim/sites/{site}/iec62443-register/', None,
+    (f'/dcim/sites/{site}/ot-register/', None,
      'Zone register: the audit deliverable, printable and exported as CSV or JSON', 4.0),
-    (f'/plugins/iec62443/checks/?site_id={site}', None,
+    (f'/plugins/ot/checks/?site_id={site}', None,
      'Consistency checks: what is inconsistent, and what an audit will ask for and is missing', 4.5),
 ]
 

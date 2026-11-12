@@ -1,12 +1,12 @@
 # Importing Zeek logs
 
-`manage.py iec62443_import <dir> --site <slug>` reads a directory of Zeek logs directly, with or without the
+`manage.py ot_import <dir> --site <slug>` reads a directory of Zeek logs directly, with or without the
 [CISA ICSNPP](https://github.com/cisagov/ICSNPP) parsers, as Zeek or Malcolm write them. No converter needed.
 The format is detected from the `conn` log; force it with `--format zeek`.
 
 ```bash
-manage.py iec62443_import /captures/plant-a --site plant-a --dry-run
-manage.py iec62443_import /captures/plant-a --site plant-a --zone-map zones.csv --unknown-report unknown.csv
+manage.py ot_import /captures/plant-a --site plant-a --dry-run
+manage.py ot_import /captures/plant-a --site plant-a --zone-map zones.csv --unknown-report unknown.csv
 ```
 
 Zeek TSV and JSON logs both work, plain or gzipped, rotated files included (`conn.00:00:00-01:00:00.log.gz`).
@@ -54,7 +54,7 @@ A zone named only in the zone map is created by the import, with the type given 
 
 Every request runs from the connection's originator to its responder (`id.orig_h` -> `id.resp_h`, destination
 port `id.resp_p`). Functions are classified as read, write, control or program by the table in
-`netbox_iec62443/importers/functions.py`; the names above were checked against the ICSNPP parsers' own test
+`netbox_ot/importers/functions.py`; the names above were checked against the ICSNPP parsers' own test
 output.
 
 From `conn.log`, a connection that no protocol log covers becomes a request with the protocol Zeek identified

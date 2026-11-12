@@ -1,9 +1,9 @@
-# Run with `manage.py shell < urls.py` after iec62443_demo: prints the demo plant's page URLs as JSON.
+# Run with `manage.py shell < urls.py` after ot_demo: prints the demo plant's page URLs as JSON.
 import json
 
 from dcim.models import Site
 
-from netbox_iec62443.models import Flow, Zone
+from netbox_ot.models import Flow, Zone
 
 site = Site.objects.get(slug='iec62443-demo')
 print(json.dumps({

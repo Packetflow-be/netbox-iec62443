@@ -27,7 +27,7 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: What you did, step by step. The demo plant (`manage.py iec62443_demo`) is a good base.
+      description: What you did, step by step. The demo plant (`manage.py ot_demo`) is a good base.
     validations:
       required: true
   - type: textarea
