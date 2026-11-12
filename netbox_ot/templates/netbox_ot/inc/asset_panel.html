@@ -1,11 +1,28 @@
 {% load i18n %}
 <div class="card">
-  <h2 class="card-header">IEC 62443</h2>
+  <h2 class="card-header">OT</h2>
   <table class="table table-hover attr-table">
     <tr>
       <th scope="row">{% trans "Purdue level" %}</th>
       <td>{% if purdue_level %}{% badge purdue_level_label bg_color=purdue_level_color %}{% else %}{{ ''|placeholder }}{% endif %}</td>
     </tr>
+    {% if firmware %}
+      <tr>
+        <th scope="row">{% trans "Firmware" %}</th>
+        <td>{{ firmware }}</td>
+      </tr>
+    {% endif %}
+    {% if lifecycle_installed %}
+      <tr>
+        <th scope="row">{% trans "End of support" %}</th>
+        <td>
+          {% if end_of_support %}
+            {% badge end_of_support.date|date:"Y-m-d" bg_color=end_of_support.color %}
+            <span class="text-muted small">{% if end_of_support.kind == 'security' %}{% trans "security fixes" %}{% else %}{% trans "support" %}{% endif %}, {{ end_of_support.source }}</span>
+          {% else %}{{ ''|placeholder }}{% endif %}
+        </td>
+      </tr>
+    {% endif %}
     <tr>
       <th scope="row">{% trans "Zones" %}</th>
       <td>

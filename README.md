@@ -41,6 +41,9 @@ zone register.
 - **Importer** for passive captures: Zeek logs (with or without CISA ICSNPP) or a documented JSON format, with
   a list of the hosts NetBox does not know yet. [Importer](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/importer.md)
 - **Vendor-neutral firewall rules** from the allowed flows. [Firewall rules](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/firewall-rules.md)
+- **Lifecycle**: end of support per device from netbox-lifecycle (device type and modules), checks for
+  unsupported devices in secure zones, and a firmware version field on devices and modules.
+  [Companion plugins](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/companions.md)
 - REST API, GraphQL, filters, bulk import/edit, change log and permissions like any NetBox object.
   [API](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/api.md)
 
@@ -62,6 +65,11 @@ None: no other NetBox plugins, Python packages, external software or services. T
 other tools wrote; to import from network captures you need [Zeek](https://zeek.org/) (optionally with the
 [CISA ICSNPP](https://github.com/cisagov/ICSNPP) parsers, or [Malcolm](https://github.com/cisagov/Malcolm),
 which bundles both) somewhere, not on the NetBox server.
+
+**Works with** [netbox-lifecycle](https://github.com/DanSheps/netbox-lifecycle) (end of support per device,
+checks for unsupported devices in secure zones) and [netbox-inventory](https://github.com/ArnesSI/netbox-inventory)
+(spares and purchases), tested together in CI; both optional. See
+[Companion plugins](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/companions.md).
 
 ## Installation
 

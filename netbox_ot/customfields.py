@@ -1,8 +1,8 @@
 """
-The plugin keeps a Purdue level on devices and virtual machines, and a security level capability (SL-C) on
-devices and device types, as NetBox custom fields (no change to core tables). They are created after `migrate`
-when missing and never overwritten, so an admin may relabel or regroup them. Disable with PLUGINS_CONFIG
-create_custom_fields=False.
+The plugin keeps a Purdue level on devices and virtual machines, a security level capability (SL-C) on
+devices and device types, and a firmware version on devices and modules, as NetBox custom fields (no change to
+core tables). They are created after `migrate` when missing and never overwritten, so an admin may relabel or
+regroup them. Disable with PLUGINS_CONFIG create_custom_fields=False.
 """
 import logging
 
@@ -18,6 +18,8 @@ PURDUE_CF_MODELS = (('dcim', 'device'), ('virtualization', 'virtualmachine'))
 SLC_CF_NAME = 'ot_sl_capability'
 SLC_CF_MODELS = (('dcim', 'device'), ('dcim', 'devicetype'))
 SLC_REGEX = r'^[0-4]( ?, ?[0-4]){6}$|^[0-4]$'
+FIRMWARE_CF_NAME = 'ot_firmware_version'
+FIRMWARE_CF_MODELS = (('dcim', 'device'), ('dcim', 'module'))
 
 
 def ensure_custom_fields(sender=None, **kwargs):
@@ -75,10 +77,32 @@ def ensure_custom_fields(sender=None, **kwargs):
         ])
         logger.info('Created custom field %s', SLC_CF_NAME)
 
+    cf, created = CustomField.objects.get_or_create(
+        name=FIRMWARE_CF_NAME,
+        defaults={
+            'type': CustomFieldTypeChoices.TYPE_TEXT,
+            'label': 'Firmware version',
+            'group_name': 'Lifecycle',
+            'description': 'Firmware or software version running on this device or module, e.g. "V2.9.4" for a '
+                           'PLC CPU module (netbox-ot)',
+        },
+    )
+    if created:
+        cf.object_types.set([
+            ObjectType.objects.get_for_model(apps.get_model(app_label, model))
+            for app_label, model in FIRMWARE_CF_MODELS
+        ])
+        logger.info('Created custom field %s', FIRMWARE_CF_NAME)
+
 
 def get_purdue_level(obj):
     """The asset's Purdue level value ('' when unset)."""
     return (getattr(obj, 'custom_field_data', None) or {}).get(PURDUE_CF_NAME) or ''
+
+
+def get_firmware_version(obj):
+    """The firmware version recorded on a device or module ('' when unset)."""
+    return (getattr(obj, 'custom_field_data', None) or {}).get(FIRMWARE_CF_NAME) or ''
 
 
 def get_sl_capability(device):

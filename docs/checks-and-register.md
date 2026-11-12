@@ -4,7 +4,7 @@
 
 ![Consistency checks](checks.png)
 
-*IEC 62443 > Consistency checks* lists what is inconsistent or missing in the model of a site:
+*OT > Consistency checks* lists what is inconsistent or missing in the model of a site:
 
 - an address in another zone's prefix, an asset below its zone's level or in the wrong kind of zone, assets
   in no zone or in two;
@@ -12,7 +12,9 @@
   enforces;
 - expired or open-ended remote access, flows outside any conduit, verdicts without a decider, stale flows;
 - residual risk above tolerable, overdue risk assessments;
-- what an audit will ask for and is missing: no SL-T, no accountable person, no approved risk assessment.
+- what an audit will ask for and is missing: no SL-T, no accountable person, no approved risk assessment;
+- with [netbox-lifecycle](companions.md#end-of-support): devices past, or within a year of, their end of
+  support in zones with SL-T 2 or more.
 
 Each finding has a check id, a severity (error, warning, info), a message and the object it is about.
 

@@ -78,7 +78,8 @@ class ChecksTest(TestCase):
 
     def test_every_check_runs_and_finds_its_case(self):
         found = {f.check for f in run_checks(site=self.site)}
-        self.assertEqual(found, set(CHECKS))
+        # The end-of-support checks need netbox-lifecycle data: test_lifecycle.py
+        self.assertEqual(found, set(CHECKS) - {'end-of-support', 'end-of-support-ahead'})
 
     def test_address_in_other_zone(self):
         self.assertEqual(self._found('address-in-other-zone'), {

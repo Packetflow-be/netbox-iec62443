@@ -19,6 +19,16 @@ first migration; see [Upgrading from netbox-iec62443](docs/installation.md#from-
 - The migrations are squashed into one `0001_initial`; the upgrade path from 0.1.0.dev0 development builds is
   gone (upgrade those to netbox-iec62443 0.2.0 first).
 
+### New features
+
+- Companion plugins: CI runs the suite beside netbox-lifecycle 1.1.11 and netbox-inventory 2.7.1, the tested
+  bundle documented in [docs/companions.md](docs/companions.md) ([#15](https://github.com/Packetflow-be/netbox-ot/issues/15)).
+- End of support per device when netbox-lifecycle is installed: the earliest end-of-security (else
+  end-of-support) date of the device type and its installed modules' types, in the device panel and the zone
+  register; checks `end-of-support` (warning) and `end-of-support-ahead` (info) for zones with SL-T 2 or more
+  ([#16](https://github.com/Packetflow-be/netbox-ot/issues/16)).
+- Custom field *Firmware version* (`ot_firmware_version`) on devices and modules.
+
 ### Enhancements
 
 - NetBox refuses to start with both `netbox_iec62443` and `netbox_ot` in `PLUGINS`, with a message that says
