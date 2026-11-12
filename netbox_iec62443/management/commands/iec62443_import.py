@@ -30,6 +30,10 @@ from netbox_iec62443.importers.observations import (
 class Command(BranchCommand):
     help = ('Import zones, flows, Purdue levels and industrial services from observation files '
             '(docs/import-format.md) or from Zeek logs (with or without the CISA ICSNPP parsers)')
+    follows_settings = True
+
+    def writes(self, options):
+        return not options.get('dry_run')
 
     def add_arguments(self, parser):
         parser.add_argument('directory', help='Directory holding assets.json, flows.json and optionally summary.json, '

@@ -2,9 +2,14 @@
 
 ## Unreleased
 
-- `--branch NAME` on `iec62443_demo`, `iec62443_import`, `iec62443_check` and `iec62443_rules`: the command
-  runs in that branch of the [netbox-branching](https://github.com/netboxlabs/netbox-branching) plugin instead
-  of main. Without the option nothing changes, and netbox-branching stays optional (#9).
+- Working in a branch of the [netbox-branching](https://github.com/netboxlabs/netbox-branching) plugin (#9);
+  netbox-branching stays optional and nothing changes without it:
+  - `--branch NAME` on `iec62443_demo`, `iec62443_import`, `iec62443_check` and `iec62443_rules` runs the command
+    in that branch instead of main.
+  - *IEC 62443 > Settings* (with netbox-branching only): a default branch that `iec62443_import` and
+    `iec62443_demo` use without `--branch` (`--main` forces main), and a guard that refuses imports into main.
+  - README section "Working in a branch"; CI runs the tests once more with netbox-branching installed.
+- New migration `0011_plugin_settings` (one table for the settings).
 
 ## 0.2.0 (2026-11-11)
 

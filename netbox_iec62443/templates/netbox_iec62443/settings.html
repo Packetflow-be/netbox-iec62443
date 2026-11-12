@@ -1,0 +1,51 @@
+{% extends 'generic/_base.html' %}
+{% load i18n %}
+{% load form_helpers %}
+
+{% block title %}{% trans "IEC 62443 settings" %}{% endblock %}
+
+{% block subtitle %}
+  <div class="text-secondary">
+    {% trans "Where the import and demo commands write. Pages and the REST API follow the branch picked in NetBox's menu, whatever is set here." %}
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div class="row">
+    <div class="col col-md-8">
+      <form method="post" class="card">
+        {% csrf_token %}
+        <h2 class="card-header">{% trans "Branching" %}</h2>
+        <div class="card-body">
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+          {% endif %}
+          {% render_field form.branching_enabled %}
+          {% render_field form.default_branch %}
+          {% render_field form.protect_main %}
+          {% if not branches %}
+            <p class="text-secondary">{% trans "No branches yet: create one under Branching > Branches first." %}</p>
+          {% endif %}
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+          <span class="text-secondary small">
+            {% if settings.updated_by %}
+              {% blocktrans with user=settings.updated_by when=settings.last_updated|date:"SHORT_DATETIME_FORMAT" %}Last changed by {{ user }} on {{ when }}{% endblocktrans %}
+            {% endif %}
+          </span>
+          <button type="submit" class="btn btn-primary">{% trans "Save" %}</button>
+        </div>
+      </form>
+    </div>
+    <div class="col col-md-4">
+      <div class="card">
+        <h2 class="card-header">{% trans "What this changes" %}</h2>
+        <div class="card-body">
+          <p>{% blocktrans %}With <strong>use a branch for imports</strong> on, <code>iec62443_import</code> and <code>iec62443_demo</code> run in the default branch. <code>--branch NAME</code> picks another branch, <code>--main</code> forces main.{% endblocktrans %}</p>
+          <p>{% blocktrans %}With <strong>refuse imports into main</strong> on, those commands will not write to main at all, <code>--main</code> included. A dry run (<code>--dry-run</code>) still works.{% endblocktrans %}</p>
+          <p class="mb-0">{% blocktrans %}<code>iec62443_check</code> and <code>iec62443_rules</code> read main unless given <code>--branch</code>, so a nightly check keeps watching the real inventory.{% endblocktrans %}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

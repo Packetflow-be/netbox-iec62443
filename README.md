@@ -140,14 +140,8 @@ assessments and a few things the checks will flag); `--delete` removes exactly w
 sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_demo
 ```
 
-**In a branch.** With the [netbox-branching](https://github.com/netboxlabs/netbox-branching) plugin, every
-page follows the branch picked in NetBox's menu. A `manage.py` command runs outside a web request and so works
-on main, unless you name a branch: `--branch NAME` on `iec62443_demo`, `iec62443_import`, `iec62443_check` and
-`iec62443_rules` runs the command in that branch and leaves main alone. The branch must exist and be ready.
-
-```bash
-sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_demo --branch demo
-```
+**In a branch:** see [Working in a branch](#working-in-a-branch) to try an import without touching the real
+inventory.
 
 **Import a capture** (Zeek logs, see [docs/zeek.md](docs/zeek.md), or observation files, see
 [docs/import-format.md](docs/import-format.md)):
@@ -189,6 +183,40 @@ search index of its models. Risk assessments are new: grant permissions on them 
 The REST endpoint `access-map/` now returns `flows` (structured protocol, ports, access and hops) where it
 returned `conduits` with free text, and no longer carries the SVG diagram; the diagram is on the access map
 page.
+
+## Working in a branch
+
+With the [netbox-branching](https://github.com/netboxlabs/netbox-branching) plugin installed, a branch is the
+place to try an import: load a capture, look at the zones, the flows and the access map, then merge the branch
+or throw it away. The plugin's models are change-logged, so they are branched like NetBox's own.
+
+- **Pages** follow the branch picked in NetBox's menu: zones, flows, the access map, the register and the checks
+  all show that branch.
+- **REST API**: send the header `X-NetBox-Branch: <schema id>` (the branch's schema ID, shown on the branch);
+  without it a request reads and writes main.
+- **Commands**: a `manage.py` command runs outside a web request, so it works on main unless told otherwise.
+  `--branch NAME` on `iec62443_import`, `iec62443_demo`, `iec62443_check` and `iec62443_rules` runs the whole
+  command in that branch; the branch must exist and be ready. The command says on stderr where it worked.
+
+  ```bash
+  sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py iec62443_import ./observations --site plant-a --branch trial
+  ```
+
+- **Settings** (*IEC 62443 > Settings*, shown only with netbox-branching installed; needs the
+  `change_pluginsettings` permission, which superusers have):
+  - *Use a branch for imports* with a *default branch*: `iec62443_import` and `iec62443_demo` without
+    `--branch` then run in that branch, and say so. `--main` forces main.
+  - *Refuse imports into main*: those two commands will not write to main at all, `--main` included, so test
+    data cannot land in the real inventory by accident. A `--dry-run` import still runs.
+
+  `iec62443_check` and `iec62443_rules` only read; they ignore the default branch, so a nightly check keeps
+  watching main. The settings themselves are not branched: they are the same whichever branch is active.
+
+Things to know: NetBox's `CUSTOM_VALIDATORS` (naming rules, for example) apply inside a branch as they do in
+main, so an import that would be refused in main is refused in the branch too. Changes in a branch are only
+visible in its *Diff* and *Changes ahead* tabs when they were change-logged, which the importer does (under
+`--user`). After a NetBox upgrade, branches need migrating before commands can use them (they are not *ready*
+until then).
 
 ## Compatibility
 

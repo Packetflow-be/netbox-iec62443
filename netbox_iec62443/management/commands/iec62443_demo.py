@@ -18,6 +18,7 @@ PREFIX = 'IEC 62443 demo'
 
 class Command(BranchCommand):
     help = 'Create (or --delete) a demo plant to try the plugin: zones, conduits, flows, services, risk assessments'
+    follows_settings = True
 
     def add_arguments(self, parser):
         parser.add_argument('--delete', action='store_true', help='Remove the demo data instead')
