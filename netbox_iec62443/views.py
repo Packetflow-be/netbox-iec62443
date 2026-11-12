@@ -15,7 +15,7 @@ from . import filtersets, forms, sl, tables
 from .accessmap import access_map_flows, access_map_svg, attention
 from .branching import branch_names, branching_installed
 from .checks import CHECKS, run_checks, summary
-from .choices import PurdueLevelChoices
+from .choices import ConnectionChoices, PurdueLevelChoices
 from .customfields import get_sl_capability
 from .models import (
     Conduit,
@@ -978,7 +978,11 @@ class SiteRegisterView(generic.ObjectView):
         return super().get(request, **kwargs)
 
     def get_extra_context(self, request, instance):
-        return {'register': build_register(instance, user=request.user)}
+        return {
+            'register': build_register(instance, user=request.user),
+            # The register holds display labels; the page leaves out the default one
+            'default_connection': ConnectionChoices.label(ConnectionChoices.CLIENT_SERVER),
+        }
 
 
 #

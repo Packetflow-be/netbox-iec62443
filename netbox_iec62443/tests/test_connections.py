@@ -106,7 +106,7 @@ class ConnectionFilterTest(ConnectionTestBase):
         self.assertEqual(self._names({'outbound_only': 'true'}), ['MES', 'Recipes'])
         self.assertEqual(self._names({'outbound_only': 'false'}), ['HMI'])
         self.assertEqual(self._names({'broker_zone_id': [self.dmz.pk]}), ['Recipes'])
-        self.assertEqual(self._names({'topic': 'dcmd'}), ['Recipes'])
+        self.assertEqual(self._names({'topics': 'dcmd'}), ['Recipes'])
         self.assertEqual(self._names({'q': 'line1/DCMD'}), ['Recipes'])
         # A flow through a broker counts for the broker's zone too
         self.assertEqual(self._names({'zone_id': [self.dmz.pk]}), ['MES', 'Recipes'])

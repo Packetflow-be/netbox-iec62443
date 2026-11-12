@@ -227,7 +227,7 @@ class FlowFilterSet(PrimaryModelFilterSet):
     outbound_only = django_filters.BooleanFilter(
         method='filter_outbound_only', label=_('No inbound connection into the destination zone'),
     )
-    topic = django_filters.CharFilter(method='filter_topic', label=_('Topic (contains)'))
+    topics = django_filters.CharFilter(method='filter_topics', label=_('Topic (contains)'))
     allowed = django_filters.MultipleChoiceFilter(choices=FlowAllowedChoices, distinct=False)
     remote_access = django_filters.BooleanFilter()
     decided_by_id = django_filters.ModelMultipleChoiceFilter(
@@ -285,7 +285,7 @@ class FlowFilterSet(PrimaryModelFilterSet):
         q = Q(connection__in=ConnectionChoices.OUTBOUND_ONLY)
         return queryset.filter(q) if value else queryset.exclude(q)
 
-    def filter_topic(self, queryset, name, value):
+    def filter_topics(self, queryset, name, value):
         value = value.strip()
         if not value:
             return queryset

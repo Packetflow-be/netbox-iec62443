@@ -125,6 +125,10 @@ class ConnectionChoices(ChoiceSet):
     # The destination opens no port to the source: its zone has no inbound connection for this flow
     OUTBOUND_ONLY = (REVERSE_CONNECT, BROKERED)
 
+    @classmethod
+    def label(cls, value):
+        return str(next(c[1] for c in cls.CHOICES if c[0] == value))
+
 
 class IndustrialProtocolChoices(ChoiceSet):
     """Industrial protocols. `DEFAULT_PORTS` are the usual TCP/UDP ports; `SERIAL` run on a fieldbus."""

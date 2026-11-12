@@ -49,6 +49,7 @@ class ZoneType(PrimaryObjectType):
     conduits: list[Annotated['ConduitType', strawberry.lazy('netbox_iec62443.graphql.types')]]
     flows_out: list[Annotated['FlowType', strawberry.lazy('netbox_iec62443.graphql.types')]]
     flows_in: list[Annotated['FlowType', strawberry.lazy('netbox_iec62443.graphql.types')]]
+    flows_brokered: list[Annotated['FlowType', strawberry.lazy('netbox_iec62443.graphql.types')]]
 
 
 @register_type(models.Conduit, fields='__all__', filters=ConduitFilter, pagination=True)

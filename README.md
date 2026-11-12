@@ -254,7 +254,7 @@ A flow through a broker also lists its **topics** (MQTT topic filters, OPC UA Pu
 broker's access rules decide who may publish them: a brokered flow that writes or controls without its topics
 recorded is a check warning. On the access map such flows, and reverse-connect ones, are drawn dotted and
 listed under *Needs attention*: a firewall rule on traffic into the destination zone does not stop them, the
-rules at the broker or at the client do. Filters: `connection`, `broker_zone_id`, `topic` and `outbound_only`
+rules at the broker or at the client do. Filters: `connection`, `broker_zone_id`, `topics` (a topic contains the text) and `outbound_only`
 (no inbound connection into the destination zone).
 
 ## Firewall rules
