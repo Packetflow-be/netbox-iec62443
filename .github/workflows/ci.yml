@@ -246,6 +246,12 @@ jobs:
               assert needed in names, f'{needed} missing from the wheel'
           print(f'{len(names)} files in the wheel')
           PY
+      - name: The PyPI badge in the README shows this version
+        # The badges are files in docs/badges/ (a badge service that cannot reach PyPI shows an error instead)
+        run: |
+          version=$(ls dist/*.whl | sed -E 's/.*netbox_ot-([^-]+)-.*/\1/')
+          grep -q ">v${version}<" docs/badges/pypi.svg \
+            || { echo "docs/badges/pypi.svg does not show v${version}: see docs/development.md, Releasing"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: dist

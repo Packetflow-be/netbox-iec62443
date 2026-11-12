@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <title>netbox-iec62443</title>
+  <title>netbox-ot</title>
   <!-- Two zones joined by a conduit with a checkpoint. CC BY 4.0, Packetflow. -->
   <rect width="512" height="512" rx="112" fill="#1A1815"/>
   <!-- conduit -->
