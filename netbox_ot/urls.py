@@ -21,4 +21,5 @@ urlpatterns = [
     path('risk-assessments/<int:pk>/', include(get_model_urls('netbox_ot', 'riskassessment'))),
     path('access-map/', views.AccessMapView.as_view(), name='accessmap'),
     path('checks/', views.ChecksView.as_view(), name='checks'),
+    path('settings/', views.PluginSettingsView.as_view(), name='settings'),
 ]

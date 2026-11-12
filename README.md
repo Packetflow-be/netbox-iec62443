@@ -44,6 +44,9 @@ zone register.
 - **Lifecycle**: end of support per device from netbox-lifecycle (device type and modules), checks for
   unsupported devices in secure zones, and a firmware version field on devices and modules.
   [Companion plugins](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/companions.md)
+- **Branches**: with netbox-branching (separately licensed, optional) the commands take `--branch`, and
+  *OT > Settings* sets a default branch for imports and can refuse imports into main.
+  [Working in a branch](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/branching.md)
 - REST API, GraphQL, filters, bulk import/edit, change log and permissions like any NetBox object.
   [API](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/api.md)
 

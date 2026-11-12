@@ -1,6 +1,7 @@
+from django.contrib import messages
 from django.db.models import Count, Q
-from django.http import HttpResponse
-from django.shortcuts import render
+from django.http import Http404, HttpResponse
+from django.shortcuts import redirect, render
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import View
 
@@ -12,10 +13,11 @@ from utilities.views import ContentTypePermissionRequiredMixin, ViewTab, registe
 
 from . import filtersets, forms, sl, tables
 from .accessmap import access_map_flows, access_map_svg, attention
+from .branching import branch_names, branching_installed
 from .checks import CHECKS, run_checks, summary
 from .choices import PurdueLevelChoices
 from .customfields import get_sl_capability
-from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
+from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, PluginSettings, RiskAssessment, Zone
 from .register import build_register, register_csv
 from .rules import build_rules, rules_csv
 
@@ -792,3 +794,41 @@ class SiteRegisterView(generic.ObjectView):
 
     def get_extra_context(self, request, instance):
         return {'register': build_register(instance, user=request.user)}
+
+
+#
+# Settings
+#
+
+class PluginSettingsView(ContentTypePermissionRequiredMixin, View):
+    """
+    The plugin settings an administrator changes in the GUI. Today these are only the branching settings, so
+    the page exists only with netbox-branching installed.
+    """
+
+    def get_required_permission(self):
+        return 'netbox_ot.change_pluginsettings'
+
+    def dispatch(self, request, *args, **kwargs):
+        if not branching_installed():
+            raise Http404
+        return super().dispatch(request, *args, **kwargs)
+
+    def _render(self, request, form):
+        return render(request, 'netbox_ot/settings.html', {
+            'form': form,
+            'settings': form.instance,
+            'branches': branch_names(),
+        })
+
+    def get(self, request):
+        return self._render(request, forms.PluginSettingsForm(instance=PluginSettings.load()))
+
+    def post(self, request):
+        form = forms.PluginSettingsForm(request.POST, instance=PluginSettings.load())
+        if not form.is_valid():
+            return self._render(request, form)
+        form.instance.updated_by = request.user.username
+        form.save()
+        messages.success(request, _('Settings saved'))
+        return redirect('plugins:netbox_ot:settings')

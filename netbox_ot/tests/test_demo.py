@@ -1,5 +1,7 @@
 from io import StringIO
+from unittest import skipIf
 
+from django.apps import apps
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
@@ -13,6 +15,13 @@ from netbox_ot.models import Conduit, Flow, FlowHop, IndustrialService, RiskAsse
 
 
 class DemoCommandTest(TestCase):
+
+    @skipIf(apps.is_installed('netbox_branching'), 'netbox-branching is installed')
+    def test_branch_needs_netbox_branching(self):
+        for command in ('ot_demo', 'ot_check', 'ot_rules'):
+            with self.assertRaisesRegex(CommandError, 'netbox-branching'):
+                call_command(command, '--branch', 'demo', stdout=StringIO(), stderr=StringIO())
+        self.assertFalse(Site.objects.filter(slug='iec62443-demo').exists())
 
     def test_create_and_delete(self):
         call_command('ot_demo', stdout=StringIO())

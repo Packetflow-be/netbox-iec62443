@@ -45,7 +45,7 @@ from .choices import (
     ServiceRoleChoices,
     ZoneTypeChoices,
 )
-from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, RiskAssessment, Zone
+from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, PluginSettings, RiskAssessment, Zone
 
 __all__ = (
     'AccessMapFilterForm',
@@ -70,6 +70,7 @@ __all__ = (
     'IndustrialServiceFilterForm',
     'IndustrialServiceForm',
     'IndustrialServiceImportForm',
+    'PluginSettingsForm',
     'RiskAssessmentBulkEditForm',
     'RiskAssessmentFilterForm',
     'RiskAssessmentForm',
@@ -925,3 +926,37 @@ class ChecksFilterForm(forms.Form):
         label=_('Severity'), required=False,
         choices=(('error', _('Error')), ('warning', _('Warning')), ('info', _('Info'))),
     )
+
+
+class PluginSettingsForm(forms.ModelForm):
+    """The settings page: which branch the import and demo commands use, and whether main is off limits."""
+    default_branch = forms.ChoiceField(label=_('Default branch'), required=False)
+
+    class Meta:
+        model = PluginSettings
+        fields = ('branching_enabled', 'default_branch', 'protect_main')
+        labels = {
+            'branching_enabled': _('Use a branch for imports'),
+            'protect_main': _('Refuse imports into main'),
+        }
+
+    def __init__(self, *args, **kwargs):
+        from .branching import branch_names
+        super().__init__(*args, **kwargs)
+        ready = branch_names(ready_only=True)
+        choices = [('', '---------')] + [(name, name) for name in ready]
+        current = self.instance.default_branch
+        if current and current not in ready:
+            # Keep a branch that was merged or deleted visible, so the page says what is set
+            choices.append((current, _('{name} (no longer ready)').format(name=current)))
+        self.fields['default_branch'].choices = choices
+        self.fields['default_branch'].help_text = _(
+            'Only branches that are ready are listed.'
+        )
+
+    def clean_default_branch(self):
+        from .branching import branch_names
+        name = self.cleaned_data['default_branch']
+        if name and name != self.instance.default_branch and name not in branch_names(ready_only=True):
+            raise forms.ValidationError(_('No branch of that name is ready.'))
+        return name

@@ -3,6 +3,19 @@
 Each release opens with what kind of release it is. Breaking changes are listed under **Breaking Changes**.
 Numbers link to the issue or pull request on GitHub; entries without a number predate the public repository.
 
+## Unreleased
+
+### New features
+
+- Working in a branch of the [netbox-branching](https://github.com/netboxlabs/netbox-branching) plugin (optional,
+  separately licensed) ([#9](https://github.com/Packetflow-be/netbox-ot/issues/9)): `--branch NAME` on `ot_demo`,
+  `ot_import`, `ot_check` and `ot_rules`; *OT > Settings* (with netbox-branching only) with a default branch for
+  `ot_import` and `ot_demo` (`--main` forces main) and a guard that refuses imports into main;
+  [docs/branching.md](docs/branching.md). CI runs the suite once more with netbox-branching installed.
+- `ot_demo` writes to the change log (under `--user`, default the first superuser), like the importer, so demo
+  data made in a branch shows in its diff and is carried over by a merge.
+- Migration `0002_plugin_settings` (one table for the settings).
+
 ## 0.3.0 (unreleased)
 
 Minor release: **the plugin is renamed netbox-ot** (it was netbox-iec62443), because it grows beyond IEC 62443
