@@ -1,2 +1,4 @@
-{% load i18n %}{% badge object.get_connection_display bg_color=object.get_connection_color %}
-<div class="small text-secondary mt-1">{{ object.connection_description }}</div>
+{% load i18n %}<div>
+  <div>{% badge object.get_connection_display bg_color=object.get_connection_color %}</div>
+  <div class="small text-secondary mt-1">{{ object.connection_description }}</div>
+</div>
