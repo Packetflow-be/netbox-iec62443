@@ -16,7 +16,7 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   data made in a branch shows in its diff and is carried over by a merge.
 - Migration `0002_plugin_settings` (one table for the settings).
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-11-12)
 
 Minor release: **the plugin is renamed netbox-ot** (it was netbox-iec62443), because it grows beyond IEC 62443
 into an OT asset and lifecycle register. An installation of netbox-iec62443 0.2.0 is taken over in place by the
@@ -47,6 +47,9 @@ first migration; see [Upgrading from netbox-iec62443](docs/installation.md#from-
 - NetBox refuses to start with both `netbox_iec62443` and `netbox_ot` in `PLUGINS`, with a message that says
   what to do.
 - CI upgrades a real netbox-iec62443 0.2.0 installation with the demo plant to this version on every run.
+- The takeover also works inside [netbox-branching](https://github.com/netboxlabs/netbox-branching) branches:
+  migrating a branch renames its copy of the tables and its own custom field values
+  ([#21](https://github.com/Packetflow-be/netbox-ot/pull/21)).
 
 ### Documentation
 
