@@ -15,7 +15,7 @@ from . import filtersets, forms, sl, tables
 from .accessmap import access_map_flows, access_map_svg, attention
 from .branching import branch_names, branching_installed
 from .checks import CHECKS, run_checks, summary
-from .choices import PurdueLevelChoices
+from .choices import ConnectionChoices, PurdueLevelChoices
 from .customfields import get_sl_capability
 from .models import Conduit, Fieldbus, Flow, FlowHop, IndustrialService, PluginSettings, RiskAssessment, Zone
 from .register import build_register, register_csv
@@ -109,6 +109,11 @@ class FlowPanel(panels.ObjectAttributesPanel):
     source_zone = attrs.RelatedObjectAttr('source_zone', linkify=True, label=_('From zone'))
     destination_zone = attrs.RelatedObjectAttr('destination_zone', linkify=True, label=_('To zone'))
     conduit = attrs.RelatedObjectAttr('conduit', linkify=True)
+    connection = attrs.TemplatedAttr(
+        'connection', label=_('Connection'), template_name='netbox_ot/inc/connection_attr.html',
+    )
+    broker_zone = attrs.RelatedObjectAttr('broker_zone', linkify=True, label=_('Broker zone'))
+    topics = attrs.ArrayAttr('topics', label=_('Topics'))
     protocol = attrs.ChoiceAttr('protocol')
     ports = attrs.TextAttr('ports_display', label=_('Ports'))
     access = attrs.TemplatedAttr('access', label=_('Access'), template_name='netbox_ot/inc/access_attr.html')
@@ -793,7 +798,11 @@ class SiteRegisterView(generic.ObjectView):
         return super().get(request, **kwargs)
 
     def get_extra_context(self, request, instance):
-        return {'register': build_register(instance, user=request.user)}
+        return {
+            'register': build_register(instance, user=request.user),
+            # The register holds display labels; the page leaves out the default one
+            'default_connection': ConnectionChoices.label(ConnectionChoices.CLIENT_SERVER),
+        }
 
 
 #

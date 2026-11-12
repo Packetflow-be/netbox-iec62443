@@ -10,7 +10,8 @@
   in no zone or in two;
 - SL-A below SL-T, member SL-C below the zone's SL-T, a conduit below a zone it joins, conduits nobody
   enforces;
-- expired or open-ended remote access, flows outside any conduit, verdicts without a decider, stale flows;
+- expired or open-ended remote access, flows outside any conduit, writes through a broker without their
+  topics, verdicts without a decider, stale flows;
 - residual risk above tolerable, overdue risk assessments;
 - what an audit will ask for and is missing: no SL-T, no accountable person, no approved risk assessment;
 - with [netbox-lifecycle](companions.md#end-of-support): devices past, or within a year of, their end of

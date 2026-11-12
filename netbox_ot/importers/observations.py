@@ -19,9 +19,11 @@ networks are normal in OT, so every lookup in NetBox is scoped to that site and 
             ports = the destination ports the input gives (none are assumed); access = what the requests do
             (read, write, control, program; see functions.py); remote_access = an asset marked `remote_access`
             sent requests on it, or the source zone is external; first/last seen = the requests' times, else the
-            capture window; evidence = counts
-            and the request lines with their class. A flow joins the conduit that is the only one joining both
-            of its zones; otherwise its conduit is left for a person to set.
+            capture window; evidence = counts and the request lines with their class. A request may come
+            through a broker (`connection` "brokered", `broker` = its address: the flow gets the broker's zone
+            and the topics) or over a connection its destination opened ("reverse-connect"); flows are kept
+            apart per connection model. A flow joins the conduit that is the only one joining its zones (and
+            the broker zone); otherwise its conduit is left for a person to set.
   devices   matched by primary IPv4 within the site and VRF; an address that matches more than one device or
             VM is skipped and reported. Matched assets get the zone membership and their Purdue level.
   services  industrial services per asset: a server for every protocol it answered or that assets.json names
@@ -40,7 +42,7 @@ from datetime import datetime
 
 from django.utils.text import slugify
 
-from ..choices import FlowProtocolChoices, IndustrialProtocolChoices, ZoneTypeChoices
+from ..choices import ConnectionChoices, FlowProtocolChoices, IndustrialProtocolChoices, ZoneTypeChoices
 from .functions import CLASSES, MODIFYING, UNCLASSIFIED, classify
 
 # Protocol names in the analysis output (Zeek/ICSNPP, tshark) -> plugin protocol values
@@ -90,6 +92,9 @@ class FlowPlan:
     first_seen: datetime | None = None
     last_seen: datetime | None = None
     evidence: str = ''
+    connection: str = ConnectionChoices.CLIENT_SERVER
+    broker_zone: str = ''  # zone name, for a flow through a broker
+    topics: list = field(default_factory=list)
 
 
 @dataclass
@@ -144,11 +149,17 @@ class _Request:
     port_mapping: str  # 'tcp/102', or '' when the input gives no port
     first_seen: datetime | None
     last_seen: datetime | None
+    connection: str = ConnectionChoices.CLIENT_SERVER
+    broker: str = ''  # broker address, for a request through a broker
+    topic: str = ''
 
     @property
     def line(self):
         port = f' {self.port_mapping}' if self.port_mapping else ''
-        line = f'{self.src} -> {self.dst}{port} {self.proto} {self.func} x{self.count} [{self.access}]'
+        via = f' via broker {self.broker}' if self.broker else ''
+        via += ' (reverse connect)' if self.connection == ConnectionChoices.REVERSE_CONNECT else ''
+        topic = f' {self.topic}' if self.topic else ''
+        line = f'{self.src} -> {self.dst}{via}{port} {self.proto} {self.func}{topic} x{self.count} [{self.access}]'
         return line.replace('  ', ' ')
 
 
@@ -228,6 +239,17 @@ def validate(assets, flows, summary):
             port(f['port'], where)
         if f.get('transport') not in (None, 'tcp', 'udp'):
             raise ValueError(f'{where}: transport is "tcp" or "udp"')
+        connection = f.get('connection') or ConnectionChoices.CLIENT_SERVER
+        if connection not in ConnectionChoices.values():
+            raise ValueError(f'{where}: connection is one of {", ".join(ConnectionChoices.values())}')
+        if connection == ConnectionChoices.BROKERED:
+            if not f.get('broker'):
+                raise ValueError(f'{where}: a request through a broker names the "broker" address')
+            ip(f['broker'], where)
+        elif f.get('broker'):
+            raise ValueError(f'{where}: "broker" goes with connection "brokered"')
+        if f.get('topic') is not None and not isinstance(f['topic'], str):
+            raise ValueError(f'{where}: topic is a string')
         _timestamp(f.get('first_seen'), where)
         _timestamp(f.get('last_seen'), where)
     _timestamp(summary.get('start'), 'summary.json start')
@@ -334,15 +356,17 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
             port_mapping=_port_mapping(f.get('port'), f.get('transport'), protocol),
             first_seen=_timestamp(f.get('first_seen'), '') or window[0],
             last_seen=_timestamp(f.get('last_seen'), '') or window[1],
+            connection=f.get('connection') or ConnectionChoices.CLIENT_SERVER, broker=f.get('broker') or '',
+            topic=str(f.get('topic') or ''),
         ))
 
-    # OT requests between zones, keyed by (source zone, destination zone, protocol)
+    # OT requests between zones, keyed by (source zone, destination zone, protocol, connection, broker zone)
     ot = defaultdict(list)
     for r in requests:
         zs, zd = zone_of(r.src), zone_of(r.dst)
         if zs != zd:
-            ot[(zs, zd, r.protocol)].append(r)
-    ot_pairs = {(s, d) for s, d, _p in ot}
+            ot[(zs, zd, r.protocol, r.connection, zone_of(r.broker) if r.broker else '')].append(r)
+    ot_pairs = {(key[0], key[1]) for key in ot}
 
     # Connection counts per directed zone pair, from zone_pairs
     headers = {}  # (src, dst) -> evidence header line
@@ -361,14 +385,20 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
         for key in keys:
             headers.setdefault(key, line)
 
-    keys = list(ot) + [(s, d, '') for s, d in headers if (s, d) not in ot_pairs]
+    keys = list(ot) + [(s, d, '', ConnectionChoices.CLIENT_SERVER, '') for s, d in headers if (s, d) not in ot_pairs]
     plans = []
-    for src, dst, protocol in keys:
-        for name in (src, dst):
+    for key in keys:
+        src, dst, protocol, connection, broker_zone = key
+        for name in (src, dst, broker_zone):
             if name == outside_zone:
                 ensure_outside()
-        crossing = sorted(ot.get((src, dst, protocol), []), key=lambda r: -r.count)
+        crossing = sorted(ot.get(key, []), key=lambda r: -r.count)
         lines = [headers.get((src, dst)) or f'Passively seen: requests from {src} to {dst} in {seen_in}.']
+        if connection == ConnectionChoices.BROKERED:
+            brokers = ', '.join(dict.fromkeys(r.broker for r in crossing))
+            lines.append(f'Through the broker {brokers} in {broker_zone}: {src} publishes, {dst} subscribes.')
+        elif connection == ConnectionChoices.REVERSE_CONNECT:
+            lines.append(f'Reverse connect: {dst} opens the connection, {src} sends the requests.')
         lines += [f'Request: {r.line}' for r in crossing[:EVIDENCE_LINES]]
         if len(crossing) > EVIDENCE_LINES:
             lines.append(f'... and {len(crossing) - EVIDENCE_LINES} more request lines')
@@ -382,7 +412,9 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
         times_first = [r.first_seen for r in crossing if r.first_seen] or [t for t in [window[0]] if t]
         times_last = [r.last_seen for r in crossing if r.last_seen] or [t for t in [window[1]] if t]
         plans.append(FlowPlan(
-            name=_flow_name(src, dst, protocol), source=src, destination=dst, protocol=protocol,
+            name=_flow_name(src, dst, protocol, connection, broker_zone), source=src, destination=dst,
+            protocol=protocol, connection=connection, broker_zone=broker_zone,
+            topics=list(dict.fromkeys(r.topic for r in crossing if r.topic)),
             port_mappings=list(dict.fromkeys(r.port_mapping for r in crossing if r.port_mapping)),
             access=sorted({r.access for r in crossing if r.access != UNCLASSIFIED}, key=CLASSES.index),
             remote_access=any(by_ip.get(r.src, {}).get('remote_access') for r in crossing),
@@ -405,18 +437,35 @@ def _plan_hosts(assets, requests, zone_of_ip):
     def host(ip):
         return hosts.setdefault(ip, HostPlan(ip=ip, zone=zone_of_ip.get(ip, '')))
 
+    def with_port(label, port_mapping):
+        return f'{label} {port_mapping}'.strip() if port_mapping and port_mapping != label else label
+
     for r in requests:
         label = labels.get(r.protocol) or r.proto
-        for ip in (r.src, r.dst):
+        for ip in (r.src, r.dst, r.broker):
+            if not ip:
+                continue
             h = host(ip)
             for t in (r.first_seen, r.last_seen):
                 if t:
                     h.first_seen = min(h.first_seen, t) if h.first_seen else t
                     h.last_seen = max(h.last_seen, t) if h.last_seen else t
+        if r.broker:
+            # Both ends talk to the broker, not to each other
+            for ip in (r.src, r.dst):
+                host(ip).peers.add(r.broker)
+                host(r.broker).peers.add(ip)
+                host(ip).uses.add(label)
+            host(r.broker).serves.add(with_port(label, r.port_mapping))
+            continue
         host(r.src).peers.add(r.dst)
         host(r.dst).peers.add(r.src)
-        host(r.dst).serves.add(f'{label} {r.port_mapping}'.strip() if r.port_mapping and r.port_mapping != label
-                               else label)
+        if r.connection == ConnectionChoices.REVERSE_CONNECT:
+            # The source listens on the port and the destination connects to it, then answers its requests
+            host(r.dst).serves.add(label)
+            host(r.src).serves.add(with_port(label, r.port_mapping))
+        else:
+            host(r.dst).serves.add(with_port(label, r.port_mapping))
         host(r.src).uses.add(label)
     for a in assets:
         host(a['ip']).open_ports.update(a.get('open_ports') or [])
@@ -506,9 +555,14 @@ def unknown_import_rows(plan, site, vrf=None):
     return dict(zip((name for name, _ in UNKNOWN_IMPORT_FILES), (devices, interfaces, addresses)))
 
 
-def _flow_name(src, dst, protocol):
+def _flow_name(src, dst, protocol, connection=ConnectionChoices.CLIENT_SERVER, broker_zone=''):
     label = dict(_flat_choices()).get(protocol) if protocol else None
-    return f"{src} -> {dst} {label or '(unidentified)'}"[:100]
+    name = f"{src} -> {dst} {label or '(unidentified)'}"
+    if connection == ConnectionChoices.BROKERED:
+        name += f' via broker in {broker_zone}'
+    elif connection == ConnectionChoices.REVERSE_CONNECT:
+        name += ' (reverse connect)'
+    return name[:100]
 
 
 def _flat_choices():
@@ -535,10 +589,24 @@ def _plan_services(assets, requests, seen_in):
         if r.protocol not in industrial:
             continue
         what = f'{r.proto} {r.func} x{r.count}'.replace('  ', ' ').strip()
+        if r.connection == ConnectionChoices.BROKERED:
+            topic = f' on {r.topic}' if r.topic else ''
+            if r.broker in known:
+                add(r.broker, r.protocol, 'server', f'Broker for {r.src} -> {r.dst}{topic} ({seen_in})',
+                    r.port_mapping)
+            if r.src in known:
+                add(r.src, r.protocol, 'publisher', f'Published{topic} through {r.broker} to {r.dst} ({seen_in})')
+            if r.dst in known:
+                add(r.dst, r.protocol, 'subscriber', f'Received{topic} through {r.broker} from {r.src} ({seen_in})')
+            continue
+        reverse = r.connection == ConnectionChoices.REVERSE_CONNECT
         if r.dst in known:
-            add(r.dst, r.protocol, 'server', f'Answered {what} from {r.src} ({seen_in})', r.port_mapping)
+            # In a reverse connect the port is the client's (it listens), not the server's
+            add(r.dst, r.protocol, 'server', f'Answered {what} from {r.src} ({seen_in})',
+                '' if reverse else r.port_mapping)
         if r.src in known:
-            add(r.src, r.protocol, 'client', f'Sent {what} to {r.dst} ({seen_in})')
+            how = ' over a connection it opened (reverse connect)' if reverse else ''
+            add(r.src, r.protocol, 'client', f'Sent {what} to {r.dst}{how} ({seen_in})')
     for a in assets:
         for s in a.get('services') or []:
             protocol = protocol_value(s['proto'])
@@ -712,19 +780,23 @@ def apply_plan(plan, site, vrf=None, log=print):
 
     for fp in plan.flows:
         src, dst = zone_objs[fp.source], zone_objs[fp.destination]
-        flow = Flow.objects.filter(source_zone=src, destination_zone=dst, protocol=fp.protocol).order_by('pk').first()
+        broker = zone_objs[fp.broker_zone] if fp.broker_zone else None
+        flow = Flow.objects.filter(source_zone=src, destination_zone=dst, protocol=fp.protocol,
+                                   connection=fp.connection, broker_zone=broker).order_by('pk').first()
         created = flow is None
         if created:
             name, n = fp.name, 2
             while Flow.objects.filter(source_zone=src, destination_zone=dst, name=name).exists():
                 name, n = f'{fp.name[:94]} ({n})', n + 1
-            flow = Flow(source_zone=src, destination_zone=dst, protocol=fp.protocol, name=name)
+            flow = Flow(source_zone=src, destination_zone=dst, protocol=fp.protocol, name=name,
+                        connection=fp.connection, broker_zone=broker)
         else:
             flow.snapshot()
         # Observations are merged; the verdict, its decider and dates, the conduit and the hops are a person's.
         new = {
             'port_mappings': _merge(flow.port_mappings, fp.port_mappings),
             'access': _merge(flow.access, fp.access, order=list(CLASSES)),
+            'topics': _merge(flow.topics, fp.topics),
             # A flow out of an external (supplier, MSP, outside) zone is remote access by definition
             'remote_access': flow.remote_access or fp.remote_access or src.zone_type == ZoneTypeChoices.EXTERNAL,
             'first_seen': _widest(min, flow.first_seen, fp.first_seen),
@@ -732,7 +804,10 @@ def apply_plan(plan, site, vrf=None, log=print):
             'evidence': fp.evidence,
         }
         if flow.conduit_id is None:
-            candidates = list(Conduit.objects.filter(zones=src).filter(zones=dst)[:2])
+            candidates = Conduit.objects.filter(zones=src).filter(zones=dst)
+            if broker is not None:
+                candidates = candidates.filter(zones=broker)
+            candidates = list(candidates[:2])
             if len(candidates) == 1:
                 new['conduit'] = candidates[0]
         if not created and all(getattr(flow, k) == v for k, v in new.items()):

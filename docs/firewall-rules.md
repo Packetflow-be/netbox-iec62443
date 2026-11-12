@@ -4,6 +4,11 @@ The flows a person allowed become vendor-neutral firewall rules: source and dest
 networks (the zone's prefixes, else its members' addresses), transport, ports, the protocol, what the requests
 do, and the devices that enforce the conduit. One rule per flow and transport.
 
+A rule follows the connection the firewall sees, not the direction of the flow
+([connection models](data-model.md#connection-models)): a reverse-connect flow is opened by its destination
+zone, and a flow through a broker gives one rule from each end's zone to the broker zone. The column
+`connection` says which.
+
 - Flows without a verdict are not exported; not-allowed and expired flows become deny rules on request.
 - Ports the capture did not show are filled in from the protocol's defaults and flagged.
 - A layer-2 protocol (GOOSE, EtherCAT) is flagged as not enforceable by a routed firewall.

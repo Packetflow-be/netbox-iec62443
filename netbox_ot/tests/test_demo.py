@@ -28,7 +28,7 @@ class DemoCommandTest(TestCase):
         site = Site.objects.get(slug='iec62443-demo')
         self.assertEqual(Zone.objects.count(), 6)
         self.assertEqual(Conduit.objects.count(), 4)
-        self.assertEqual(Flow.objects.count(), 8)
+        self.assertEqual(Flow.objects.count(), 10)
         remote = Flow.objects.get(name='MSP maintenance RDP')
         self.assertEqual([str(h.hop) for h in remote.hops.all()],
                          ['IEC 62443 demo MSP IPsec', 'demo-jump-1', 'demo-fw-1'])

@@ -62,6 +62,9 @@ class ChecksTest(TestCase):
                             expires=TODAY - datetime.timedelta(days=1), conduit=conduit, decided_by=cls.contact)
         Flow.objects.create(name='supplier', source_zone=cls.office, destination_zone=cls.cell, allowed='yes',
                             remote_access=True)
+        # Writes to the cell through a broker in the office, topics not recorded
+        Flow.objects.create(name='recipes', source_zone=cls.office, destination_zone=cls.cell, connection='brokered',
+                            broker_zone=cls.office, access=['write'], conduit=conduit)
         Flow.objects.create(name='old', source_zone=cls.cell, destination_zone=cls.office,
                             last_seen=timezone.now() - datetime.timedelta(days=365))
         RiskAssessment.objects.create(zone=cls.cell, assessed_on=TODAY - datetime.timedelta(days=400),

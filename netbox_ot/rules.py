@@ -11,6 +11,9 @@ team or a configuration tool to read; the plugin generates no vendor syntax and 
                 observed. A layer-2 protocol (GOOSE, EtherCAT) gets transport "ethernet" and a note: a routed
                 firewall cannot enforce it.
   enforced_by   the devices and VMs that enforce the flow's conduit, so a firewall can take its own rules.
+  connection    a rule follows the connection a firewall sees, not the direction of the flow: a reverse-connect
+                flow is opened by its destination zone towards its source zone; a flow through a broker becomes
+                one rule from each end's zone to the broker zone (none for an end inside the broker zone).
 """
 import csv
 import io
@@ -19,13 +22,13 @@ from collections import Counter, defaultdict
 
 from django.utils import timezone
 
-from .choices import FlowAllowedChoices, FlowProtocolChoices
+from .choices import ConnectionChoices, FlowAllowedChoices, FlowProtocolChoices
 from .models import Flow
 
 RULE_COLUMNS = (
     'rule', 'action', 'source_zone', 'source_networks', 'destination_zone', 'destination_networks', 'transport',
-    'ports', 'application', 'access', 'remote_access', 'conduit', 'enforced_by', 'valid_until', 'decided_by',
-    'decided_on', 'flow_id', 'notes',
+    'ports', 'application', 'connection', 'access', 'remote_access', 'conduit', 'enforced_by', 'valid_until',
+    'decided_by', 'decided_on', 'flow_id', 'notes',
 )
 LAYER2 = ('iec-61850-goose', 'ethercat')
 
@@ -52,14 +55,14 @@ def build_rules(flows=None, enforced_by=None, include_denied=False):
     reason. `enforced_by` (a device or VM) keeps the flows whose conduit it enforces.
     """
     flows = (flows if flows is not None else Flow.objects.all()).select_related(
-        'source_zone', 'destination_zone', 'conduit', 'decided_by',
+        'source_zone', 'destination_zone', 'broker_zone', 'conduit', 'decided_by',
     ).prefetch_related(
-        'source_zone__prefixes', 'destination_zone__prefixes', 'source_zone__devices__primary_ip4',
-        'destination_zone__devices__primary_ip4', 'source_zone__virtual_machines__primary_ip4',
-        'destination_zone__virtual_machines__primary_ip4', 'conduit__enforcing_devices',
-        'conduit__enforcing_virtual_machines',
+        *(f'{zone}__{members}' for zone in ('source_zone', 'destination_zone', 'broker_zone')
+          for members in ('prefixes', 'devices__primary_ip4', 'virtual_machines__primary_ip4')),
+        'conduit__enforcing_devices', 'conduit__enforcing_virtual_machines',
     )
     labels = _labels()
+    connection_labels = {c[0]: str(c[1]) for c in ConnectionChoices.CHOICES}
     today = timezone.localdate()
     rules, skipped = [], Counter()
     for flow in flows.order_by('source_zone__name', 'destination_zone__name', 'name'):
@@ -77,18 +80,21 @@ def build_rules(flows=None, enforced_by=None, include_denied=False):
         if enforced_by is not None and enforced_by not in enforcers:
             skipped['enforced elsewhere'] += 1
             continue
-        notes = []
+        legs = flow.transport_legs
+        if not legs:
+            skipped['within the broker zone'] += 1
+            continue
+        flow_notes = []
         if expired:
-            notes.append(f'allowed until {flow.expires}, expired')
-        sources, destinations = zone_networks(flow.source_zone), zone_networks(flow.destination_zone)
-        if not sources:
-            notes.append('source zone has no prefixes or member addresses')
-        if not destinations:
-            notes.append('destination zone has no prefixes or member addresses')
+            flow_notes.append(f'allowed until {flow.expires}, expired')
+        if flow.connection == ConnectionChoices.REVERSE_CONNECT:
+            flow_notes.append(f'reverse connect: {flow.destination_zone} opens the connection, '
+                              f'{flow.source_zone} sends the requests')
+        port_notes = []
         mappings = list(flow.port_mappings)
         if not mappings and flow.protocol in FlowProtocolChoices.DEFAULT_PORT_MAPPINGS:
             mappings = list(FlowProtocolChoices.DEFAULT_PORT_MAPPINGS[flow.protocol])
-            notes.append('ports are the protocol default, not observed')
+            port_notes.append('ports are the protocol default, not observed')
         by_transport = defaultdict(list)
         for mapping in mappings:
             transport, port = mapping.split('/')
@@ -96,31 +102,49 @@ def build_rules(flows=None, enforced_by=None, include_denied=False):
         if not by_transport:
             if flow.protocol in LAYER2:
                 by_transport['ethernet'] = []
-                notes.append('layer 2: enforce with VLANs or switch ACLs, a routed firewall cannot')
+                port_notes.append('layer 2: enforce with VLANs or switch ACLs, a routed firewall cannot')
             else:
                 by_transport['any'] = []
-                notes.append('no ports known')
-        for transport, ports in by_transport.items():
-            rules.append({
-                'rule': f'{flow.pk}' if len(by_transport) == 1 else f'{flow.pk}-{transport}',
-                'action': action,
-                'source_zone': flow.source_zone.name,
-                'source_networks': ' '.join(sources),
-                'destination_zone': flow.destination_zone.name,
-                'destination_networks': ' '.join(destinations),
-                'transport': transport,
-                'ports': ','.join(ports),
-                'application': labels.get(flow.protocol, ''),
-                'access': ','.join(flow.access),
-                'remote_access': 'yes' if flow.remote_access else 'no',
-                'conduit': flow.conduit.name if flow.conduit else '',
-                'enforced_by': ' '.join(str(e) for e in enforcers),
-                'valid_until': flow.expires.isoformat() if flow.expires else '',
-                'decided_by': str(flow.decided_by or ''),
-                'decided_on': flow.decided_on.isoformat() if flow.decided_on else '',
-                'flow_id': flow.pk,
-                'notes': '; '.join(notes),
-            })
+                port_notes.append('no ports known')
+        for initiating, accepting in legs:
+            notes = list(flow_notes)
+            if flow.connection == ConnectionChoices.BROKERED:
+                role = 'publisher' if initiating == flow.source_zone else 'subscriber'
+                notes.append(f'through a broker: the {role} connects to the broker in {accepting} '
+                             f'(flow {flow.source_zone} -> {flow.destination_zone})')
+            sources, destinations = zone_networks(initiating), zone_networks(accepting)
+            if not sources:
+                notes.append(f'{initiating} has no prefixes or member addresses')
+            if not destinations:
+                notes.append(f'{accepting} has no prefixes or member addresses')
+            notes += port_notes
+            for transport, ports in by_transport.items():
+                rule_id = str(flow.pk)
+                if len(legs) > 1:
+                    rule_id += f'-{"pub" if initiating == flow.source_zone else "sub"}'
+                if len(by_transport) > 1:
+                    rule_id += f'-{transport}'
+                rules.append({
+                    'rule': rule_id,
+                    'action': action,
+                    'source_zone': initiating.name,
+                    'source_networks': ' '.join(sources),
+                    'destination_zone': accepting.name,
+                    'destination_networks': ' '.join(destinations),
+                    'transport': transport,
+                    'ports': ','.join(ports),
+                    'application': labels.get(flow.protocol, ''),
+                    'connection': connection_labels.get(flow.connection, ''),
+                    'access': ','.join(flow.access),
+                    'remote_access': 'yes' if flow.remote_access else 'no',
+                    'conduit': flow.conduit.name if flow.conduit else '',
+                    'enforced_by': ' '.join(str(e) for e in enforcers),
+                    'valid_until': flow.expires.isoformat() if flow.expires else '',
+                    'decided_by': str(flow.decided_by or ''),
+                    'decided_on': flow.decided_on.isoformat() if flow.decided_on else '',
+                    'flow_id': flow.pk,
+                    'notes': '; '.join(notes),
+                })
     rules.sort(key=lambda r: r['action'] != 'allow')
     return rules, skipped
 

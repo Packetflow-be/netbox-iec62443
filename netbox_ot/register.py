@@ -22,8 +22,8 @@ CONDUIT_COLUMNS = (
     'unknown', 'allowed', 'risk_assessment', 'residual_risk', 'tolerable_risk', 'description',
 )
 FLOW_COLUMNS = (
-    'flow', 'conduit', 'from_zone', 'to_zone', 'protocol', 'ports', 'access', 'remote_access', 'path', 'allowed',
-    'decided_by', 'decided_on', 'review_by', 'expires', 'first_seen', 'last_seen',
+    'flow', 'conduit', 'from_zone', 'to_zone', 'protocol', 'ports', 'connection', 'broker_zone', 'topics', 'access',
+    'remote_access', 'path', 'allowed', 'decided_by', 'decided_on', 'review_by', 'expires', 'first_seen', 'last_seen',
 )
 
 
@@ -109,7 +109,9 @@ def build_register(site, user=None):
         flow_rows.append({
             'flow': str(f), 'conduit': f.conduit.name if f.conduit else '', 'from_zone': f.source_zone.name,
             'to_zone': f.destination_zone.name, 'protocol': f.get_protocol_display() if f.protocol else '',
-            'ports': ', '.join(f.port_mappings), 'access': ', '.join(f.access),
+            'ports': ', '.join(f.port_mappings), 'connection': f.get_connection_display(),
+            'broker_zone': f.broker_zone.name if f.broker_zone else '', 'topics': ', '.join(f.topics),
+            'access': ', '.join(f.access),
             'remote_access': _yes(f.remote_access), 'path': ' -> '.join(str(h.hop) for h in f.hops.all()),
             'allowed': f.get_allowed_display() + (' (expired)' if f.is_expired else ''),
             'decided_by': str(f.decided_by or ''), 'decided_on': _date(f.decided_on),

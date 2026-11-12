@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from . import lifecycle, sl
-from .choices import FlowAllowedChoices, RiskAssessmentStatusChoices, ZoneTypeChoices
+from .choices import AccessChoices, ConnectionChoices, FlowAllowedChoices, RiskAssessmentStatusChoices, ZoneTypeChoices
 from .customfields import get_purdue_level, get_sl_capability
 from .models import Conduit, Flow, RiskAssessment, Zone, stale_after_days
 
@@ -335,6 +335,16 @@ def expired_access(scope):
 def remote_access_without_expiry(scope):
     for flow in scope.flows.filter(allowed=FlowAllowedChoices.YES, remote_access=True, expires__isnull=True):
         yield flow, _('{flow} allows remote access with no end date').format(flow=flow)
+
+
+@check('brokered-write-without-topics', _('Writes through a broker without its topics'), WARNING)
+def brokered_write_without_topics(scope):
+    # Whoever may publish to the right topics on the broker controls the destination; without the topics nobody can
+    # check the broker's access rules against the verdict.
+    for flow in scope.flows.filter(connection=ConnectionChoices.BROKERED, topics=[]):
+        if any(a in AccessChoices.MODIFYING for a in flow.access):
+            yield flow, _('{flow} writes or controls through a broker, but its topics are not recorded').format(
+                flow=flow)
 
 
 @check('flow-without-conduit', _('Flow outside any conduit'), WARNING)
