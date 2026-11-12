@@ -5,6 +5,12 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 
 ## Unreleased
 
+## 0.4.0 (2026-11-12)
+
+Minor release: system requirements (IEC 62443-3-3) with their status per zone or conduit, connection models on
+flows (OPC UA Reverse Connect, MQTT and other brokers, PubSub) and working in a netbox-branching branch. No
+breaking changes; upgrading from 0.3.0 runs three migrations (`0002` to `0004`) that only add tables and fields.
+
 ### New features
 
 - Working in a branch of the [netbox-branching](https://github.com/netboxlabs/netbox-branching) plugin (optional,
