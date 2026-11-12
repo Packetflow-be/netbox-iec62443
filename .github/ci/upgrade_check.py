@@ -55,6 +55,12 @@ else:
         before = json.load(f)
     # Custom fields the new version adds (e.g. the firmware version) are fine; none may go missing
     missing = sorted(set(before.pop('custom_fields')) - set(snapshot.pop('custom_fields')))
+    # Models the new version adds (e.g. the plugin settings) start empty; the old ones keep their counts
+    added = {name: n for name, n in snapshot['objects'].items() if name not in before['objects']}
+    snapshot['objects'] = {name: n for name, n in snapshot['objects'].items() if name in before['objects']}
+    if any(added.values()):
+        print('New models are not empty after the upgrade:', added)
+        sys.exit(1)
     if missing or before != snapshot:
         print('The upgrade changed the data; before:', json.dumps(before, indent=2, sort_keys=True),
               'custom fields missing:', missing)
