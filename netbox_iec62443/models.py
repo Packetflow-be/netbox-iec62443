@@ -910,7 +910,8 @@ class SystemRequirement(PrimaryModel):
         max_length=10,
         choices=FoundationalRequirementChoices,
         blank=True,
-        help_text=_('Left empty, it follows from the identifier'),
+        editable=False,
+        help_text=_('Follows from the identifier: SR 1.x is FR 1 (IAC) ... SR 7.x is FR 7 (RA)'),
     )
     parent = models.ForeignKey(
         to='self',
@@ -969,10 +970,7 @@ class SystemRequirement(PrimaryModel):
         frs = FoundationalRequirementChoices.values()
         if not 1 <= fr_number <= len(frs):
             raise ValidationError({'identifier': _('There are seven foundational requirements (SR 1.x to SR 7.x).')})
-        self.foundational_requirement = self.foundational_requirement or frs[fr_number - 1]
-        if self.foundational_requirement and self.foundational_requirement != frs[fr_number - 1]:
-            raise ValidationError({'foundational_requirement': _(
-                '{identifier} belongs to FR {number}.').format(identifier=self.identifier, number=fr_number)})
+        self.foundational_requirement = frs[fr_number - 1]
         if match.group(4):
             base = f'{match.group(1)} {match.group(2)}.{match.group(3)}'
             if not self.parent_id or self.parent.identifier != base or self.parent.edition != self.edition:
@@ -984,7 +982,7 @@ class SystemRequirement(PrimaryModel):
             raise ValidationError({'security_level': _('A security level from 1 to 4.')})
 
     def save(self, *args, **kwargs):
-        if not self.foundational_requirement and (match := REQUIREMENT_IDENTIFIER.match(self.identifier or '')):
+        if match := REQUIREMENT_IDENTIFIER.match(self.identifier or ''):
             self.foundational_requirement = FoundationalRequirementChoices.values()[int(match.group(2)) - 1]
         super().save(*args, **kwargs)
 

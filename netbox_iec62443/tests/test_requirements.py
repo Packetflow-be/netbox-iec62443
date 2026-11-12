@@ -81,6 +81,7 @@ class LoaderTest(TestCase):
             ('name\nSR 1.1\n', 'identifier'),
             ('identifier\nFR 1\n', 'not a requirement identifier'),
             ('identifier,fr\nSR 1.1,xx\n', 'foundational requirement'),
+            ('identifier,fr\nSR 2.1,iac\n', 'belongs to uc'),
             ('identifier,sl\nSR 1.1,5\n', 'security level'),
         ):
             with self.subTest(text=text), self.assertRaisesRegex(ValueError, message):
@@ -113,7 +114,6 @@ class ModelTest(TestCase):
         for kwargs, field in (
             ({'identifier': 'SR 1'}, 'identifier'),
             ({'identifier': 'SR 8.1'}, 'identifier'),
-            ({'identifier': 'SR 2.1', 'foundational_requirement': 'iac'}, 'foundational_requirement'),
             ({'identifier': 'SR 1.1 RE 1'}, 'parent'),
             ({'identifier': 'SR 1.2 RE 1', 'parent': self.sr}, 'parent'),
             ({'identifier': 'SR 1.2', 'parent': self.sr}, 'parent'),
@@ -203,7 +203,6 @@ class SystemRequirementViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewT
         cls.form_data = {
             'edition': '3-3:2013',
             'identifier': 'SR 2.1',
-            'foundational_requirement': 'uc',
             'security_level': 2,
             'wording': 'Text from my licensed copy',
             'description': 'Authorization enforcement',
@@ -282,7 +281,7 @@ class SystemRequirementAPITest(APIViewTestCases.APIViewTestCase):
         cls.create_data = [
             {'identifier': 'SR 4.1', 'security_level': 2},
             {'identifier': 'SR 4.2', 'foundational_requirement': 'dc', 'wording': 'From my copy'},
-            {'identifier': 'SR 1.1 RE 1', 'parent_id': parent.pk, 'security_level': 3},
+            {'identifier': 'SR 1.1 RE 1', 'parent': parent.pk, 'security_level': 3},
         ]
 
 

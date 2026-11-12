@@ -273,26 +273,24 @@ class RiskAssessmentSerializer(PrimaryModelSerializer):
 
 class SystemRequirementSerializer(PrimaryModelSerializer):
     edition = ChoiceField(choices=RequirementEditionChoices, required=False)
-    foundational_requirement = ChoiceField(choices=FoundationalRequirementChoices, required=False, allow_blank=True)
-    parent = serializers.SerializerMethodField(read_only=True)
-    parent_id = serializers.PrimaryKeyRelatedField(
-        source='parent', queryset=SystemRequirement.objects.all(), required=False, allow_null=True, write_only=True,
-    )
+    foundational_requirement = ChoiceField(choices=FoundationalRequirementChoices, read_only=True)
     security_level = serializers.IntegerField(min_value=1, max_value=4, required=False, allow_null=True)
 
     class Meta:
         model = SystemRequirement
         fields = (
             'id', 'url', 'display_url', 'display', 'edition', 'identifier', 'foundational_requirement', 'parent',
-            'parent_id', 'security_level', 'wording', 'description', 'owner', 'comments', 'tags', 'custom_fields',
+            'security_level', 'wording', 'description', 'owner', 'comments', 'tags', 'custom_fields',
             'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'edition', 'identifier', 'description')
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
-    def get_parent(self, obj):
-        """The requirement an enhancement belongs to: id and identifier."""
-        return {'id': obj.parent.pk, 'identifier': obj.parent.identifier} if obj.parent_id else None
+
+# The requirement an enhancement belongs to, nested like any other related object (a serializer cannot name itself
+# in its own class body)
+SystemRequirementSerializer._declared_fields['parent'] = SystemRequirementSerializer(
+    nested=True, required=False, allow_null=True,
+)
 
 
 class RequirementStatusSerializer(PrimaryModelSerializer):

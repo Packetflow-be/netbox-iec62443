@@ -1005,13 +1005,9 @@ class SystemRequirementForm(PrimaryModelForm):
         label=_('Requirement'), queryset=SystemRequirement.objects.all(), required=False,
         query_params={'is_enhancement': 'false'}, help_text=SystemRequirement._meta.get_field('parent').help_text,
     )
-    foundational_requirement = forms.ChoiceField(
-        label=_('Foundational requirement'), choices=add_blank_choice(FoundationalRequirementChoices),
-        required=False, help_text=_('Left empty, it follows from the identifier'),
-    )
 
     fieldsets = (
-        FieldSet('edition', 'identifier', 'foundational_requirement', 'parent', 'security_level', 'description',
+        FieldSet('edition', 'identifier', 'parent', 'security_level', 'description',
                  'tags', name=_('System requirement')),
         FieldSet('wording', name=_('From your copy of the standard')),
     )
@@ -1019,8 +1015,8 @@ class SystemRequirementForm(PrimaryModelForm):
     class Meta:
         model = SystemRequirement
         fields = (
-            'edition', 'identifier', 'foundational_requirement', 'parent', 'security_level', 'wording',
-            'description', 'owner', 'comments', 'tags',
+            'edition', 'identifier', 'parent', 'security_level', 'wording', 'description', 'owner', 'comments',
+            'tags',
         )
         widgets = {'wording': forms.Textarea(attrs={'rows': 4})}
 
@@ -1037,9 +1033,6 @@ class SystemRequirementBulkEditForm(PrimaryModelBulkEditForm):
 
 class SystemRequirementImportForm(PrimaryModelImportForm):
     edition = CSVChoiceField(label=_('Edition'), choices=RequirementEditionChoices, required=False)
-    foundational_requirement = CSVChoiceField(
-        label=_('Foundational requirement'), choices=FoundationalRequirementChoices, required=False,
-    )
     parent = CSVModelChoiceField(
         label=_('Requirement'), queryset=SystemRequirement.objects.all(), required=False,
         to_field_name='identifier', help_text=_('Identifier of the requirement an enhancement belongs to'),
@@ -1048,8 +1041,8 @@ class SystemRequirementImportForm(PrimaryModelImportForm):
     class Meta:
         model = SystemRequirement
         fields = (
-            'edition', 'identifier', 'foundational_requirement', 'parent', 'security_level', 'wording',
-            'description', 'owner', 'comments', 'tags',
+            'edition', 'identifier', 'parent', 'security_level', 'wording', 'description', 'owner', 'comments',
+            'tags',
         )
 
     def clean_edition(self):

@@ -69,6 +69,8 @@ def load_rows(rows, edition=RequirementEditionChoices.IEC_62443_3_3_2013, log=No
         fr = row.get('foundational_requirement', '').lower()
         if fr and fr not in frs:
             raise ValueError(f'{identifier}: foundational requirement {fr!r} is not one of {", ".join(frs)}')
+        if fr and 1 <= int(match.group(2)) <= len(frs) and fr != frs[int(match.group(2)) - 1]:
+            raise ValueError(f'{identifier} belongs to {frs[int(match.group(2)) - 1]}, not {fr}')
         level = row.get('security_level', '')
         if level and level not in ('1', '2', '3', '4'):
             raise ValueError(f'{identifier}: security level {level!r} is not 1-4')

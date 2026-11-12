@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
             fields=_primary_fields() + [
                 ("edition", models.CharField(default="3-3:2013", max_length=20)),
                 ("identifier", models.CharField(db_collation="natural_sort", max_length=30)),
-                ("foundational_requirement", models.CharField(blank=True, max_length=10)),
+                ("foundational_requirement", models.CharField(blank=True, editable=False, max_length=10)),
                 ("security_level", models.PositiveSmallIntegerField(blank=True, null=True)),
                 ("wording", models.TextField(blank=True)),
                 (
