@@ -129,6 +129,18 @@ class AdoptTest(TestCase):
         self.assertTrue(adopt.adopted)
         adopt.adopted = False
 
+    def test_values_renamed_when_the_field_already_was(self):
+        # A netbox-branching branch migrates after main: the field definition (main only) has the new name, the
+        # branch's own copy of the device still holds the old key.
+        make_old_installation()
+        with connection.cursor() as cursor:
+            for old, new in adopt.CUSTOM_FIELD_RENAMES.items():
+                cursor.execute('UPDATE extras_customfield SET name = %s WHERE name = %s', [new, old])
+        self.adopt()
+        self.assertEqual(Device.objects.get(pk=self.plc.pk).custom_field_data.get(PURDUE_CF_NAME), '1')
+        self.assertNotIn('iec62443_purdue_level', Device.objects.get(pk=self.plc.pk).custom_field_data)
+        adopt.adopted = False
+
     def test_operation_takes_over_instead_of_creating(self):
         make_old_installation()
         operation = adopt.AdoptOrCreate(operations=[])

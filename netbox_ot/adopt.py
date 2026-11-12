@@ -105,14 +105,19 @@ def rename_database_objects(cursor, quote, old_prefix=OLD_PREFIX, new_prefix=NEW
 def rename_custom_fields(cursor, quote, apps):
     for old, new in CUSTOM_FIELD_RENAMES.items():
         cursor.execute('SELECT id FROM extras_customfield WHERE name = %s', [old])
-        row = cursor.fetchone()
-        if row is None:
-            continue
-        cursor.execute('SELECT 1 FROM extras_customfield WHERE name = %s', [new])
-        if cursor.fetchone():
+        old_row = cursor.fetchone()
+        cursor.execute('SELECT id FROM extras_customfield WHERE name = %s', [new])
+        new_row = cursor.fetchone()
+        if old_row and new_row:
             logger.warning('Custom field %s already exists; %s left as it is', new, old)
             continue
-        cursor.execute('UPDATE extras_customfield SET name = %s WHERE id = %s', [new, row[0]])
+        if old_row:
+            cursor.execute('UPDATE extras_customfield SET name = %s WHERE id = %s', [new, old_row[0]])
+        elif not new_row:
+            continue
+        # Without an old row the field was renamed already: a netbox-branching branch migrates after main, and
+        # custom field definitions live in main only, while the branch has its own copy of the objects' values.
+        row = old_row or new_row
         field = apps.get_model('extras', 'CustomField')._meta.get_field('object_types')
         cursor.execute(
             f"""
