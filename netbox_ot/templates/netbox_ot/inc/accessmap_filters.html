@@ -1,0 +1,46 @@
+{% load i18n %}
+{# The filter form of the access map: everything is a GET parameter, so a filtered map is a link #}
+<div class="card d-print-none">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      {% if form.site_id %}
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.site_id.id_for_label }}">{{ form.site_id.label }}</label>
+          {{ form.site_id }}
+        </div>
+      {% endif %}
+      <div class="col-md-4">
+        <label class="form-label" for="{{ form.max_level.id_for_label }}">{{ form.max_level.label }}</label>
+        {{ form.max_level }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="{{ form.verdict.id_for_label }}">{{ form.verdict.label }}</label>
+        {{ form.verdict }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="{{ form.zone_id.id_for_label }}">{{ form.zone_id.label }}</label>
+        {{ form.zone_id }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="{{ form.protocol.id_for_label }}">{{ form.protocol.label }}</label>
+        {{ form.protocol }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="{{ form.connection.id_for_label }}">{{ form.connection.label }}</label>
+        {{ form.connection }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="{{ form.remote_access.id_for_label }}">{{ form.remote_access.label }}</label>
+        {{ form.remote_access }}
+      </div>
+      <div class="col-md-5">
+        <label class="form-check mb-1">{{ form.collapse }} <span class="form-check-label">{{ form.collapse.label }}</span></label>
+        <label class="form-check mb-0">{{ form.empty }} <span class="form-check-label">{{ form.empty.label }}</span></label>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-fill"><i class="mdi mdi-filter"></i> {% trans "Show" %}</button>
+        <a href="?{% if site and form.site_id %}site_id={{ site.pk }}{% endif %}" class="btn btn-outline-secondary">{% trans "Reset" %}</a>
+      </div>
+    </form>
+  </div>
+</div>

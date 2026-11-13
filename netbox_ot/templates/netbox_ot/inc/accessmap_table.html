@@ -1,4 +1,5 @@
 {% load i18n %}
+{% load static %}
 {% if attention.expired or attention.review_due or attention.stale or attention.no_conduit or attention.outbound_only %}
   <div class="alert alert-warning">
     <div class="fw-bold mb-1">{% trans "Needs attention" %}</div>
@@ -11,10 +12,42 @@
     </ul>
   </div>
 {% endif %}
+{% if diagram.svg %}
+  <link rel="stylesheet" href="{% static 'netbox_ot/accessmap.css' %}">
+  <div class="card ot-map-card">
+    <h2 class="card-header">
+      {% trans "Diagram" %}
+      <span class="text-muted small fw-normal ms-2">
+        {% blocktrans count n=diagram.zones %}{{ n }} zone{% plural %}{{ n }} zones{% endblocktrans %},
+        {% blocktrans count n=diagram.arrows %}{{ n }} arrow{% plural %}{{ n }} arrows{% endblocktrans %}{% if zones_not_drawn %};
+          <a href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}empty=on">{% blocktrans count n=zones_not_drawn %}{{ n }} zone without flows is not drawn{% plural %}{{ n }} zones without flows are not drawn{% endblocktrans %}</a>{% endif %}
+      </span>
+      <div class="card-actions btn-list d-print-none ot-map-tools" hidden>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-map="out" title="{% trans 'Zoom out' %}" aria-label="{% trans 'Zoom out' %}"><i class="mdi mdi-magnify-minus-outline"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-map="in" title="{% trans 'Zoom in' %}" aria-label="{% trans 'Zoom in' %}"><i class="mdi mdi-magnify-plus-outline"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-map="fit" title="{% trans 'Fit the width' %}"><i class="mdi mdi-fit-to-page-outline"></i> {% trans "Fit" %}</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-map="save" title="{% trans 'Download the diagram as an SVG file' %}"><i class="mdi mdi-download"></i> SVG</button>
+      </div>
+    </h2>
+    <div class="card-body">
+      <div class="ot-map-view">{{ diagram.svg }}</div>
+      <div class="ot-map-panel d-print-none" hidden></div>
+      {{ diagram.data|json_script:"ot-map-data" }}
+      <div class="small text-muted mt-2">
+        {% trans "One arrow per zone pair, from the side that acts to the side acted upon; the numbers are how many flows it carries, per colour. Red: not allowed or expired, amber: unknown, green: allowed. Dashed: remote access. Dotted: the destination opens the connection itself (reverse connect, or both ends meet at a broker)." %}
+        <span class="d-print-none ot-map-hint" hidden>{% trans "Click a zone or an arrow for its flows; drag to move, Ctrl + scroll to zoom." %}</span>
+      </div>
+    </div>
+  </div>
+  <script src="{% static 'netbox_ot/accessmap.js' %}" defer></script>
+{% elif not site %}
+  <div class="alert alert-info d-print-none">{% trans "Choose a site to see its diagram: the zones of all sites in one picture say nothing." %}</div>
+{% endif %}
 <div class="card">
   <h2 class="card-header">
     {% trans "Flows into zones at Purdue level" %} &le; {{ max_level }}
     <span class="badge text-bg-secondary ms-1">{{ flows|length }}</span>
+    {% if filtered %}<span class="text-muted small fw-normal ms-1">{% blocktrans with total=flows_total %}of {{ total }}, filtered{% endblocktrans %}</span>{% endif %}
   </h2>
   {% if flows %}
     <div class="table-responsive">
@@ -75,17 +108,6 @@
       </table>
     </div>
   {% else %}
-    <div class="card-body text-muted">{% trans "No flows into these zones." %}</div>
+    <div class="card-body text-muted">{% if filtered %}{% trans "No flows match these filters." %}{% else %}{% trans "No flows into these zones." %}{% endif %}</div>
   {% endif %}
 </div>
-{% if svg %}
-  <div class="card">
-    <h2 class="card-header">{% trans "Diagram" %}</h2>
-    <div class="card-body">
-      {{ svg }}
-      <div class="small text-muted mt-2">
-        {% trans "One arrow per zone pair, from the side that acts to the side acted upon; the number is how many flows it carries. Red: not allowed or expired, amber: unknown, green: allowed. Dashed: remote access. Dotted: the destination opens the connection itself (reverse connect, or both ends meet at a broker)." %}
-      </div>
-    </div>
-  </div>
-{% endif %}

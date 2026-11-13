@@ -22,6 +22,9 @@ class Command(BranchCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--delete', action='store_true', help='Remove the demo data instead')
+        parser.add_argument('--large', action='store_true',
+                            help='The large demo plant instead (35 zones, about 200 flows, no devices), on its own '
+                                 'site: to see the access map and the lists at the size of a real plant')
         parser.add_argument('--user', help='Record the changes under this user (default: the first superuser)')
 
     def handle(self, *args, **options):
@@ -31,6 +34,21 @@ class Command(BranchCommand):
         if user is None and self.db_alias != DEFAULT_DB_ALIAS:
             self.stderr.write('No superuser to log the changes under (use --user): a merge of this branch will not '
                               'bring the demo to main', self.style.WARNING)
+        if options['large']:
+            from netbox_ot import demo_large
+            if not options['delete'] and Site.objects.filter(slug=demo_large.SITE_SLUG).exists():
+                raise CommandError(f'The demo site "{demo_large.SITE_SLUG}" already exists; remove it first with '
+                                   f'--large --delete')
+            with transaction.atomic(using=self.db_alias), change_logging(user):
+                if options['delete']:
+                    demo_large.delete_large()
+                    self.stdout.write(self.style.SUCCESS('Large demo data removed'))
+                else:
+                    site, zones, flows = demo_large.create_large()
+                    self.stdout.write(self.style.SUCCESS(
+                        f'Large demo plant created ({zones} zones, {flows} flows): open the site "{site}" and its '
+                        f'Access map tab'))
+            return
         if options['delete']:
             with transaction.atomic(using=self.db_alias), change_logging(user):
                 self._delete()
