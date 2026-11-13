@@ -262,6 +262,7 @@ class Command(BranchCommand):
             assessed_by=ot_lead, approved_by=manager, approved_on=today - datetime.timedelta(days=190),
             next_review=today + datetime.timedelta(days=175), method='Demo company risk matrix (5x5)',
             threats='Malware brought in by a service laptop; unauthorised program change',
+            vulnerabilities='Flat network inside the cell; PLCs accept programming without authentication',
             consequences='Line stop; damaged product', unmitigated_risk='high',
             unmitigated_likelihood=4, unmitigated_impact=3,
             countermeasures='Engineering access only from the control room; firewall between DMZ and OT',
@@ -270,6 +271,7 @@ class Command(BranchCommand):
             conduit=c_remote, kind='detailed', status='approved', assessed_on=today - datetime.timedelta(days=400),
             assessed_by=ot_lead, approved_by=manager, approved_on=today - datetime.timedelta(days=395),
             next_review=today - datetime.timedelta(days=30), threats='Compromised MSP account',
+            vulnerabilities='Shared MSP credentials', consequences='Unauthorised changes to the SCADA servers',
             unmitigated_risk='critical', unmitigated_likelihood=4, unmitigated_impact=5,
             countermeasures='Jump host with MFA, time-limited access',
             residual_risk='high', residual_likelihood=3, residual_impact=4, tolerable_risk='medium')

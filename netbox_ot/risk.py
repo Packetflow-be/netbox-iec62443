@@ -170,7 +170,8 @@ def steps(assessment, others=()):
         missing = [not a.threats and _('threats'), not a.vulnerabilities and _('vulnerabilities'),
                    not a.consequences and _('consequences'),
                    not (a.unmitigated_likelihood and a.unmitigated_impact) and _('likelihood and impact (unmitigated)')]
-        step('detailed', _('Detailed assessment (ZCR 5)'), not any(missing[:3]), missing, skipped=stop)
+        # Threats make it a detailed assessment; the rest is asked for without holding the next steps back
+        step('detailed', _('Detailed assessment (ZCR 5)'), bool(a.threats), missing, skipped=stop)
     # 4. Countermeasures
     step('countermeasures', _('Countermeasures'), bool(a.countermeasures),
          [not a.countermeasures and _('the countermeasures')], skipped=stop or initial and not a.countermeasures)

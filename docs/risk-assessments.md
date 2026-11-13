@@ -13,12 +13,12 @@ The first panel lists the steps of an assessment and marks the one this assessme
 |---|---|
 | Initial assessment (ZCR 2) | The unmitigated (worst case) risk is recorded, here or in an initial assessment of the same zone or conduit |
 | Above tolerable risk? | Unmitigated and tolerable risk are both recorded. If the unmitigated risk is within the tolerable risk, the next three steps are not needed |
-| Detailed assessment (ZCR 5) | Threats, vulnerabilities and consequences are recorded. On an initial assessment: a detailed assessment of the same zone or conduit exists (a button starts one) |
+| Detailed assessment (ZCR 5) | Threats are recorded (vulnerabilities, consequences, likelihood and impact stay listed as missing until they are filled in). On an initial assessment: a detailed assessment of the same zone or conduit exists (a button starts one) |
 | Countermeasures | The countermeasures are recorded |
 | Residual risk within tolerable? | The residual risk is recorded and not above the tolerable risk. If it is above, the step asks for a decision: more countermeasures, or an explicit acceptance |
 | Approval | Status *Approved* with a date and who approved it |
 
-Under each step it says what is still missing. The list of risk assessments has a *Step* column with the same
+Under the step it is at, it says what is still missing. The list of risk assessments has a *Step* column with the same
 step, so you can see which assessments are waiting for what; the API has it as the read-only `current_step`.
 
 The step names are the plugin's own words. The plugin does not ship the text of the standard.

@@ -3,9 +3,10 @@
 {% block panel_content %}
   <style>
     .ot-risk { border-collapse: separate; border-spacing: 3px; width: 100%; table-layout: fixed; }
-    .ot-risk th { font-weight: 400; font-size: .75rem; line-height: 1.15; padding: 2px 4px; overflow-wrap: anywhere; }
+    .ot-risk th { font-weight: 400; font-size: .75rem; line-height: 1.15; padding: 2px 4px; }
     .ot-risk thead th, .ot-risk tfoot th { text-align: center; vertical-align: bottom; }
     .ot-risk tbody th { text-align: right; width: 24%; }
+    @media (max-width: 575px) { .ot-risk tbody th, .ot-risk thead th:first-child { width: 2.2rem; font-size: .7rem; } }
     .ot-risk td { height: 2.6rem; text-align: center; vertical-align: middle; border-radius: 3px; font-size: .7rem;
       color: #1f2933; border: 2px solid transparent; position: relative; }
     .ot-risk .r-low { background: #cdeed3; }
@@ -27,14 +28,14 @@
       <table class="ot-risk" role="table" aria-label="{% trans 'Risk matrix: likelihood by impact' %}">
         <thead>
           <tr>
-            <th scope="col" class="text-muted">{% trans "Likelihood" %} &darr; / {% trans "Impact" %} &rarr;</th>
-            {% for n, label in matrix.impact %}<th scope="col">{{ n }}<br>{{ label }}</th>{% endfor %}
+            <th scope="col" class="text-muted"><span class="d-none d-sm-inline">{% trans "Likelihood" %} &darr; / {% trans "Impact" %} &rarr;</span></th>
+            {% for n, label in matrix.impact %}<th scope="col">{{ n }}<span class="d-none d-sm-inline"><br>{{ label }}</span></th>{% endfor %}
           </tr>
         </thead>
         <tbody>
           {% for row in matrix.rows %}
             <tr>
-              <th scope="row">{{ row.value }} - {{ row.label }}</th>
+              <th scope="row">{{ row.value }}<span class="d-none d-sm-inline"> - {{ row.label }}</span></th>
               {% for cell in row.cells %}
                 <td class="r-{{ cell.level }}{% if cell.above %} r-above{% endif %}{% if cell.edge_top %} r-edge-top{% endif %}{% if cell.edge_right %} r-edge-right{% endif %}"
                     title="{{ cell.label }}{% if cell.above %} ({% trans 'above tolerable' %}){% endif %}">
@@ -45,6 +46,11 @@
           {% endfor %}
         </tbody>
       </table>
+      {# On a narrow screen the axes show numbers only; their labels go here #}
+      <div class="small text-muted mt-1 d-sm-none">
+        {% trans "Likelihood" %}: {% for row in matrix.rows reversed %}{{ row.value }} {{ row.label }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+        {% trans "Impact" %}: {% for n, label in matrix.impact %}{{ n }} {{ label }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+      </div>
     {% else %}
       <table class="ot-risk" role="table" aria-label="{% trans 'Risk levels' %}">
         <tbody>

@@ -124,12 +124,13 @@ class RiskStepsTest(RiskTestBase):
         self.assertEqual(self._states(a, [detailed])['detailed'], 'done')
 
     def test_detailed_assessment(self):
-        a = self.assessment(unmitigated_risk='high', tolerable_risk='medium', threats='t', vulnerabilities='v',
-                            consequences='c')
+        a = self.assessment(unmitigated_risk='high', tolerable_risk='medium')
+        self.assertEqual(self._states(a)['detailed'], 'current')
+        a.threats, a.vulnerabilities = 't', 'v'
         states = self._states(a)
         self.assertEqual((states['detailed'], states['countermeasures']), ('done', 'current'))
         missing = {s['key']: s['missing'] for s in risk.steps(a)}
-        self.assertEqual(missing['detailed'], ['likelihood and impact (unmitigated)'])
+        self.assertEqual(missing['detailed'], ['consequences', 'likelihood and impact (unmitigated)'])
         a.countermeasures, a.residual_risk = 'firewall', 'high'
         self.assertEqual(self._states(a)['residual'], 'attention')
         self.assertEqual(a.current_step, 'Residual risk within tolerable?')

@@ -36,7 +36,7 @@
               {% elif step.state == 'done' %}<span class="visually-hidden">{% trans "done" %}</span>{% endif %}
             </div>
             {% if step.note %}<div class="small text-muted">{{ step.note }}</div>{% endif %}
-            {% if step.missing and step.state != 'skipped' %}
+            {% if step.missing and step.state != 'skipped' and step.state != 'todo' %}
               <div class="small">{% trans "Still missing" %}: {{ step.missing|join:", " }}</div>
             {% endif %}
             {% if step.key == 'detailed' and step.state == 'current' and object.kind == 'initial' and perms.netbox_ot.add_riskassessment %}
