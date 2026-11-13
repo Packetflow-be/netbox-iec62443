@@ -1,0 +1,55 @@
+{% extends 'ui/panels/_base.html' %}
+{% load i18n %}
+{% block panel_content %}
+  <style>
+    .ot-steps { list-style: none; margin: 0; padding: 0; }
+    .ot-steps li { display: flex; gap: .6rem; align-items: flex-start; position: relative; padding-bottom: .7rem; }
+    .ot-steps li:last-child { padding-bottom: 0; }
+    /* The line that joins the steps */
+    .ot-steps li:not(:last-child)::before { content: ""; position: absolute; left: .7rem; top: 1.5rem; bottom: 0;
+      border-left: 2px solid var(--tblr-border-color, rgba(128, 128, 128, .35)); }
+    .ot-step-dot { flex: 0 0 1.5rem; height: 1.5rem; border-radius: 50%; display: inline-flex; align-items: center;
+      justify-content: center; font-size: .9rem; color: #fff; background: #9aa5b1; z-index: 1; }
+    .s-done .ot-step-dot { background: #2fb344; }
+    .s-current .ot-step-dot { background: #206bc4; box-shadow: 0 0 0 3px rgba(32, 107, 196, .25); }
+    .s-attention .ot-step-dot { background: #d63939; box-shadow: 0 0 0 3px rgba(214, 57, 57, .25); }
+    .s-skipped .ot-step-dot { background: transparent; color: inherit; border: 2px dashed #9aa5b1; }
+    .s-skipped .ot-step-title, .s-todo .ot-step-title { opacity: .6; }
+    .s-current .ot-step-title, .s-attention .ot-step-title { font-weight: 700; }
+  </style>
+  <div class="card-body">
+    <ol class="ot-steps">
+      {% for step in steps %}
+        <li class="s-{{ step.state }}">
+          <span class="ot-step-dot" aria-hidden="true">
+            {% if step.state == 'done' %}<i class="mdi mdi-check"></i>
+            {% elif step.state == 'attention' %}<i class="mdi mdi-exclamation-thick"></i>
+            {% elif step.state == 'skipped' %}<i class="mdi mdi-minus"></i>
+            {% else %}{{ forloop.counter }}{% endif %}
+          </span>
+          <div>
+            <div class="ot-step-title">
+              {{ step.title }}
+              {% if step.state == 'current' %}<span class="badge text-bg-primary ms-1">{% trans "this step" %}</span>
+              {% elif step.state == 'attention' %}<span class="badge text-bg-danger ms-1">{% trans "needs a decision" %}</span>
+              {% elif step.state == 'skipped' %}<span class="text-muted small ms-1">{% trans "not needed" %}</span>
+              {% elif step.state == 'done' %}<span class="visually-hidden">{% trans "done" %}</span>{% endif %}
+            </div>
+            {% if step.note %}<div class="small text-muted">{{ step.note }}</div>{% endif %}
+            {% if step.missing and step.state != 'skipped' %}
+              <div class="small">{% trans "Still missing" %}: {{ step.missing|join:", " }}</div>
+            {% endif %}
+            {% if step.key == 'detailed' and step.state == 'current' and object.kind == 'initial' and perms.netbox_ot.add_riskassessment %}
+              <a class="btn btn-sm btn-outline-primary mt-1 d-print-none" href="{% url 'plugins:netbox_ot:riskassessment_add' %}?{{ add_detailed }}">
+                <i class="mdi mdi-plus-thick"></i> {% trans "Start the detailed assessment" %}
+              </a>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+    <div class="small text-muted mt-3">
+      {% trans "The steps follow IEC 62443-3-2: an initial worst-case assessment, a detailed one where that exceeds the tolerable risk, countermeasures, the residual risk against the tolerable risk, and approval by the asset owner." %}
+    </div>
+  </div>
+{% endblock %}

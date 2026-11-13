@@ -3,7 +3,8 @@
 1. [Installation and configuration](installation.md): from source or netbox-docker, settings, permissions,
    upgrading, removing.
 2. [Data model](data-model.md): zones, conduits, flows, risk assessments, Purdue levels and security levels,
-   and why they are modelled this way.
+   and why they are modelled this way. [Risk assessments](risk-assessments.md): the risk matrix and the steps
+   of an assessment.
 3. [Access map](access-map.md): who can reach the controllers, and whether that was decided.
 4. [Consistency checks and the zone register](checks-and-register.md): what is missing before an audit, and the
    register you hand over.

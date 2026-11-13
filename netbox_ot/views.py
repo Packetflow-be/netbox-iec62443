@@ -11,7 +11,7 @@ from netbox.ui import actions, attrs, layout, panels
 from netbox.views import generic
 from utilities.views import ContentTypePermissionRequiredMixin, ViewTab, register_model_view
 
-from . import filtersets, forms, sl, tables
+from . import filtersets, forms, risk, sl, tables
 from .accessmap import access_map_flows, access_map_svg, attention
 from .branching import branch_names, branching_installed
 from .checks import CHECKS, run_checks, summary
@@ -99,9 +99,39 @@ class RiskAssessmentPanel(panels.ObjectAttributesPanel):
 
 class RiskLevelsPanel(panels.ObjectAttributesPanel):
     unmitigated_risk = attrs.ChoiceAttr('unmitigated_risk', label=_('Unmitigated risk'))
+    unmitigated_place = attrs.TextAttr('unmitigated_place', label=_('Unmitigated likelihood and impact'))
     residual_risk = attrs.ChoiceAttr('residual_risk', label=_('Residual risk'))
+    residual_place = attrs.TextAttr('residual_place', label=_('Residual likelihood and impact'))
     tolerable_risk = attrs.ChoiceAttr('tolerable_risk', label=_('Tolerable risk'))
     residual_above_tolerable = attrs.BooleanAttr('residual_above_tolerable', label=_('Residual above tolerable'))
+
+
+class RiskMatrixPanel(panels.Panel):
+    """The risk matrix with the unmitigated and residual risk of the assessment on it, and the tolerable risk."""
+    template_name = 'netbox_ot/inc/risk_matrix_panel.html'
+    title = _('Risk matrix')
+
+    def get_context(self, context):
+        return {**super().get_context(context), 'matrix': risk.matrix_view(context['object'])}
+
+
+class RiskStepsPanel(panels.Panel):
+    """The steps of an IEC 62443-3-2 assessment, the one this assessment is at and what is still missing."""
+    template_name = 'netbox_ot/inc/risk_steps_panel.html'
+    title = _('Where this assessment stands')
+
+    def get_context(self, context):
+        obj = context['object']
+        field = 'zone' if obj.zone_id else 'conduit'
+        others = RiskAssessment.objects.restrict(context['request'].user, 'view').filter(
+            **{field: getattr(obj, field)}).exclude(pk=obj.pk)
+        steps = risk.steps(obj, list(others))
+        return {
+            **super().get_context(context),
+            'steps': steps,
+            'missing': [(s['title'], s['missing']) for s in steps if s['missing'] and s['state'] != 'skipped'],
+            'add_detailed': f'{field}={getattr(obj, field + "_id")}&kind=detailed&tolerable_risk={obj.tolerable_risk}',
+        }
 
 
 def _requirement_statuses_panel(field):
@@ -501,11 +531,13 @@ class RiskAssessmentView(generic.ObjectView):
     template_name = 'generic/object.html'
     layout = layout.SimpleLayout(
         left_panels=[
+            RiskStepsPanel(),
             RiskAssessmentPanel(),
-            RiskLevelsPanel(title=_('Risk')),
             TagsPanel(),
         ],
         right_panels=[
+            RiskMatrixPanel(),
+            RiskLevelsPanel(title=_('Risk')),
             panels.TextCodePanel('threats', title=_('Threats')),
             panels.TextCodePanel('vulnerabilities', title=_('Vulnerabilities')),
             panels.TextCodePanel('consequences', title=_('Consequences')),

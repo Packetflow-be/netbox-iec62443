@@ -121,6 +121,7 @@ PLUGINS_CONFIG = {
         "create_custom_fields": True,     # create the Purdue level, SL-C and firmware version custom fields after migrate
         "access_map_max_level": "2",      # default level filter of the access map
         "stale_after_days": 90,           # a flow not seen for this long needs attention
+        "risk_matrix": None,              # your own risk matrix; None is the default 5 x 5
     },
 }
 ```
@@ -130,6 +131,7 @@ PLUGINS_CONFIG = {
 | `create_custom_fields` | `True` | After `migrate`, create the custom fields `ot_purdue_level` (devices, VMs), `ot_sl_capability` (devices, device types) and `ot_firmware_version` (devices, modules) if they don't exist. Existing fields are never changed, so you may relabel them. Set `False` to manage them yourself. |
 | `access_map_max_level` | `"2"` | The access map shows flows into zones at this Purdue level or below unless the user picks another level. One of `"0"`, `"1"`, `"2"`, `"3"`, `"3.5"`, `"4"`, `"5"`. |
 | `stale_after_days` | `90` | A flow whose *last seen* is older than this is listed under *Needs attention* and by the checks. |
+| `risk_matrix` | `None` | The organisation's risk matrix (likelihood by impact) for risk assessments; see [Risk assessments](risk-assessments.md#your-own-matrix). `None` is a common 5 x 5. |
 
 ## Permissions
 

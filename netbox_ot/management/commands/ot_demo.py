@@ -263,15 +263,21 @@ class Command(BranchCommand):
             next_review=today + datetime.timedelta(days=175), method='Demo company risk matrix (5x5)',
             threats='Malware brought in by a service laptop; unauthorised program change',
             consequences='Line stop; damaged product', unmitigated_risk='high',
+            unmitigated_likelihood=4, unmitigated_impact=3,
             countermeasures='Engineering access only from the control room; firewall between DMZ and OT',
-            residual_risk='medium', tolerable_risk='medium')
+            residual_risk='medium', residual_likelihood=2, residual_impact=3, tolerable_risk='medium')
         RiskAssessment.objects.create(
             conduit=c_remote, kind='detailed', status='approved', assessed_on=today - datetime.timedelta(days=400),
             assessed_by=ot_lead, approved_by=manager, approved_on=today - datetime.timedelta(days=395),
             next_review=today - datetime.timedelta(days=30), threats='Compromised MSP account',
-            unmitigated_risk='critical', countermeasures='Jump host with MFA, time-limited access',
-            residual_risk='high', tolerable_risk='medium')
+            unmitigated_risk='critical', unmitigated_likelihood=4, unmitigated_impact=5,
+            countermeasures='Jump host with MFA, time-limited access',
+            residual_risk='high', residual_likelihood=3, residual_impact=4, tolerable_risk='medium')
         RiskAssessment.objects.create(zone=office, kind='initial', assessed_on=today, unmitigated_risk='medium')
+        RiskAssessment.objects.create(
+            zone=control, kind='initial', assessed_on=today - datetime.timedelta(days=5), assessed_by=ot_lead,
+            method='Demo company risk matrix (5x5)', unmitigated_risk='high', unmitigated_likelihood=3,
+            unmitigated_impact=4, tolerable_risk='medium')
 
         # IEC 62443-3-3 requirement statuses for the cell. The plugin ships identifiers only: the levels at which
         # requirements apply come from your own copy of the standard (ot_requirements --csv)

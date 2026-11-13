@@ -31,7 +31,7 @@ from utilities.forms.widgets import DatePicker, DateTimePicker
 from virtualization.models import VirtualMachine
 from vpn.models import Tunnel
 
-from . import sl
+from . import risk, sl
 from .choices import (
     AccessChoices,
     ConnectionChoices,
@@ -683,16 +683,33 @@ class RiskAssessmentForm(PrimaryModelForm):
         FieldSet('zone', 'conduit', 'kind', 'status', 'description', 'tags', name=_('Risk assessment')),
         FieldSet('assessed_on', 'assessed_by', 'approved_on', 'approved_by', 'next_review', 'method', 'document',
                  name=_('Record')),
-        FieldSet('threats', 'vulnerabilities', 'consequences', 'unmitigated_risk', name=_('Risk')),
-        FieldSet('countermeasures', 'residual_risk', 'tolerable_risk', name=_('Treatment')),
+        FieldSet('threats', 'vulnerabilities', 'consequences', 'unmitigated_likelihood', 'unmitigated_impact',
+                 'unmitigated_risk', name=_('Risk')),
+        FieldSet('countermeasures', 'residual_likelihood', 'residual_impact', 'residual_risk', 'tolerable_risk',
+                 name=_('Treatment')),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Likelihood and impact are picked from the organisation's risk matrix
+        for name in ('unmitigated_likelihood', 'unmitigated_impact', 'residual_likelihood', 'residual_impact'):
+            axis = name.split('_')[1]
+            self.fields[name] = forms.TypedChoiceField(
+                label=self.fields[name].label, required=False, coerce=int, empty_value=None,
+                choices=add_blank_choice(risk.scale_choices(axis)),
+                help_text=_('Optional. With likelihood and impact the risk matrix gives the level below.'),
+            )
+        for name in ('unmitigated_risk', 'residual_risk'):
+            self.fields[name].help_text = _('Leave empty to take it from the risk matrix')
 
     class Meta:
         model = RiskAssessment
         fields = (
             'zone', 'conduit', 'kind', 'status', 'assessed_on', 'assessed_by', 'approved_on', 'approved_by',
-            'next_review', 'method', 'document', 'threats', 'vulnerabilities', 'consequences', 'unmitigated_risk',
-            'countermeasures', 'residual_risk', 'tolerable_risk', 'description', 'owner', 'comments', 'tags',
+            'next_review', 'method', 'document', 'threats', 'vulnerabilities', 'consequences',
+            'unmitigated_likelihood', 'unmitigated_impact', 'unmitigated_risk', 'countermeasures',
+            'residual_likelihood', 'residual_impact', 'residual_risk', 'tolerable_risk', 'description', 'owner',
+            'comments', 'tags',
         )
         widgets = {
             'assessed_on': DatePicker(),
@@ -748,8 +765,10 @@ class RiskAssessmentImportForm(PrimaryModelImportForm):
         model = RiskAssessment
         fields = (
             'site', 'zone', 'conduit', 'kind', 'status', 'assessed_on', 'assessed_by', 'approved_on', 'approved_by',
-            'next_review', 'method', 'document', 'threats', 'vulnerabilities', 'consequences', 'unmitigated_risk',
-            'countermeasures', 'residual_risk', 'tolerable_risk', 'description', 'owner', 'comments', 'tags',
+            'next_review', 'method', 'document', 'threats', 'vulnerabilities', 'consequences',
+            'unmitigated_likelihood', 'unmitigated_impact', 'unmitigated_risk', 'countermeasures',
+            'residual_likelihood', 'residual_impact', 'residual_risk', 'tolerable_risk', 'description', 'owner',
+            'comments', 'tags',
         )
 
     def __init__(self, data=None, *args, **kwargs):

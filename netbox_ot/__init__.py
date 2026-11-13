@@ -23,6 +23,8 @@ class NetBoxOTConfig(PluginConfig):
         'access_map_max_level': '2',
         # A flow not seen for this many days needs attention.
         'stale_after_days': 90,
+        # The organisation's risk matrix for risk assessments; None is the default 5 x 5 of netbox_ot/risk.py.
+        'risk_matrix': None,
     }
 
     def ready(self):
@@ -35,6 +37,10 @@ class NetBoxOTConfig(PluginConfig):
                 'netbox-ot replaces netbox-iec62443: remove netbox_iec62443 from PLUGINS (and its PLUGINS_CONFIG '
                 'entry; move the settings to netbox_ot), then run migrate.'
             )
+        matrix = settings.PLUGINS_CONFIG.get('netbox_ot', {}).get('risk_matrix')
+        if matrix:
+            from .risk import check_matrix
+            check_matrix(matrix)
         super().ready()
         from django.db.models.signals import post_migrate
 
