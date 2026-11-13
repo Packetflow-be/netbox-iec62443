@@ -19,5 +19,6 @@ urlpatterns = router.urls + [
     path('access-map/', views.AccessMapAPIView.as_view(), name='accessmap'),
     path('checks/', views.ChecksAPIView.as_view(), name='checks'),
     path('register/', views.RegisterAPIView.as_view(), name='register'),
+    path('overview/', views.OverviewAPIView.as_view(), name='overview'),
     path('firewall-rules/', views.FirewallRulesAPIView.as_view(), name='firewall_rules'),
 ]

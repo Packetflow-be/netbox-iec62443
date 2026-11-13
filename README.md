@@ -33,6 +33,9 @@ zone register.
   and expiry dates.
 - **Access map** per site: the flows into the controller zones, worst first, with what needs attention and a
   diagram. [Access map](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/access-map.md)
+- **OT overview** per site: achieved against target security level per foundational requirement as a radar
+  chart, the zones furthest below target, requirement statuses and risk before and after countermeasures.
+  [OT overview](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/overview.md)
 - **Consistency checks** and a printable **zone register** (CSV, JSON) for the audit, also as an API and a
   command with an exit code for CI. [Checks and register](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/checks-and-register.md)
 - **Industrial services and fieldbuses**: Modbus, S7comm, PROFINET, EtherNet/IP, OPC UA, DNP3, IEC 61850 and

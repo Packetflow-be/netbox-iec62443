@@ -5,6 +5,15 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 
 ## Unreleased
 
+### Enhancements
+
+- **OT overview**: a tab on every site with zones that shows where the site stands. A radar chart of achieved
+  against target security level per foundational requirement (site average, or one zone), a table of every
+  zone and conduit sorted by how far below target it is, requirement statuses per foundational requirement,
+  risk before and after countermeasures with what is still above the tolerable risk, and the number of check
+  findings. Printable, drawn on the server without scripts, and also as `GET overview/?site_id=<id>` in the
+  API. No migrations ([#31](https://github.com/Packetflow-be/netbox-ot/pull/31)).
+
 ### Documentation
 
 - The menu and the panel on device and VM pages are called *OT* in the README and the docs, as in the plugin

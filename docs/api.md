@@ -31,6 +31,7 @@ Useful flow filters: `site_id`, `source_zone_id`, `destination_zone_id`, `condui
 | `GET access-map/?site_id=<id>[&max_level=<level>]` | The flows into zones at that Purdue level or below, in access-map order, with their hops ([Access map](access-map.md)) | `view_flow` |
 | `GET checks/?site_id=<id>[&severity=...][&check=...]` | Consistency check findings ([Checks](checks-and-register.md)) | `view_zone` |
 | `GET register/?site_id=<id>` | The site's zone and conduit register as JSON ([Register](checks-and-register.md#zone-register)) | `view_zone` |
+| `GET overview/?site_id=<id>[&zone_id=<id>]` | Where the site stands, as numbers: security levels per foundational requirement, requirement statuses, risk and check findings ([OT overview](overview.md)) | `view_zone` |
 | `GET firewall-rules/?site_id=<id>[&device_id=<id>][&include_denied=true]` | Vendor-neutral firewall rules ([Firewall rules](firewall-rules.md)) | `view_flow` |
 
 ## GraphQL

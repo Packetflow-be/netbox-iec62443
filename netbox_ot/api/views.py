@@ -23,6 +23,7 @@ from ..models import (
     SystemRequirement,
     Zone,
 )
+from ..overview import build_overview, overview_json
 from ..register import build_register, register_json
 from ..rules import build_rules
 from .serializers import (
@@ -182,6 +183,32 @@ class RegisterAPIView(APIView):
         return Response({
             'site': SiteSerializer(site, nested=True, context={'request': request}).data,
             **register_json(build_register(site, user=request.user)),
+        })
+
+
+class OverviewAPIView(APIView):
+    """
+    Where a site stands: security levels per foundational requirement (target against achieved), requirement
+    statuses, risk assessments and check findings, as numbers. GET ?site_id=<id>[&zone_id=<id>].
+    """
+    queryset = Zone.objects.all()  # for NetBox's token permission check (view_zone)
+
+    def get_view_name(self):
+        return 'OT overview'
+
+    def get(self, request):
+        if not request.user.has_perm('netbox_ot.view_zone'):
+            raise PermissionDenied()
+        site = _site(request)
+        zone = None
+        if zone_id := request.query_params.get('zone_id'):
+            zone = Zone.objects.restrict(request.user, 'view').filter(
+                site=site, pk=int(zone_id) if zone_id.isdigit() else 0).first()
+            if zone is None:
+                raise ValidationError({'zone_id': 'A zone of this site that you can view.'})
+        return Response({
+            'site': SiteSerializer(site, nested=True, context={'request': request}).data,
+            **overview_json(build_overview(site, user=request.user, zone=zone)),
         })
 
 
