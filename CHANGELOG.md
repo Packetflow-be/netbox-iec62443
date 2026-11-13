@@ -9,7 +9,7 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 
 - The menu and the panel on device and VM pages are called *OT* in the README and the docs, as in the plugin
   since 0.3.0; the API and installation pages list the system requirement objects of 0.4.0 and the firmware
-  version custom field ([#29](https://github.com/Packetflow-be/netbox-ot/pull/29)).
+  version custom field ([#30](https://github.com/Packetflow-be/netbox-ot/pull/30)).
 
 ## 0.4.1 (2026-11-12)
 
