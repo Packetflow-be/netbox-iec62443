@@ -13,6 +13,8 @@ field.
 | `flows/` | Flows |
 | `flow-hops/` | Ordered hops of a flow (device, VM or VPN tunnel) |
 | `risk-assessments/` | Risk assessments of zones and conduits |
+| `system-requirements/` | System requirements (IEC 62443-3-3) |
+| `requirement-statuses/` | Status of a requirement per zone or conduit |
 | `industrial-services/` | Industrial services on devices and VMs |
 | `fieldbuses/` | Fieldbuses |
 
@@ -35,6 +37,7 @@ Useful flow filters: `site_id`, `source_zone_id`, `destination_zone_id`, `condui
 
 Each object has a single and a list query: `ot_zone` / `ot_zone_list`, `ot_conduit(_list)`,
 `ot_flow(_list)`, `ot_flow_hop(_list)`, `ot_risk_assessment(_list)`,
+`ot_system_requirement(_list)`, `ot_requirement_status(_list)`,
 `ot_fieldbus(_list)` and `ot_industrial_service(_list)`.
 
 ```graphql
@@ -59,5 +62,5 @@ Each object has a single and a list query: `ot_zone` / `ot_zone_list`, `ot_condu
 | `ot_rules [--site <slug>] [--device <firewall>] [--format csv\|json]` | Exports firewall rules |
 | `ot_requirements [--csv FILE] [--dry-run]` | Loads the IEC 62443-3-3 requirement identifiers, and levels and wording from your copy ([System requirements](requirements.md)) |
 
-With netbox-branching installed, all four take `--branch NAME`, and `ot_demo` and `ot_import` also `--main`
+With netbox-branching installed, all five take `--branch NAME`, and `ot_demo` and `ot_import` also `--main`
 (see [Working in a branch](branching.md)). `ot_demo` takes `--user` for the change log.

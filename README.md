@@ -101,7 +101,7 @@ sudo venv/bin/python netbox/manage.py collectstatic --no-input
 sudo systemctl restart netbox netbox-rq
 ```
 
-An *IEC 62443* menu appears. To see it populated within minutes, create the fictional demo plant and open the
+An *OT* menu appears. To see it populated within minutes, create the fictional demo plant and open the
 site *IEC 62443 demo plant* (`--delete` removes it again):
 
 ```bash
