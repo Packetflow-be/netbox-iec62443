@@ -311,8 +311,9 @@ def access_map_diagram(flows, zones=(), collapse=False, zone_queryset=None, per_
         # The counts go where no other arrow's counts are yet
         spots = [_point(*last, t) for t in choices]
         bx, by = max(spots, key=lambda s: min(
-            (min(abs(s[0] - px) / 2, abs(s[1] - py)) for px, py in placed), default=99) >= 11)
-        placed.append((bx, by))
+            (max(abs(s[0] - px) / 2, abs(s[1] - py)) for px, py in placed), default=99) >= 19)
+        if len(e.flows) > 1:
+            placed.append((bx, by))
         counts = defaultdict(int)
         for f in e.flows:
             counts[SHADE[_verdict(f)]] += 1
@@ -331,6 +332,8 @@ def access_map_diagram(flows, zones=(), collapse=False, zone_queryset=None, per_
             f'<path d="{path}" class="ln" stroke="{COLORS[shade]}" stroke-width="{thick}"{dash} '
             f'marker-end="url(#ot-arrow-{shade})"/></g>'
         )
+        if len(e.flows) == 1:
+            continue  # one flow: the colour of the arrow says it all
         parts = [(s, counts[s]) for s in SHADES if counts[s]]
         widths = [16 if n < 10 else 22 if n < 100 else 28 for _s, n in parts]
         at = bx - sum(widths) / 2

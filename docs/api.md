@@ -56,7 +56,7 @@ Each object has a single and a list query: `ot_zone` / `ot_zone_list`, `ot_condu
 
 | Command | Does |
 |---|---|
-| `ot_demo [--delete]` | Creates (or removes) the fictional demo plant |
+| `ot_demo [--large] [--delete]` | Creates (or removes) the fictional demo plant; `--large` is a second plant of 35 zones and about 200 flows |
 | `ot_import <dir> --site <slug> ...` | Imports Zeek logs or observation files ([Importer](importer.md)) |
 | `ot_check [--site <slug>] [--fail-on ...] [--json]` | Runs the consistency checks; exit status 1 on findings |
 | `ot_rules [--site <slug>] [--device <firewall>] [--format csv\|json]` | Exports firewall rules |

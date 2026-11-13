@@ -34,7 +34,7 @@
       <div class="ot-map-panel d-print-none" hidden></div>
       {{ diagram.data|json_script:"ot-map-data" }}
       <div class="small text-muted mt-2">
-        {% trans "One arrow per zone pair, from the side that acts to the side acted upon; the numbers are how many flows it carries, per colour. Red: not allowed or expired, amber: unknown, green: allowed. Dashed: remote access. Dotted: the destination opens the connection itself (reverse connect, or both ends meet at a broker)." %}
+        {% trans "One arrow per zone pair, from the side that acts to the side acted upon; a number is how many flows it carries when more than one, per colour. Red: not allowed or expired, amber: unknown, green: allowed. Dashed: remote access. Dotted: the destination opens the connection itself (reverse connect, or both ends meet at a broker)." %}
         <span class="d-print-none ot-map-hint" hidden>{% trans "Click a zone or an arrow for its flows; drag to move, Ctrl + scroll to zoom." %}</span>
       </div>
     </div>

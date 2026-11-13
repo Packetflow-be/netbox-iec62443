@@ -20,7 +20,7 @@ def delete_large():
     from netbox_ot.models import Flow, Zone
 
     site = Site.objects.filter(slug=SITE_SLUG).first()
-    zones = Zone.objects.filter(site=site) | Zone.objects.filter(name__startswith=PREFIX, site__isnull=True)
+    zones = Zone.objects.filter(site=site) | Zone.objects.filter(slug__startswith=SITE_SLUG, site__isnull=True)
     Flow.objects.filter(source_zone__in=zones).delete()
     Flow.objects.filter(destination_zone__in=zones).delete()
     zones.filter(parent__isnull=False).delete()
@@ -42,7 +42,7 @@ def create_large():
 
     def zone(name, level, zone_type='ot', parent=None, external=False):
         z[name] = Zone.objects.create(
-            name=f'{PREFIX} {name}' if external else name,
+            name=f'{name} ({PREFIX})' if external else name,
             slug=(f'{SITE_SLUG}-' if external else '') + name.lower().replace(' ', '-'),
             site=None if external else site, purdue_level=level, zone_type=zone_type,
             parent=z[parent] if parent else None)
@@ -65,7 +65,7 @@ def create_large():
         zone(name, '1')
     for name in ('Tank farm instruments', 'Packaging sensors'):
         zone(name, '0')
-    for name in ('MSP', 'robot supplier', 'boiler supplier'):
+    for name in ('MSP', 'Robot supplier', 'Boiler supplier'):
         zone(name, '', 'external', external=True)
 
     seen = {'first_seen': now - datetime.timedelta(days=30), 'last_seen': now - datetime.timedelta(days=1)}
@@ -108,7 +108,7 @@ def create_large():
         flow(room, 'OT management', 'syslog', 'udp/514')
         flow(cell, 'OT management', 'syslog', 'udp/514')
         flow(room, 'Site historian', 'opc-ua', 'tcp/4840', ['write'], 'unknown')
-        flow('robot supplier', robots, 'teamviewer', 'tcp/5938', [], ('yes', 'unknown', 'yes')[n - 1],
+        flow('Robot supplier', robots, 'teamviewer', 'tcp/5938', [], ('yes', 'unknown', 'yes')[n - 1],
              remote_access=True, name=f'Robot supplier TeamViewer line {n}', **(expired if n == 1 else {}))
         flow('MSP', room, 'rdp', 'tcp/3389', [], remote_access=True, name=f'MSP maintenance line {n}')
         flow('ERP', cell, 'mqtt', 'tcp/8883', ['write'], 'unknown', connection='brokered',
@@ -141,9 +141,9 @@ def create_large():
              'unknown' if name == 'Compressed air' else 'yes')
         flow('Engineering', name, 'modbus-tcp', 'tcp/502', ['program'], name=f'Engineering {name.lower()}')
         flow('MES', name, 'opc-ua', 'tcp/4840', ['read'])
-    flow('boiler supplier', 'Boiler house', 'vnc', 'tcp/5900', [], 'no', remote_access=True,
+    flow('Boiler supplier', 'Boiler house', 'vnc', 'tcp/5900', [], 'no', remote_access=True,
          name='Boiler supplier 4G router')
-    flow('boiler supplier', 'Control room utilities', 'https', 'tcp/443', [], remote_access=True, **expired)
+    flow('Boiler supplier', 'Control room utilities', 'https', 'tcp/443', [], remote_access=True, **expired)
     flow('MES', 'Control room utilities', 'opc-ua', 'tcp/4840', ['read'])
     flow('Site historian', 'Control room utilities', 'opc-ua', 'tcp/4840', ['read'])
     flow('OT management', 'Control room utilities', 'rdp', 'tcp/3389')
@@ -177,7 +177,7 @@ def create_large():
     flow('Internet', 'DMZ remote access', 'ipsec', 'udp/500', [], remote_access=True)
     flow('MSP', 'DMZ remote access', 'ipsec', 'udp/500', [], remote_access=True, name='MSP VPN')
     flow('MSP', 'OT management', 'ssh', 'tcp/22', [], 'unknown', remote_access=True)
-    flow('robot supplier', 'DMZ remote access', 'https', 'tcp/443', [], remote_access=True)
+    flow('Robot supplier', 'DMZ remote access', 'https', 'tcp/443', [], remote_access=True)
     for name in ('MES', 'Site historian', 'Engineering'):
         flow('OT management', name, 'ssh', 'tcp/22')
     flow('Control room utilities', 'OT management', 'smb', 'tcp/445', ['write'], name='Utilities backups')

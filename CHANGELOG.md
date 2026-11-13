@@ -5,6 +5,22 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 
 ## Unreleased
 
+### Enhancements
+
+- The access map stays readable on a large plant ([#32](https://github.com/Packetflow-be/netbox-ot/pull/32)).
+  The diagram is a layered layout: a Purdue level with many zones wraps into several rows, arrows that skip a
+  level run between the zones instead of behind them, zones are ordered to keep crossings down, and an arrow
+  shows how many flows it carries per verdict. New filters on the page (verdict, zone with its neighbours,
+  protocol, connection model, remote access, sub-zones drawn inside their parent zone) apply to the diagram
+  and the table and are URL parameters. With the plugin's own script (no library, nothing loaded from
+  elsewhere): zoom, drag, highlighting of a zone or an arrow, a panel with its flows, and an SVG download. The
+  diagram is still server-rendered SVG, so it prints and works without JavaScript. Zones without flows are
+  left out unless asked for, and the page for all sites no longer draws the zones of every site in one
+  picture. The plugin now ships static files: run `manage.py collectstatic` after upgrading (NetBox's
+  `upgrade.sh` does).
+- `ot_demo --large` creates a second demo plant of 35 zones and about 200 flows on its own site, to try the
+  plugin at the size of a real plant ([#32](https://github.com/Packetflow-be/netbox-ot/pull/32)).
+
 ### Documentation
 
 - The menu and the panel on device and VM pages are called *OT* in the README and the docs, as in the plugin
