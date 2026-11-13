@@ -21,6 +21,8 @@ GIF_WIDTH = 1024
 
 # (path, scroll to this selector or None, caption, seconds on screen)
 FRAMES = [
+    (f'/dcim/sites/{site}/ot-overview/', None,
+     'OT overview: where the site stands, achieved against target security level per requirement', 4.5),
     (f'/dcim/sites/{site}/access-map/', None,
      'Access map: every flow into the controller zones, worst first, with who decided it', 4.5),
     (f'/dcim/sites/{site}/access-map/', 'text=Diagram',
@@ -74,6 +76,20 @@ with sync_playwright() as pw:
         page.screenshot(path=str(frame))
         shots.append((frame, seconds))
         print(n, response.status, page.title(), path)
+
+    # Full pages for the docs, without a caption: desktop, phone and dark
+    for name, viewport, scheme in (('overview', {'width': 1440, 'height': 900}, 'light'),
+                                   ('overview-phone', {'width': 390, 'height': 844}, 'light'),
+                                   ('overview-dark', {'width': 1440, 'height': 900}, 'dark')):
+        doc_ctx = browser.new_context(viewport=viewport, color_scheme=scheme, device_scale_factor=1,
+                                      storage_state=ctx.storage_state())
+        doc_page = doc_ctx.new_page()
+        response = doc_page.goto(f'{base}/dcim/sites/{site}/ot-overview/')
+        assert response.status == 200, f'overview: HTTP {response.status}'
+        doc_page.wait_for_load_state('networkidle')
+        doc_page.screenshot(path=str(out / f'{name}.png'), full_page=True)
+        print(name, response.status, doc_page.evaluate('document.documentElement.scrollWidth'))
+        doc_ctx.close()
     browser.close()
 
 images = []
