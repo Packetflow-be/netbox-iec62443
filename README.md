@@ -20,7 +20,7 @@ your inventory. See at a glance who can reach the PLCs, including supplier remot
 TeamViewer, VPN or an MSP's jump host, and decide per flow whether that is allowed. Then hand an auditor the
 zone register.
 
-![The demo plant: the access map, a flow with its verdict and path, a zone with its security levels, and the zone register](https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/demo.gif)
+![The demo plant: the OT overview, the access map, a flow with its verdict and path, a zone with its security levels, and the zone register](https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/demo.gif)
 
 ## Features
 

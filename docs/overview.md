@@ -1,5 +1,7 @@
 # OT overview
 
+![The OT overview of the demo plant](overview.png)
+
 Every site with zones has an *OT overview* tab: where the site stands, on one page you can print. Nothing is
 entered here. It is all derived from the zones, conduits, risk assessments and requirement statuses, so it is
 as good as what is recorded there.
