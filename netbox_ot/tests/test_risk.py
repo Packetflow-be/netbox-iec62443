@@ -1,5 +1,6 @@
 import datetime
 
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.test import override_settings
 from django.urls import reverse
@@ -81,7 +82,11 @@ class RiskMatrixTest(RiskTestBase):
         self.assertFalse(view['placed'])
         self.assertEqual([cell['marks'] for cell in view['scale']], [[], ['R', 'T'], ['U'], []])
 
-    @override_settings(PLUGINS_CONFIG={'netbox_ot': {'risk_matrix': THREE}})
+    # The other plugins keep their settings (netbox-branching reads its own on every query)
+    @override_settings(PLUGINS_CONFIG={
+        **settings.PLUGINS_CONFIG,
+        'netbox_ot': {**settings.PLUGINS_CONFIG.get('netbox_ot', {}), 'risk_matrix': THREE},
+    })
     def test_own_matrix(self):
         self.assertEqual(risk.matrix_level(3, 2), 'critical')
         self.assertEqual(risk.scale_choices('likelihood'), [(1, '1 - Rare'), (2, '2 - Sometimes'), (3, '3 - Often')])
