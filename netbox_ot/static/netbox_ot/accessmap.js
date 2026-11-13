@@ -26,7 +26,7 @@
     const panel = card.querySelector('.ot-map-panel');
     const width = Number(svg.dataset.width);
     const height = Number(svg.dataset.height);
-    const MIN = 0.3, MAX = 2.5, READABLE = 0.62;
+    const MIN = 0.3, MAX = 2.5, READABLE = 0.8;
     let scale = 1;
 
     view.classList.add('ot-map-live');
