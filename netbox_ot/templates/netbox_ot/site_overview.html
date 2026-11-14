@@ -37,6 +37,15 @@
     .ot-count .after { background: var(--tblr-primary, #206bc4); }
     .ot-levels td, .ot-levels th { font-variant-numeric: tabular-nums; }
     .ot-stat { font-size: 1.75rem; font-weight: 600; line-height: 1.1; }
+    .ot-steps { counter-reset: step; list-style: none; padding-left: 0; margin-bottom: 0; }
+    .ot-steps > li { display: flex; gap: .6rem; padding: .45rem 0; border-top: 1px solid var(--tblr-border-color, #dce1e7); }
+    .ot-steps > li:first-child { border-top: 0; }
+    .ot-steps .num { flex: 0 0 1.6rem; height: 1.6rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: .85rem; border: 1px solid var(--tblr-border-color, #dce1e7); }
+    .ot-steps .now .num { background: var(--tblr-primary, #206bc4); border-color: var(--tblr-primary, #206bc4); color: #fff; }
+    .ot-steps .done .num { color: var(--tblr-green, #2fb344); border-color: var(--tblr-green, #2fb344); }
+    .ot-steps .done .what { color: var(--tblr-secondary, #6c7a91); }
+    .ot-exposure dt { font-weight: normal; color: var(--tblr-secondary, #6c7a91); margin-bottom: .5rem; }
+    .ot-exposure dd { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
     @media print { .ot-bar > span, .ot-count > span, .ot-swatch, .ot-key { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style>
 
@@ -50,12 +59,64 @@
     </div>
   </div>
 
+  {# Exposure and next steps: there from the first import on, before any level or assessment is recorded #}
+  <div class="row row-cards mb-3" id="exposure">
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <h2 class="card-header">{% trans "Exposure of the controllers" %}</h2>
+        <div class="card-body">
+          {% with e=overview.exposure %}
+            {% if e.undecided %}
+              <div class="alert alert-danger py-2 mb-3">
+                {% blocktrans count n=e.undecided %}{{ n }} flow into a control zone changes it, is remote access or comes from outside, and nobody decided whether it may.{% plural %}{{ n }} flows into control zones change them, are remote access or come from outside, and nobody decided whether they may.{% endblocktrans %}
+                <a href="{{ e.undecided_url }}" class="d-print-none">{% trans "Decide them" %}</a>
+              </div>
+            {% elif e.into_control %}
+              <p><i class="mdi mdi-check text-success"></i> {% trans "Every flow into a control zone that changes it, is remote access or comes from outside has a verdict." %}</p>
+            {% endif %}
+            <dl class="row mb-0 ot-exposure">
+              <dt class="col-9">{% trans "Control zones (level 0-1 or safety)" %}</dt><dd class="col-3">{{ e.control_zones }}</dd>
+              <dt class="col-9">{% trans "Flows into control zones" %} <a href="{{ e.into_control_url }}" class="d-print-none small">{% trans "access map" %}</a></dt><dd class="col-3">{{ e.into_control }}</dd>
+              <dt class="col-9 ps-4">{% trans "that write, control or program" %}</dt><dd class="col-3">{{ e.changes }}</dd>
+              <dt class="col-9 ps-4">{% trans "remote access" %}</dt><dd class="col-3">{{ e.remote }}</dd>
+              <dt class="col-9 ps-4">{% trans "from a DMZ, enterprise or external zone" %}</dt><dd class="col-3">{{ e.from_outside }}</dd>
+              <dt class="col-9 ps-4">{% trans "allowed straight from outside" %}</dt><dd class="col-3{% if e.outside_allowed %} text-warning{% endif %}">{{ e.outside_allowed }}</dd>
+              <dt class="col-9">{% trans "External zones (suppliers, MSP, internet)" %}</dt><dd class="col-3">{{ e.external_zones|length }}</dd>
+            </dl>
+            {% if not e.control_zones %}
+              <p class="small text-secondary mt-2 mb-0">{% trans "No zone is at Purdue level 0 or 1 or a safety zone, so nothing counts as a control zone yet: give the zones of the controllers their level." %}</p>
+            {% endif %}
+          {% endwith %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <div class="card h-100">
+        <h2 class="card-header">{% trans "Next steps" %}</h2>
+        <div class="card-body">
+          <ol class="ot-steps">
+            {% for step in overview.next_steps %}
+              <li class="{% if step.now %}now{% elif step.done %}done{% endif %}">
+                <span class="num">{% if step.done %}<i class="mdi mdi-check"></i>{% else %}{{ forloop.counter }}{% endif %}</span>
+                <div class="what">
+                  <div class="fw-bold">{{ step.title }}{% if step.now %} <span class="badge text-bg-primary ms-1">{% trans "now" %}</span>{% endif %}</div>
+                  {% if not step.done %}<div class="small">{{ step.todo }} <a href="{{ step.url }}" class="d-print-none">{% trans "Open the list" %}</a></div>{% endif %}
+                </div>
+              </li>
+            {% endfor %}
+          </ol>
+        </div>
+        <div class="card-footer small text-secondary">{% trans "In this order each step clears the most findings for the least work. Bulk edit on the lists sets a field on many objects at once." %}</div>
+      </div>
+    </div>
+  </div>
+
   {# Headline numbers #}
   <div class="row row-cards mb-3">
     <div class="col-6 col-lg-3">
       <div class="card h-100"><div class="card-body">
         <div class="text-secondary small">{% trans "Zones at their target level" %}</div>
-        <div class="ot-stat">{{ overview.zones.at_target }} <span class="text-secondary fs-4 fw-normal">{% trans "of" %} {{ overview.zones.with_target }}</span></div>
+        <div class="ot-stat">{% if overview.zones.with_target %}{{ overview.zones.at_target }} <span class="text-secondary fs-4 fw-normal">{% trans "of" %} {{ overview.zones.with_target }}</span>{% else %}{{ ''|placeholder }}{% endif %}</div>
         <div class="small text-secondary">
           {% if overview.zones.below_target %}{% blocktrans count n=overview.zones.below_target %}{{ n }} below target{% plural %}{{ n }} below target{% endblocktrans %}{% endif %}{% if overview.zones.below_target and overview.zones.not_assessed %}, {% endif %}{% if overview.zones.not_assessed %}{% blocktrans count n=overview.zones.not_assessed %}{{ n }} without an achieved level{% plural %}{{ n }} without an achieved level{% endblocktrans %}{% endif %}
           {% if not overview.zones.with_target %}{% trans "No zone has a target level yet" %}{% endif %}
@@ -67,14 +128,14 @@
         <div class="text-secondary small">{% trans "Requirements satisfied" %}</div>
         <div class="ot-stat">{% if overview.requirements.percent is not None %}{{ overview.requirements.percent }}%{% else %}{{ ''|placeholder }}{% endif %}</div>
         <div class="small text-secondary">
-          {% if overview.requirements.total %}{% blocktrans with satisfied=overview.requirements.satisfied total=overview.requirements.total %}{{ satisfied }} of {{ total }}{% endblocktrans %}{% if overview.requirements.not_met %}, {% blocktrans with n=overview.requirements.not_met %}{{ n }} not met{% endblocktrans %}{% endif %}{% if overview.requirements.open %}, {% blocktrans with n=overview.requirements.open %}{{ n }} without a status{% endblocktrans %}{% endif %}{% else %}{% trans "No requirement statuses yet" %}{% endif %}
+          {% if overview.requirements.total %}{% blocktrans with satisfied=overview.requirements.satisfied total=overview.requirements.total %}{{ satisfied }} of {{ total }} requirement statuses recorded{% endblocktrans %}{% if overview.requirements.not_met %}, {% blocktrans with n=overview.requirements.not_met %}{{ n }} not met{% endblocktrans %}{% endif %}{% if overview.requirements.open %}, {% blocktrans with n=overview.requirements.open %}{{ n }} without a status{% endblocktrans %}{% endif %}{% else %}{% trans "No requirement statuses yet" %}{% endif %}
         </div>
       </div></div>
     </div>
     <div class="col-6 col-lg-3">
       <div class="card h-100"><div class="card-body">
         <div class="text-secondary small">{% trans "Residual risk above tolerable" %}</div>
-        <div class="ot-stat{% if overview.risk.above_tolerable %} text-danger{% endif %}">{{ overview.risk.above_tolerable|length }}</div>
+        <div class="ot-stat{% if overview.risk.above_tolerable %} text-danger{% endif %}">{% if overview.risk.assessed %}{{ overview.risk.above_tolerable|length }}{% else %}{{ ''|placeholder }}{% endif %}</div>
         <div class="small text-secondary">{% blocktrans with assessed=overview.risk.assessed subjects=overview.risk.subjects %}{{ assessed }} of {{ subjects }} zones and conduits have an approved assessment{% endblocktrans %}</div>
       </div></div>
     </div>

@@ -11,6 +11,14 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   networks the conn log holds (per /24: hosts, connections, the services they answer) before it stops, and
   `--suggest-zone-map zones.csv` writes a draft zone map with one line per network no zone holds yet, to edit and
   pass as `--zone-map`. [docs/zeek.md](docs/zeek.md).
+- The **OT overview is useful right after an import**. It opens with *Exposure of the controllers*: flows into
+  control zones, how many nobody decided on although they write, are remote access or come from outside, and
+  external zones. Next to it, *Next steps* lists what to add next in the order that clears the most findings:
+  devices, verdicts on the flows into control zones, owner and levels per zone, conduits, then risk assessments
+  and requirement statuses. Each step shows how many objects are left and links to them for a bulk edit. Headline
+  cards show "—" instead of 0 when nothing is assessed yet, and external zones no longer appear under "No target
+  level" or "Without an approved assessment" (the checks have skipped them since 0.5.0). The REST overview has
+  `exposure` and `next_steps`. New zone and conduit filters `has_sl_achieved` and `has_accountable`.
 
 ### Bug fixes
 

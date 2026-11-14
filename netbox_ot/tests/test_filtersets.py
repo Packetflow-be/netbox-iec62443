@@ -59,6 +59,8 @@ class ZoneFilterSetTest(TestCase, ChangeLoggedFilterSetTestMixin):
 
     def test_security_levels_and_attributes(self):
         self.assertEqual(self.filterset({'has_sl_target': True}, self.queryset).qs.count(), 1)
+        self.assertEqual(self.filterset({'has_sl_achieved': False}, self.queryset).qs.count(), 2)
+        self.assertEqual(self.filterset({'has_accountable': False}, self.queryset).qs.count(), 3)
         self.assertEqual(self.filterset({'sl_gap': True}, self.queryset).qs.count(), 1)
         self.assertEqual(self.filterset({'sl_gap': False}, self.queryset).qs.count(), 2)
         self.assertEqual(self.filterset({'wireless': True}, self.queryset).qs.count(), 1)
