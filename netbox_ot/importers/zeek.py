@@ -98,13 +98,33 @@ def read_log(path):
                 yield {k: (None if v in UNSET else v) for k, v in zip(fields, values)}
 
 
+class LogStream:
+    """
+    The records of one stream (conn, modbus, ...) across its files, read from disk each time it is iterated: a week
+    of plant traffic never sits in memory, only what the import aggregates from it. `count` is the number of
+    records the last complete pass read (None before one).
+    """
+
+    def __init__(self, paths):
+        self.paths = list(paths)
+        self.count = None
+
+    def __iter__(self):
+        count = 0
+        for path in self.paths:
+            for record in read_log(path):
+                count += 1
+                yield record
+        self.count = count
+
+
 def read_logs(directory):
-    """{stream: [records]} for the Zeek logs in `directory`."""
-    logs = defaultdict(list)
+    """{stream: LogStream} for the Zeek logs in `directory`; nothing is read until a stream is iterated."""
+    paths = defaultdict(list)
     for path in sorted(Path(directory).iterdir()):
         if path.is_file() and (path.name.endswith('.log') or path.name.endswith('.log.gz')):
-            logs[path.name.split('.')[0]].extend(read_log(path))
-    return dict(logs)
+            paths[path.name.split('.')[0]].append(path)
+    return {stream: LogStream(files) for stream, files in paths.items()}
 
 
 def is_zeek_directory(directory):
@@ -231,14 +251,22 @@ class ZoneMap:
 
 def to_observations(logs, zone_map, captures=None):
     """
-    Zeek logs ({stream: [records]}) to the observation format: (assets, flows, summary). `zone_map` places
-    addresses in zones; `captures` names the capture(s) in the evidence.
+    Zeek logs ({stream: records}, read_logs() or lists) to the observation format: (assets, flows, summary).
+    `zone_map` places addresses in zones; `captures` names the capture(s) in the evidence.
+
+    Memory grows with what is aggregated (address pairs, protocols, functions, ports), not with the number of
+    records: every stream is read once, record by record (opcua_binary twice), and conn.log last, keeping only the
+    uids of the connections a protocol log already covers.
     """
     requests = defaultdict(lambda: {'count': 0, 'first': None, 'last': None})
     covered = set()  # connection uids that have protocol-log requests
     open_ports = defaultdict(set)
     seen = set()
-    times = []
+    span = [None, None]  # first and last time seen in any log
+
+    def saw_time(t):
+        span[0] = min(span[0], t) if span[0] else t
+        span[1] = max(span[1], t) if span[1] else t
 
     def keep(src, dst):
         return src and dst and not dst.is_multicast and dst != ipaddress.IPv4Address('255.255.255.255') \
@@ -253,7 +281,7 @@ def to_observations(logs, zone_map, captures=None):
             if t:
                 entry['first'] = min(entry['first'], t) if entry['first'] else t
                 entry['last'] = max(entry['last'], t) if entry['last'] else t
-                times.append(t)
+                saw_time(t)
         seen.update(str(ip) for ip in (src, dst, broker) if ip)
 
     # OPC UA connections opened by the server (Reverse Connect): it sends a ReverseHello first
@@ -296,7 +324,7 @@ def to_observations(logs, zone_map, captures=None):
         port = int(port) if transport in ('tcp', 'udp') and port and str(port).isdigit() else None
         ts = _ts(record.get('ts'))
         if ts:
-            times.append(ts)
+            saw_time(ts)
         zone_pairs[(zone_map.zone_of(src), zone_map.zone_of(dst))] += 1
         if transport == 'tcp' and port:
             open_ports[str(dst)].add(port)
@@ -348,8 +376,8 @@ def to_observations(logs, zone_map, captures=None):
             for z in sorted(set(zone_map.types) | {z for z, v in zone_map.levels.items() if v not in (None, '')})
         ],
     }
-    if times:
-        start, end = min(times), max(times)
+    if span[0]:
+        start, end = span
         summary.update(start=start.isoformat(), end=end.isoformat(),
                        hours=round((end - start).total_seconds() / 3600, 1))
     return assets, flows, summary

@@ -79,8 +79,13 @@ class ReadLogsTest(SimpleTestCase):
     def test_tsv_json_and_gzip(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_logs(tmp)
-            logs = zeek.read_logs(tmp)
+            streams = zeek.read_logs(tmp)
             self.assertTrue(zeek.is_zeek_directory(tmp))
+            # Nothing is read until a stream is iterated; a stream can be read again (opcua_binary is, twice)
+            self.assertIsNone(streams['conn'].count)
+            logs = {name: list(records) for name, records in streams.items()}
+            self.assertEqual(list(streams['conn']), logs['conn'])
+            self.assertEqual(streams['conn'].count, len(CONN))
         self.assertEqual(set(logs), {'conn', 'modbus', 's7comm'})
         self.assertEqual(len(logs['conn']), len(CONN))
         self.assertEqual(logs['conn'][3]['service'], None)  # "-" is unset

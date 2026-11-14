@@ -148,7 +148,9 @@ class Command(BranchCommand):
         if 'conn' not in logs:
             raise CommandError(f'No conn log in {src}')
         assets, flows, summary = zeek.to_observations(logs, zone_map, captures=[src.name])
-        streams = ', '.join(f'{name} ({len(records)})' for name, records in sorted(logs.items()))
+        # Streams the import does not use are never read
+        streams = ', '.join(f'{name} ({records.count})' for name, records in sorted(logs.items())
+                            if records.count is not None)
         self.stdout.write(f'Zeek logs: {streams}')
         return {'assets': assets, 'flows': flows, 'summary': summary}
 
