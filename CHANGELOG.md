@@ -37,8 +37,14 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   ports) to three. The observation format has an optional `scans` summary field. Lists and the access map show
   at most six ports of a flow and the total ("TCP/80, ... (58 ports)"); the flow page shows them all.
 
+- The import **says when the zone map's type differs** from an existing zone's type in NetBox (it keeps
+  NetBox's; before, the difference passed silently).
+
 ### Bug fixes
 
+- An **unscoped prefix was linked into the zones of several sites**: the 4SICS imports into three sites linked
+  the same global 10.10.10.0/24 and 192.168.x prefixes to a zone of each. A prefix that already sits in a zone of
+  another site is no longer linked; the import says so and suggests scoping it or a VRF per plant.
 - The **access map diagram cut off its lowest level** (the controllers) when the drawing was taller than the
   view, and *Fit* did nothing: it only fitted the width. The diagram now fits width and height on first load
   (no smaller than readable), and *Fit* always shows the whole drawing.

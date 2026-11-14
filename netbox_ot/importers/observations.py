@@ -78,6 +78,7 @@ class ZonePlan:
     purdue_level: str = ''
     description: str = ''
     member_ips: list = field(default_factory=list)
+    declared_type: str = ''  # the type the input gave (summary "zones", a zone map line), '' when derived
 
 
 @dataclass
@@ -358,7 +359,8 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
         if declared_levels.get(name):  # the zone's own level (a split part has its own name, so none)
             levels.append(float(declared_levels[name]))
         z.purdue_level = _level(min(levels)) if levels else ''
-        z.zone_type = _zone_type(z.purdue_level, declared_types.get(name) or declared_types.get(base_of_zone[name]))
+        z.declared_type = declared_types.get(name) or declared_types.get(base_of_zone[name]) or ''
+        z.zone_type = _zone_type(z.purdue_level, z.declared_type)
     # The most critical part of each split zone gets traffic that can't be pinned to one part
     critical = {}
     for name, z in zones.items():
@@ -903,13 +905,27 @@ def apply_plan(plan, site, vrf=None, log=print):
                 zone.purdue_level = zp.purdue_level
                 zone.save()
                 stats['zones updated'] += 1
+            # A type in NetBox is a person's decision (or an earlier import's): never overwritten, but said
+            if zp.declared_type and zp.declared_type != zone.zone_type:
+                stats['zones whose type differs from the input (kept)'] += 1
+                labels = dict(ZoneTypeChoices.CHOICES)
+                log(f'zone {zone}: the input says {labels.get(zp.declared_type, zp.declared_type)}, NetBox has '
+                    f'{zone.get_zone_type_display()}; kept. Change it in NetBox if the input is right.')
         zone_objs[zp.name] = zone
 
         prefixes = {resolver.prefix(ip) for ip in zp.member_ips} - {None}
         for prefix in sorted(prefixes, key=lambda p: p.prefix):
-            if zones_of_prefix[prefix] == {zp.name} and not zone.prefixes.filter(pk=prefix.pk).exists():
-                zone.prefixes.add(prefix)
-                stats['prefixes linked'] += 1
+            if zones_of_prefix[prefix] != {zp.name} or zone.prefixes.filter(pk=prefix.pk).exists():
+                continue
+            # An unscoped prefix that already sits in a zone of another site is that plant's network, not this one's
+            elsewhere = prefix.ot_zones.exclude(site=site).select_related('site').first()
+            if elsewhere is not None:
+                stats['prefixes in a zone of another site (not linked)'] += 1
+                log(f'prefix {prefix} is already in zone {elsewhere} of {elsewhere.site or "no site"}; not linked '
+                    f'to {zone}. Scope the prefix to its site, or give each plant its own VRF (--vrf).')
+                continue
+            zone.prefixes.add(prefix)
+            stats['prefixes linked'] += 1
 
         for ip in zp.member_ips:
             asset = resolver.asset(ip)

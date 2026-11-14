@@ -489,6 +489,27 @@ class SiteAndVRFScopeTest(TestCase):
         self.assertFalse(zone.prefixes.exists())  # the /16 container does not count
         self.assertEqual(stats['addresses without a prefix in NetBox'], 1)
 
+    def test_unscoped_prefix_already_in_another_sites_zone(self):
+        lab = Prefix.objects.create(prefix='10.10.10.0/24')  # unscoped: the global table of every site
+        first, _stats, _lines = self._apply(self.site_a, assets=[{'ip': '10.10.10.5', 'zone': 'Cell'}])
+        self.assertEqual(list(first.prefixes.all()), [lab])
+        second, stats, lines = self._apply(self.site_b, assets=[{'ip': '10.10.10.5', 'zone': 'Cell'}])
+        self.assertFalse(second.prefixes.exists())
+        self.assertEqual(stats['prefixes in a zone of another site (not linked)'], 1)
+        self.assertIn('prefix 10.10.10.0/24 is already in zone Cell of Plant A; not linked to Cell. Scope the prefix '
+                      'to its site, or give each plant its own VRF (--vrf).', lines)
+
+    def test_declared_type_of_an_existing_zone_is_reported_not_applied(self):
+        Zone.objects.create(name='Cell', slug='cell', site=self.site_a, zone_type='ot')
+        assets = [{'ip': '192.168.0.10', 'zone': 'Cell'}]
+        lines = []
+        stats = apply_plan(build_plan(assets, [], {'zones': [{'name': 'Cell', 'type': 'dmz'}]}), self.site_a,
+                           log=lines.append)
+        self.assertEqual(Zone.objects.get(site=self.site_a, name='Cell').zone_type, 'ot')
+        self.assertEqual(stats['zones whose type differs from the input (kept)'], 1)
+        self.assertIn('zone Cell: the input says DMZ, NetBox has OT (control); kept. Change it in NetBox if the input '
+                      'is right.', lines)
+
     def test_region_prefix_when_the_site_has_none(self):
         zone, _stats, _lines = self._apply(self.site_b, assets=[{'ip': '192.168.5.1', 'zone': 'Cell'}])
         self.assertEqual([str(p.prefix) for p in zone.prefixes.all()], ['192.168.0.0/20'])

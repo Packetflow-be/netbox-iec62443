@@ -48,7 +48,12 @@ network,zone,purdue_level,type
 ```
 
 A zone named only in the zone map is created by the import, with the type given (`ot`, `safety`, `dmz`,
-`enterprise`, `external`).
+`enterprise`, `external`). A zone that already exists keeps the type NetBox has; when the zone map says
+otherwise, the import prints both and leaves the decision to you.
+
+A prefix that already sits in a zone of another site is not linked to this site's zone: unscoped prefixes
+(10.10.10.0/24 in the global table) would otherwise end up in the zones of every plant that uses the range.
+Scope prefixes to their site, or give each plant its own VRF.
 
 The Purdue level means two different things depending on the line:
 
