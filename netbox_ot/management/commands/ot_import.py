@@ -42,6 +42,10 @@ class Command(BranchCommand):
         parser.add_argument('--zone-map', metavar='CSV',
                             help='Zeek only: "network,zone[,purdue_level][,type]" lines placing addresses in zones, '
                                  'on top of the zones NetBox already has for the site')
+        parser.add_argument('--suggest-zone-map', metavar='CSV',
+                            help='Zeek only: list the networks the logs hold (per /24, with hosts and services), '
+                                 'write a draft zone map for those no zone holds yet to this file, and stop. Edit '
+                                 'it, then import with --zone-map')
         parser.add_argument('--unknown-report', metavar='CSV',
                             help='Write the observed hosts that match no device or VM in NetBox to this CSV file')
         parser.add_argument('--unknown-import', metavar='DIR',
@@ -79,6 +83,10 @@ class Command(BranchCommand):
         fmt = options['format']
         if fmt == 'auto':
             fmt = 'zeek' if zeek.is_zeek_directory(src) else 'observations'
+        if options['suggest_zone_map']:
+            if fmt != 'zeek':
+                raise CommandError('--suggest-zone-map is for Zeek logs')
+            return self._suggest_zone_map(src, site, vrf, options['zone_map'], options['suggest_zone_map'])
         if fmt == 'zeek':
             data = self._read_zeek(src, site, vrf, options['zone_map'])
         else:
@@ -134,19 +142,48 @@ class Command(BranchCommand):
         self.stdout.write(self.style.WARNING('Dry run: nothing saved') if options['dry_run']
                           else self.style.SUCCESS(f'Done (change log user: {user})'))
 
-    def _read_zeek(self, src, site, vrf, zone_map_file):
+    def _zone_map(self, site, vrf, zone_map_file):
         zone_map = zone_map_from_netbox(site, vrf)
         if zone_map_file:
             try:
                 zone_map = zeek.ZoneMap.from_csv(zone_map_file, base=zone_map)
             except (OSError, ValueError) as e:
                 raise CommandError(f'Cannot read zone map: {e}')
-        if not zone_map.networks and not zone_map.addresses:
-            raise CommandError(f'No zone to place addresses in: give the zones of {site} prefixes or members in '
-                               f'NetBox, or pass --zone-map')
+        return zone_map
+
+    def _logs(self, src):
         logs = zeek.read_logs(src)
         if 'conn' not in logs:
             raise CommandError(f'No conn log in {src}')
+        return logs
+
+    def _survey(self, logs, zone_map):
+        rows, public = zeek.survey(logs, zone_map)
+        self.stdout.write('Networks in the conn log (per /24):')
+        for line in zeek.survey_lines(rows, public):
+            self.stdout.write(f'  {line}')
+        return rows
+
+    def _suggest_zone_map(self, src, site, vrf, zone_map_file, path):
+        rows = self._survey(self._logs(src), self._zone_map(site, vrf, zone_map_file))
+        lines = zeek.write_zone_map_draft(rows, path)
+        if lines:
+            self.stdout.write(self.style.SUCCESS(
+                f'Draft zone map with {lines} network(s) written to {path}: name the zones, give their Purdue level '
+                f'and type, then run ot_import {src} --site {site.slug} --zone-map {path} --dry-run'))
+        else:
+            self.stdout.write(self.style.SUCCESS(f'Every network seen is already in a zone; nothing written to {path}'))
+
+    def _read_zeek(self, src, site, vrf, zone_map_file):
+        zone_map = self._zone_map(site, vrf, zone_map_file)
+        logs = self._logs(src)
+        if not zone_map.networks and not zone_map.addresses:
+            # A first visit: show what the capture holds rather than stop at "no zone"
+            self._survey(logs, zone_map)
+            raise CommandError(
+                f'No zone to place these addresses in yet: {site} has no zones with prefixes or members in NetBox. '
+                f'Run again with --suggest-zone-map zones.csv for a draft zone map of the networks above, edit it, '
+                f'and import with --zone-map zones.csv')
         assets, flows, summary = zeek.to_observations(logs, zone_map, captures=[src.name])
         # Streams the import does not use are never read
         streams = ', '.join(f'{name} ({records.count})' for name, records in sorted(logs.items())

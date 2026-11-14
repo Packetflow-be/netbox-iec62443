@@ -5,11 +5,14 @@
 The format is detected from the `conn` log; force it with `--format zeek`.
 
 ```bash
-manage.py ot_import /captures/plant-a --site plant-a --dry-run
+manage.py ot_import /captures/plant-a --site plant-a --suggest-zone-map zones.csv   # first visit: draft zone map
+manage.py ot_import /captures/plant-a --site plant-a --zone-map zones.csv --dry-run
 manage.py ot_import /captures/plant-a --site plant-a --zone-map zones.csv --unknown-report unknown.csv
 ```
 
 Zeek TSV and JSON logs both work, plain or gzipped, rotated files included (`conn.00:00:00-01:00:00.log.gz`).
+The logs are read record by record and never held in memory: what the import keeps is what it aggregates
+(address pairs, protocols, functions, ports), so a week of plant traffic needs no more memory than an hour of it.
 
 ## Where addresses go: the zone map
 
@@ -22,6 +25,18 @@ for the site, in the import's VRF (`--vrf`, default the global table):
 Addresses in no zone go to the outside zone (`--outside-zone`, default `Outside`), which is created as an
 external zone. For a first import, or for zones NetBox does not have yet (a supplier, an MSP), add a zone map:
 a CSV file with `network or address, zone[, purdue_level][, type]` per line. Its lines win over NetBox.
+
+On a first visit you may only know which networks exist. `--suggest-zone-map zones.csv` lists the networks the
+conn log holds (per /24: hosts, connections and the services they answer) and writes a draft zone map with one
+line per network that no zone holds yet, then stops without importing. Name the zones, give their level and
+type, delete what you do not want, and import with `--zone-map zones.csv`. An import into a site without any
+zone prints the same list before it stops.
+
+```
+Networks in the conn log (per /24):
+  10.10.10.0/24        4 host(s)    81234 connection(s), in no zone; serves s7comm (80911), tcp/80 (12)
+  192.168.88.0/24     11 host(s)    20877 connection(s), in no zone; serves modbus (17544), enip (2650), ...
+```
 
 ```
 network,zone,purdue_level,type

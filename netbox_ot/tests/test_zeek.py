@@ -318,8 +318,33 @@ class ZeekImportCommandTest(TestCase):
         empty = Site.objects.create(name='Empty', slug='empty')
         with tempfile.TemporaryDirectory() as tmp:
             write_logs(tmp)
-            with self.assertRaisesRegex(CommandError, 'No zone to place addresses in'):
-                call_command('ot_import', tmp, '--site', empty.slug, stdout=StringIO())
+            # A first visit shows the networks of the capture and points at --suggest-zone-map
+            out = StringIO()
+            with self.assertRaisesRegex(CommandError, 'No zone to place these addresses in yet.*--suggest-zone-map'):
+                call_command('ot_import', tmp, '--site', empty.slug, stdout=out)
+            self.assertIn('10.10.10.0/24        2 host(s)        4 connection(s), in no zone; serves modbus (1), '
+                          's7comm (1), tcp/445 (1)', out.getvalue())
             with self.assertRaisesRegex(CommandError, 'for Zeek logs'):
                 call_command('ot_import', tmp, '--site', 'plant', '--format', 'observations',
                              '--zone-map', 'x.csv', stdout=StringIO())
+
+    def test_suggest_zone_map(self):
+        empty = Site.objects.create(name='Empty', slug='empty')
+        with tempfile.TemporaryDirectory() as tmp:
+            write_logs(tmp)
+            draft = Path(tmp, 'draft.csv')
+            out = StringIO()
+            call_command('ot_import', tmp, '--site', empty.slug, '--suggest-zone-map', str(draft), stdout=out)
+            self.assertIn('Draft zone map with 4 network(s)', out.getvalue())
+            self.assertFalse(Zone.objects.filter(site=empty).exists())  # nothing imported
+            lines = [line for line in draft.read_text().splitlines() if not line.startswith('#')]
+            self.assertEqual(lines, ['network,zone,purdue_level,type', '10.10.10.0/24,10.10.10.0/24,,',
+                                     '10.10.20.0/24,10.10.20.0/24,,', '10.10.30.0/24,10.10.30.0/24,,',
+                                     '192.168.50.0/24,192.168.50.0/24,,'])
+            self.assertIn('# 10.10.20.0/24: 1 host(s), 1 connection(s); serves rdp (1)', draft.read_text())
+            # The draft is a valid zone map as it stands
+            self.assertEqual(zeek.ZoneMap.from_csv(draft).zone_of('10.10.10.10'), '10.10.10.0/24')
+            # With zones in NetBox only the networks no zone holds are left
+            call_command('ot_import', tmp, '--site', 'plant', '--suggest-zone-map', str(draft), stdout=StringIO())
+            lines = [line.split(',')[0] for line in draft.read_text().splitlines() if not line.startswith('#')]
+            self.assertNotIn('10.10.10.0/24', lines)
