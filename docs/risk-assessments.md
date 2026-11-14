@@ -1,5 +1,7 @@
 # Risk assessments
 
+![A risk assessment: the IEC 62443-3-2 steps, the risk matrix with the unmitigated (U), residual (R) and tolerable (T) risk, and the assessment's fields](risk-assessment.png)
+
 A risk assessment (IEC 62443-3-2) belongs to a zone or a conduit: the initial, worst-case one (ZCR 2) or the
 detailed one (ZCR 5), with the unmitigated, residual and tolerable risk as low, medium, high or critical. A zone
 or conduit keeps every assessment; the latest approved one counts for the register and the checks. This page
