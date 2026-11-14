@@ -369,12 +369,12 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
     ot_pairs = {(key[0], key[1]) for key in ot}
 
     # Connection counts per directed zone pair, from zone_pairs
-    headers = {}  # (src, dst) -> evidence header line
+    headers = {}  # (src, dst) -> the zone pair's line: all traffic between the two zones, not one flow's
     for pair in summary.get('zone_pairs', []):
         src, dst, count = base_name(pair['from']), base_name(pair['to']), pair['count']
         if src == dst:
             continue
-        line = f"Passively seen: {count} connection(s) from {src} to {dst} in {seen_in}."
+        line = f"All traffic from {src} to {dst}: {count} connection(s) in {seen_in}."
         if src in split or dst in split:
             keys = [k for k in ot_pairs if (base_of_zone.get(k[0], outside_zone), base_of_zone.get(k[1], outside_zone))
                     == (src, dst)]
@@ -393,7 +393,13 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
             if name == outside_zone:
                 ensure_outside()
         crossing = sorted(ot.get(key, []), key=lambda r: -r.count)
-        lines = [headers.get((src, dst)) or f'Passively seen: requests from {src} to {dst} in {seen_in}.']
+        # The flow's own count first; the zone pair's total (every protocol between the two zones) after it
+        if crossing:
+            lines = [f'Passively seen: {sum(r.count for r in crossing)} request(s) on this flow in {seen_in}.']
+            if (src, dst) in headers:
+                lines.append(headers[(src, dst)])
+        else:
+            lines = [f'Passively seen: no identified request. {headers[(src, dst)]}']
         if connection == ConnectionChoices.BROKERED:
             brokers = ', '.join(dict.fromkeys(r.broker for r in crossing))
             lines.append(f'Through the broker {brokers} in {broker_zone}: {src} publishes, {dst} subscribes.')

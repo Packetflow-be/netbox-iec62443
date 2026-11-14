@@ -111,11 +111,15 @@ class BuildPlanTest(SimpleTestCase):
         self.assertIn('Write Variable x12 [write]', remote.evidence)
         self.assertIn('Changes the destination (write/control/program): Supplier 4G gateway (192.168.1.10)',
                       remote.evidence)
-        self.assertIn('12 connection(s) from Z4 External to Z1 Cell A', remote.evidence)
+        # The flow's own count first, the zone pair's total (all protocols) as a labelled second line
+        self.assertTrue(remote.evidence.startswith('Passively seen: 24 request(s) on this flow in captures cap1'))
+        self.assertIn('All traffic from Z4 External to Z1 Cell A: 12 connection(s)', remote.evidence)
         office = flows[('Z5 Office', CONTROL, '')]
         self.assertEqual(office.name, 'Z5 Office -> Z1 Cell A (control) (unidentified)')
         self.assertFalse(office.remote_access)
         self.assertEqual(office.access, [])
+        self.assertTrue(office.evidence.startswith('Passively seen: no identified request. All traffic from Z5 Office '
+                                                   'to Z1 Cell A: 300 connection(s)'))
         hmi = flows[(SUPERVISORY, CONTROL, 's7comm')]
         self.assertIn('Read Variable x500 [read]', hmi.evidence)
         self.assertEqual(hmi.access, ['read'])
