@@ -32,6 +32,7 @@ from virtualization.models import VirtualMachine
 from vpn.models import Tunnel
 
 from . import risk, sl
+from .accessmap import VERDICT_CHOICES
 from .choices import (
     AccessChoices,
     ConnectionChoices,
@@ -996,12 +997,35 @@ class IndustrialServiceFilterForm(PrimaryModelFilterSetForm):
 #
 
 class AccessMapFilterForm(forms.Form):
+    """What the access map shows. Without data the map is unfiltered; `site` fixes the site (the tab on a site)."""
     site_id = DynamicModelChoiceField(queryset=Site.objects.all(), required=False, label=_('Site'))
     max_level = forms.ChoiceField(
         label=_('Into zones at Purdue level up to'),
         choices=[(v, label) for v, label in PurdueLevelChoices.CHOICES],
         required=False,
     )
+    verdict = forms.MultipleChoiceField(label=_('Allowed'), choices=VERDICT_CHOICES, required=False)
+    protocol = forms.MultipleChoiceField(label=_('Protocol'), choices=FlowProtocolChoices, required=False)
+    connection = forms.MultipleChoiceField(label=_('Connection'), choices=ConnectionChoices, required=False)
+    zone_id = DynamicModelMultipleChoiceField(
+        queryset=Zone.objects.all(), required=False, label=_('Zone'), query_params={'site_id': '$site_id'},
+        help_text=_('Only flows from, into or brokered in these zones: a zone and its neighbours'),
+    )
+    remote_access = forms.NullBooleanField(
+        required=False, label=_('Remote access'), widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
+    )
+    collapse = forms.BooleanField(required=False, label=_('Draw sub-zones inside their parent zone'))
+    empty = forms.BooleanField(required=False, label=_('Draw zones without flows'))
+
+    def __init__(self, *args, site=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if site is not None:
+            del self.fields['site_id']
+            self.fields['zone_id'].query_params = {'site_id': site.pk}
+        for name in ('max_level', 'verdict', 'protocol', 'connection', 'remote_access'):
+            self.fields[name].widget.attrs['class'] = 'form-select'
+        for name in ('collapse', 'empty'):
+            self.fields[name].widget.attrs['class'] = 'form-check-input'
 
 
 class ChecksFilterForm(forms.Form):

@@ -1,20 +1,26 @@
 """
 The access map: every flow into a zone at Purdue level <= N (default 2), i.e. every path to the controllers, with
-its "allowed?" verdict. Not allowed first, then allowed-but-expired, unknown, and allowed. Plus a small
-server-rendered SVG with one arrow per directed zone pair.
+its "allowed?" verdict. Not allowed first, then allowed-but-expired, unknown, and allowed. The diagram that goes
+with it is in accessdiagram.py.
 """
 import datetime
-import math
-from collections import defaultdict
 
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
-from django.utils.html import escape
-from django.utils.safestring import mark_safe
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy as _
 
+from .accessdiagram import access_map_diagram, access_map_svg  # noqa: F401 (imported from here)
 from .choices import ConnectionChoices, FlowAllowedChoices, PurdueLevelChoices
 from .models import Flow, Zone, stale_after_days
+
+# The four verdicts of the access map, worst first; the position is the value of `verdict_order`
+VERDICTS = ('no', 'expired', 'unknown', 'yes')
+VERDICT_CHOICES = (
+    ('no', _('Not allowed')),
+    ('expired', _('Allowed, expired')),
+    ('unknown', _('Unknown')),
+    ('yes', _('Allowed')),
+)
 
 
 def verdict_order():
@@ -28,8 +34,13 @@ def verdict_order():
     )
 
 
-def access_map_flows(queryset=None, site=None, max_level=PurdueLevelChoices.LEVEL_2):
-    """Flows into zones at Purdue level <= max_level, from any zone of the site or into one."""
+def access_map_flows(queryset=None, site=None, max_level=PurdueLevelChoices.LEVEL_2, verdict=(), protocol=(),
+                     connection=(), zones=(), remote_access=None):
+    """
+    Flows into zones at Purdue level <= max_level, from any zone of the site or into one. The other arguments
+    narrow it down: verdicts (VERDICTS), protocols, connection models, zones (flows from, into or brokered in
+    one of them) and remote access only (True) or without (False).
+    """
     levels = PurdueLevelChoices.at_or_below(max_level)
     qs = (queryset if queryset is not None else Flow.objects.all()).select_related(
         'source_zone__site', 'destination_zone__site', 'broker_zone', 'conduit',
@@ -37,9 +48,18 @@ def access_map_flows(queryset=None, site=None, max_level=PurdueLevelChoices.LEVE
     if site is not None:
         qs = qs.filter(Q(source_zone__site=site) | Q(destination_zone__site=site))
     qs = qs.filter(destination_zone__purdue_level__in=levels)
-    return qs.annotate(verdict_order=verdict_order()).order_by(
-        'verdict_order', 'destination_zone__purdue_level', 'destination_zone__name', 'name'
-    )
+    if protocol:
+        qs = qs.filter(protocol__in=protocol)
+    if connection:
+        qs = qs.filter(connection__in=connection)
+    if zones:
+        qs = qs.filter(Q(source_zone__in=zones) | Q(destination_zone__in=zones) | Q(broker_zone__in=zones))
+    if remote_access is not None:
+        qs = qs.filter(remote_access=remote_access)
+    qs = qs.annotate(verdict_order=verdict_order())
+    if verdict:
+        qs = qs.filter(verdict_order__in=[VERDICTS.index(v) for v in verdict if v in VERDICTS])
+    return qs.order_by('verdict_order', 'destination_zone__purdue_level', 'destination_zone__name', 'name')
 
 
 def attention(queryset):
@@ -60,131 +80,27 @@ def attention(queryset):
     }
 
 
-#
-# SVG diagram: one row per Purdue level (5 at the top, 0 at the bottom), zones as boxes, one arrow per directed
-# zone pair coloured by its worst verdict.
-#
-
-LINE_COLORS = {'no': '#d63939', 'expired': '#d63939', 'unknown': '#f59f00', 'yes': '#2fb344'}
-WORST = ('no', 'expired', 'unknown', 'yes')
-BOX_W, BOX_H, GAP_X, ROW_H, LABEL_W, PAD = 190, 46, 40, 96, 150, 16
-
-
-def _level_rows(zones):
-    order = [None] + [value for value, _label in reversed(PurdueLevelChoices.CHOICES)]
-    labels = {value: str(label).split(' (')[0] for value, label in PurdueLevelChoices.CHOICES}
-    labels[None] = str(_('No level'))
-    rows = []
-    for level in order:
-        members = sorted((z for z in zones if (z.purdue_level or None) == level), key=lambda z: z.name)
-        if members:
-            rows.append((labels[level], members))
-    return rows
-
-
-def _verdict(flow):
-    return 'expired' if flow.is_expired else flow.allowed
-
-
-def _flow_title(flow):
-    if flow.connection == ConnectionChoices.BROKERED and flow.broker_zone_id:
-        return _('{flow} (through a broker in {zone})').format(flow=flow, zone=flow.broker_zone)
-    if flow.connection != ConnectionChoices.CLIENT_SERVER:
-        return f'{flow} ({flow.get_connection_display().lower()})'
-    return str(flow)
-
-
-def access_map_svg(flows, zones=()):
-    """Return an inline SVG (safe string) for the given flows; `zones` adds zones without flows."""
-    flows = list(flows)
-    all_zones = {z.pk: z for z in zones}
-    for f in flows:
-        all_zones.setdefault(f.source_zone_id, f.source_zone)
-        all_zones.setdefault(f.destination_zone_id, f.destination_zone)
-    if not all_zones:
-        return ''
-    rows = _level_rows(all_zones.values())
-    width = LABEL_W + max(len(m) for _l, m in rows) * (BOX_W + GAP_X) + PAD
-    height = len(rows) * ROW_H + PAD
-    pos = {}
-    out, lines, badges = [], [], []
-    for r, (label, members) in enumerate(rows):
-        y = PAD + r * ROW_H
-        out.append(f'<text x="8" y="{y + BOX_H / 2 + 4}" class="lvl">{escape(label)}</text>')
-        out.append(f'<line x1="0" x2="{width}" y1="{y + ROW_H - 25}" y2="{y + ROW_H - 25}" class="sep"/>')
-        for i, z in enumerate(members):
-            x = LABEL_W + i * (BOX_W + GAP_X)
-            pos[z.pk] = (x, y)
-            out.append(
-                f'<a href="{escape(z.get_absolute_url())}"><rect x="{x}" y="{y}" width="{BOX_W}" height="{BOX_H}" '
-                f'rx="4" class="zone"/><text x="{x + BOX_W / 2}" y="{y + BOX_H / 2 + 4}" text-anchor="middle" '
-                f'class="zn">{escape(z.name[:26])}</text></a>'
-            )
-    # One arrow per directed zone pair. Each zone spreads the ends of its arrows across its box, ordered by where
-    # the other zone sits, so arrows do not share a line; the count badge sits just before the arrowhead, in the
-    # gap above or below the destination box, where it cannot cover a zone's name.
-    pairs = {}
-    for f in flows:
-        pairs.setdefault((f.source_zone_id, f.destination_zone_id), []).append(f)
-    ends = defaultdict(list)
-    for src, dst in pairs:
-        ends[src].append(((src, dst), dst))
-        ends[dst].append(((src, dst), src))
-    for zone_pk in ends:
-        ends[zone_pk].sort(key=lambda end: (pos[end[1]][0], pos[end[1]][1]))
-
-    def anchor_x(zone_pk, key):
-        items = [k for k, _other in ends[zone_pk]]
-        n, i = len(items), items.index(key)
-        step = min(28, (BOX_W - 30) / max(n - 1, 1))
-        return pos[zone_pk][0] + BOX_W / 2 + (i - (n - 1) / 2) * step
-
-    for (src, dst), members in pairs.items():
-        (_sx, sy), (_dx, dy) = pos[src], pos[dst]
-        x1, x2 = anchor_x(src, (src, dst)), anchor_x(dst, (src, dst))
-        if sy == dy:  # same row: arc above the boxes
-            y1 = y2 = sy
-            path = f'M{x1},{y1} Q{(x1 + x2) / 2},{sy - 60} {x2},{y2}'
-            lx, ly = (x1 + x2) / 2, sy - 32
-        else:
-            y1 = sy + BOX_H if sy < dy else sy
-            y2 = dy if sy < dy else dy + BOX_H
-            path = f'M{x1},{y1} L{x2},{y2}'
-            length = math.hypot(x2 - x1, y2 - y1) or 1
-            lx, ly = x2 - (x2 - x1) / length * 18, y2 - (y2 - y1) / length * 18
-        worst = min((_verdict(f) for f in members), key=WORST.index)
-        color = LINE_COLORS.get(worst, '#888')
-        # Dashed: remote access. Dotted: no inbound connection (reverse connect or a broker). Both: dash-dot.
-        remote = any(f.remote_access for f in members)
-        outbound = any(f.is_outbound_only for f in members)
-        pattern = {(True, False): '6 4', (False, True): '2 4', (True, True): '6 3 2 3'}.get((remote, outbound))
-        dash = f' stroke-dasharray="{pattern}"' if pattern else ''
-        title = escape('\n'.join(_flow_title(f) for f in members))
-        lines.append(
-            f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2.5"{dash} '
-            f'marker-end="url(#iec-arrow)"><title>{title}</title></path>'
-        )
-        badges.append(
-            f'<circle cx="{lx}" cy="{ly}" r="9" fill="{color}"><title>{title}</title></circle>'
-            f'<text x="{lx}" y="{ly + 4}" text-anchor="middle" class="num">{len(members)}</text>'
-        )
-    aria = escape(_('Access map diagram'))
-    svg = (
-        f'<svg viewBox="0 0 {width} {height}" width="100%" style="max-width:{width}px" role="img" '
-        f'aria-label="{aria}" class="ot-map">'
-        '<defs>'
-        '<marker id="iec-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
-        'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>'
-        '</defs>'
-        '<style>.ot-map .zone{fill:var(--tblr-bg-surface,#fff);stroke:rgba(32,107,196,.7);stroke-width:1.5}'
-        '.ot-map .zn{fill:currentColor;font-size:13px;font-weight:600}'
-        '.ot-map .lvl{fill:currentColor;opacity:.7;font-size:12px}'
-        '.ot-map .sep{stroke:currentColor;opacity:.12}'
-        '.ot-map .num{fill:#fff;font-size:11px;font-weight:700}</style>'
-        + ''.join(lines + out + badges) + '</svg>'
-    )
-    return mark_safe(svg)
 
 
 def site_zones(site):
     return Zone.objects.filter(site=site) if site is not None else Zone.objects.none()
+
+
+def accessmap_labels():
+    """The texts the diagram's script shows in its detail panel."""
+    return {
+        'verdicts': {value: str(label) for value, label in VERDICT_CHOICES},
+        'from': str(_('From zone')),
+        'to': str(_('To zone')),
+        'flow': str(_('Flow')),
+        'protocol': str(_('Protocol / ports')),
+        'verdict': str(_('Allowed')),
+        'remote': str(_('remote access')),
+        'open': str(_('Open the zone')),
+        'focus': str(_('Only this zone and its neighbours')),
+        'flows': str(_('flows')),
+        'inside': str(_('Between the zones inside')),
+        'subzones': str(_('Sub-zones')),
+        'close': str(_('Close')),
+        'none': str(_('No flows on the map for this zone.')),
+    }

@@ -15,10 +15,12 @@
 8. [Importer](importer.md): Zeek logs ([zeek.md](zeek.md)) and observation files
    ([import-format.md](import-format.md)).
 9. [REST API, GraphQL and management commands](api.md).
-10. [Companion plugins](companions.md): netbox-lifecycle and netbox-inventory, the tested bundle, end of support,
+10. [OT overview](overview.md): where a site stands, as a radar chart of achieved against target security
+    level, requirement statuses and risk.
+11. [Companion plugins](companions.md): netbox-lifecycle and netbox-inventory, the tested bundle, end of support,
     firmware versions, a licence note.
-11. [Working in a branch](branching.md): netbox-branching, `--branch` on the commands, a default branch for
+12. [Working in a branch](branching.md): netbox-branching, `--branch` on the commands, a default branch for
     imports and a guard for main.
-12. [Development](development.md): running the tests, CI, releasing, translations.
+13. [Development](development.md): running the tests, CI, releasing, translations.
 
 Release notes: [CHANGELOG.md](../CHANGELOG.md).

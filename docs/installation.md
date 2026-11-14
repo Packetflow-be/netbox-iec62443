@@ -111,6 +111,9 @@ sudo /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py ot_demo --delete
 
 With netbox-docker: `docker compose exec netbox /opt/netbox/netbox/manage.py ot_demo`.
 
+`ot_demo --large` creates a second, larger plant on its own site (35 zones, about 200 flows, no devices) to
+see the access map and the lists at the size of a real plant; `ot_demo --large --delete` removes it.
+
 ## Configuration
 
 All settings are optional; these are the defaults.
