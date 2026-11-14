@@ -40,6 +40,11 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 - The import **says when the zone map's type differs** from an existing zone's type in NetBox (it keeps
   NetBox's; before, the difference passed silently).
 
+- **Re-imports report moved assets**: when the input puts a device or VM in another zone, the import lists the
+  zones it is still in, and the new `--move` drops the old membership (a parent or sub-zone does not count).
+- A **split says what will not hold**: hosts of a split part that are not devices in NetBox yet (their levels
+  live only in this input), and a split zone left without members, with the prefix it still holds.
+
 ### Bug fixes
 
 - An **unscoped prefix was linked into the zones of several sites**: the 4SICS imports into three sites linked

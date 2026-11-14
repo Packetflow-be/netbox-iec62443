@@ -510,6 +510,45 @@ class SiteAndVRFScopeTest(TestCase):
         self.assertIn('zone Cell: the input says DMZ, NetBox has OT (control); kept. Change it in NetBox if the input '
                       'is right.', lines)
 
+    def test_moved_asset_is_reported_and_moved_on_request(self):
+        self._apply(self.site_a)
+        moved = [{'ip': '192.168.0.10', 'zone': 'Line 2'}]
+        lines = []
+        stats = apply_plan(build_plan(moved, [], {}), self.site_a, log=lines.append)
+        self.assertEqual(sorted(z.name for z in self.plc_a.ot_zones.all()), ['Cell', 'Line 2'])
+        self.assertEqual(stats['members still in their old zone (see --move)'], 1)
+        self.assertIn('plc-a (192.168.0.10): now in zone Line 2, still in zone Cell too; --move drops the old '
+                      'membership', lines)
+        lines = []
+        stats = apply_plan(build_plan(moved, [], {}), self.site_a, log=lines.append, move=True)
+        self.assertEqual([z.name for z in self.plc_a.ot_zones.all()], ['Line 2'])
+        self.assertEqual(stats['members moved'], 1)
+        # A parent zone is not "another zone"
+        line2 = Zone.objects.get(site=self.site_a, name='Line 2')
+        cell = Zone.objects.get(site=self.site_a, name='Cell')
+        line2.parent = cell
+        line2.save()
+        cell.devices.add(self.plc_a)
+        stats = apply_plan(build_plan(moved, [], {}), self.site_a, log=lambda m: None, move=True)
+        self.assertEqual(sorted(z.name for z in self.plc_a.ot_zones.all()), ['Cell', 'Line 2'])
+        self.assertNotIn('members moved', stats)
+
+    def test_split_reports_what_will_not_hold(self):
+        self._apply(self.site_a)
+        assets = [{'ip': '192.168.0.10', 'zone': 'Cell', 'purdue_level': 1},
+                  {'ip': '192.168.0.20', 'zone': 'Cell', 'purdue_level': 2},
+                  {'ip': '192.168.0.30', 'zone': 'Cell', 'purdue_level': 2}]  # not in NetBox
+        flows = [{'src': '192.168.0.20', 'dst': '192.168.0.10', 'proto': 'modbus', 'func': 'Read Coils'}]
+        lines = []
+        stats = apply_plan(build_plan(assets, flows, {}, split_zones=True), self.site_a, log=lines.append, move=True)
+        self.assertEqual(stats['hosts of a split zone not in NetBox'], 1)
+        self.assertTrue(any(line.startswith('zone Cell (supervisory): 1 host(s) are not devices or VMs in NetBox yet')
+                            for line in lines))
+        self.assertEqual(stats['zones left without members by a split'], 1)
+        self.assertIn('zone Cell has no members left after the split into Cell (control), Cell (supervisory); it '
+                      'still holds 192.168.0.0/24, so addresses in it fall back to it when a later import has no '
+                      'levels. Delete it, or keep it as the parent of the parts', lines)
+
     def test_region_prefix_when_the_site_has_none(self):
         zone, _stats, _lines = self._apply(self.site_b, assets=[{'ip': '192.168.5.1', 'zone': 'Cell'}])
         self.assertEqual([str(p.prefix) for p in zone.prefixes.all()], ['192.168.0.0/20'])

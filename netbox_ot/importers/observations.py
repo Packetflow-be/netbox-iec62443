@@ -33,7 +33,8 @@ networks are normal in OT, so every lookup in NetBox is scoped to that site and 
             open OT ports that no identified service explains are listed in the plan for a person to resolve.
 
 Re-running is safe: it adds members, ports and access classes, widens first/last seen and refreshes evidence,
-but never overwrites a human decision (a flow's verdict, conduit or hops; a zone's or device's Purdue level).
+but never overwrites a human decision (a flow's verdict, conduit or hops; a zone's type or Purdue level; a
+device's Purdue level). Members leave a zone only with move=True (ot_import --move).
 """
 import ipaddress
 from collections import defaultdict
@@ -79,6 +80,7 @@ class ZonePlan:
     description: str = ''
     member_ips: list = field(default_factory=list)
     declared_type: str = ''  # the type the input gave (summary "zones", a zone map line), '' when derived
+    split_from: str = ''  # for a part of a split zone: the zone it was split from
 
 
 @dataclass
@@ -360,6 +362,7 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
             levels.append(float(declared_levels[name]))
         z.purdue_level = _level(min(levels)) if levels else ''
         z.declared_type = declared_types.get(name) or declared_types.get(base_of_zone[name]) or ''
+        z.split_from = base_of_zone[name] if base_of_zone[name] != name else ''
         z.zone_type = _zone_type(z.purdue_level, z.declared_type)
     # The most critical part of each split zone gets traffic that can't be pinned to one part
     critical = {}
@@ -863,10 +866,25 @@ def _merge(existing, new, order=None):
     return sorted(merged, key=order.index) if order else merged
 
 
-def apply_plan(plan, site, vrf=None, log=print):
+def _related(a, b):
+    """True when one zone is the other's parent or sub-zone, at any depth."""
+    def ancestors(zone):
+        seen = set()
+        while zone.parent_id and zone.parent_id not in seen:
+            seen.add(zone.parent_id)
+            zone = zone.parent
+        return seen
+    return a.pk in ancestors(b) or b.pk in ancestors(a)
+
+
+def apply_plan(plan, site, vrf=None, log=print, move=False):
     """
     Create/update zones, flows, services and Purdue levels for `site`, matching devices, VMs and prefixes
     within `site` and `vrf` (None: the global table). Call inside a transaction.
+
+    An asset the input puts in a zone stays in the zones it was already in (a person may have put it there);
+    the import reports each such zone, and with `move` drops the old membership. A parent or sub-zone of the new
+    zone is not "another zone".
     """
     from extras.models import CustomField
 
@@ -935,12 +953,45 @@ def apply_plan(plan, site, vrf=None, log=print):
             if not members.filter(pk=asset.pk).exists():
                 members.add(asset)
                 stats['members added'] += 1
+            for old in asset.ot_zones.filter(site=site).exclude(pk=zone.pk).select_related('parent'):
+                if _related(old, zone):
+                    continue
+                if move:
+                    (old.devices if asset._meta.model_name == 'device' else old.virtual_machines).remove(asset)
+                    stats['members moved'] += 1
+                    log(f'{asset} ({ip}): moved from zone {old} to {zone}')
+                else:
+                    stats['members still in their old zone (see --move)'] += 1
+                    log(f'{asset} ({ip}): now in zone {zone}, still in zone {old} too; --move drops the old '
+                        f'membership')
             level = plan.asset_levels.get(ip)
             if has_cf and level and not asset.custom_field_data.get(PURDUE_CF_NAME):
                 asset.snapshot()
                 asset.custom_field_data[PURDUE_CF_NAME] = level
                 asset.save()
                 stats['asset levels set'] += 1
+
+    # A split holds on the next import only through the assets' own levels: those of hosts that are not devices
+    # yet live in this input alone. And the zone it was split from may be left without members.
+    split_from = {}
+    for zp in plan.zones.values():
+        if not zp.split_from:
+            continue
+        split_from.setdefault(zp.split_from, []).append(zp.name)
+        missing = sum(1 for ip in zp.member_ips if resolver.asset(ip) is None)
+        if missing:
+            stats['hosts of a split zone not in NetBox'] += missing
+            log(f'zone {zp.name}: {missing} host(s) are not devices or VMs in NetBox yet, so their levels live only '
+                f'in this input; the split holds on the next import only with the same zone map or levels, or once '
+                f'they exist (--unknown-import)')
+    for base, parts in sorted(split_from.items()):
+        original = Zone.objects.filter(site=site, name=base).first()
+        if original is not None and not original.devices.exists() and not original.virtual_machines.exists():
+            stats['zones left without members by a split'] += 1
+            held = ', '.join(str(p.prefix) for p in original.prefixes.all())
+            log(f"zone {base} has no members left after the split into {', '.join(sorted(parts))}"
+                + (f'; it still holds {held}, so addresses in it fall back to it when a later import has no levels'
+                   if held else '') + '. Delete it, or keep it as the parent of the parts')
 
     for fp in plan.flows:
         src, dst = zone_objs[fp.source], zone_objs[fp.destination]

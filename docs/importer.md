@@ -81,7 +81,11 @@ plant only, and the unknown-host files do not collide with another plant's addre
   Traffic counted for the whole zone goes to the part its OT requests point at, else to the most
   critical part. `--split-all` does this for every mixed zone. A split needs the assets' own levels: from
   assets.json, an address line in the zone map, or the level the NetBox device or VM already has. When a zone
-  cannot be split, the import says why.
+  cannot be split, the import says why. It also says which hosts of a split part are not devices in NetBox
+  yet (their levels live only in this input, so the next import needs the same zone map until they exist) and
+  when the zone that was split is left without members.
+- `--move`: when the input puts a device or VM in another zone than before, drop it from its old zone.
+  Without it the asset stays in both and the import lists each one (a parent or sub-zone does not count).
 - `--dry-run` shows what would change and writes nothing.
 - `--user NAME` records the changes in the change log under that user (default: the first superuser).
 
@@ -105,8 +109,9 @@ or VM only when it has none yet, and only from an asset's own level, never from 
 
 ## Re-running
 
-Re-running adds ports and access classes, widens first/last seen and refreshes evidence, but never
-touches a flow's verdict, conduit or hops, or a level someone set.
+Re-running adds members, ports and access classes, widens first/last seen and refreshes evidence, but never
+touches a flow's verdict, conduit or hops, a level someone set, or a zone's type (it says when the input's type
+differs). Members only leave a zone with `--move`.
 
 ## Other sources
 
