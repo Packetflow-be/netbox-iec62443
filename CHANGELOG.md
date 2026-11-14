@@ -36,7 +36,7 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   left out unless asked for, and the page for all sites no longer draws the zones of every site in one
   picture. The plugin now ships static files: run `manage.py collectstatic` after upgrading (NetBox's
   `upgrade.sh` does).
-- **Exposure first** ([#PR](https://github.com/Packetflow-be/netbox-ot/pull/PR)). Two new checks:
+- **Exposure first** ([#34](https://github.com/Packetflow-be/netbox-ot/pull/34)). Two new checks:
   `undecided-into-control` (error) for an undecided flow into a control zone (level 0-1 or safety) that writes,
   controls or programs it, is remote access or comes from a DMZ, enterprise or external zone, and
   `outside-into-control` (warning) for a flow allowed straight from such a zone into a control zone. Both lead
@@ -50,7 +50,7 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 ### Bug fixes
 
 Found by importing a real ICS lab capture (the public 4SICS captures) with Zeek and the CISA ICSNPP parsers
-([#PR](https://github.com/Packetflow-be/netbox-ot/pull/PR)):
+([#34](https://github.com/Packetflow-be/netbox-ot/pull/34)):
 
 - **Traffic inside a zone is no longer lost without a word.** The import reports the industrial requests
   between assets of the same zone, with the writes and who sent them, and how to put them on the access map.
@@ -76,7 +76,7 @@ Found by importing a real ICS lab capture (the public 4SICS captures) with Zeek 
 - netbox-branching is marked as not recommended alongside netbox-ot: it works, but every release with a
   migration leaves the branches with pending migrations, so they have to be rebuilt after each upgrade.
   `ot_import --dry-run`, a separate site or a test NetBox are the lighter ways to try an import
-  ([#PR](https://github.com/Packetflow-be/netbox-ot/pull/PR)).
+  ([#34](https://github.com/Packetflow-be/netbox-ot/pull/34)).
 
 - The menu and the panel on device and VM pages are called *OT* in the README and the docs, as in the plugin
   since 0.3.0; the API and installation pages list the system requirement objects of 0.4.0 and the firmware
