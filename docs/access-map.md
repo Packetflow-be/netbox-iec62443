@@ -8,10 +8,16 @@ is allowed?**
 - It lists every flow into zones at Purdue level 2 or below. The level is selectable (≤ 0 ... ≤ 5), and its
   default is the `access_map_max_level` setting.
 - Flows are ordered by what needs action: not allowed first, then allowed but expired, unknown, and allowed.
+  Within each verdict, flows that write, control or program and come from outside (a DMZ, enterprise or
+  external zone, or remote access) come first, then other flows that write, control or program, then other
+  flows from outside, then the rest.
 - Each row shows the source and destination zone with their levels, the protocol and ports, the access the
   requests had (read, write, control, program), the hops it runs through, remote access, the verdict, when the
   flow was last seen and the evidence.
-- **Needs attention** sums up expired access, verdicts due for review, flows not seen for `stale_after_days`
+- **Needs attention** starts with the undecided flows into a control zone that write, control or program it,
+  are remote access or come from outside, and the flows allowed straight from outside into a control zone (the
+  `undecided-into-control` and `outside-into-control` checks; also flow filters of those names). Then it sums
+  up expired access, verdicts due for review, flows not seen for `stale_after_days`
   (default 90), flows that run outside any documented conduit, and flows that reach their zone over a connection
   opened from inside it (reverse connect, a broker: see [Connection models](data-model.md#connection-models)).
 - A flow with another [connection model](data-model.md#connection-models) than client/server shows it under the
@@ -43,8 +49,8 @@ The diagram is drawn per site; the page for all sites lists the flows only.
 
 - Purdue levels are the rows, 5 at the top. A level with more than six zones wraps into several rows.
 - There is one arrow per zone pair and direction, from the side that acts to the side acted upon: red for not
-  allowed or expired, amber for unknown, green for allowed; dashed for remote access, dotted when the
-  destination opens the connection itself. An arrow that carries several flows is thicker and shows how many,
+  allowed or expired, amber for unknown, green for allowed; heavy when a flow on it writes, controls or
+  programs; dashed for remote access, dotted when the destination opens the connection itself. An arrow that carries several flows is thicker and shows how many,
   per colour.
 - Arrows that skip a level run through the gaps between the zones in between, not behind them, and the zones
   of a row are ordered so that arrows cross as little as possible.

@@ -4,7 +4,18 @@
 
 ![Consistency checks](checks.png)
 
-*OT > Consistency checks* lists what is inconsistent or missing in the model of a site:
+*OT > Consistency checks* lists what is inconsistent or missing in the model of a site, starting with what
+exposes the controllers:
+
+- **`undecided-into-control`** (error): a flow into a control zone (Purdue level 0 or 1, or a safety zone) that
+  writes, controls or programs it, is remote access, or comes from a DMZ, enterprise or external zone (or a zone
+  at level 3.5 or higher), and that nobody has decided on yet. After a first import these are the flows to
+  decide first; a CI job with the default `--fail-on error` fails until they are decided.
+- **`outside-into-control`** (warning): a flow that is allowed straight from a DMZ, enterprise or external zone
+  into a control zone, without passing a supervisory zone. Allowed by a person, so not an error, but worth a
+  look at every review.
+
+Then:
 
 - an address in another zone's prefix, an asset below its zone's level or in the wrong kind of zone, assets
   in no zone or in two;
@@ -15,7 +26,8 @@
 - residual risk above tolerable, overdue risk assessments;
 - IEC 62443-3-3 requirements that apply at the SL-T without a status, and an SL-A claimed with a requirement
   not met ([System requirements](requirements.md));
-- what an audit will ask for and is missing: no SL-T, no accountable person, no approved risk assessment;
+- what an audit will ask for and is missing: no SL-T, no accountable person, no approved risk assessment
+  (not for external zones: a supplier, an MSP or the internet is outside the system under consideration);
 - with [netbox-lifecycle](companions.md#end-of-support): devices past, or within a year of, their end of
   support in zones with SL-T 2 or more.
 

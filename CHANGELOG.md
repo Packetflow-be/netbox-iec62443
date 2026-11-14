@@ -35,6 +35,14 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   left out unless asked for, and the page for all sites no longer draws the zones of every site in one
   picture. The plugin now ships static files: run `manage.py collectstatic` after upgrading (NetBox's
   `upgrade.sh` does).
+- **Exposure first** ([#PR](https://github.com/Packetflow-be/netbox-ot/pull/PR)). Two new checks:
+  `undecided-into-control` (error) for an undecided flow into a control zone (level 0-1 or safety) that writes,
+  controls or programs it, is remote access or comes from a DMZ, enterprise or external zone, and
+  `outside-into-control` (warning) for a flow allowed straight from such a zone into a control zone. Both lead
+  *Needs attention* on the access map and are flow filters of the same names. Within a verdict the access map
+  lists flows that change the controllers from outside first, and the diagram draws an arrow heavy when a flow
+  on it writes, controls or programs. The checks for a missing SL-T, accountable person or risk assessment leave
+  external zones out: a supplier or the internet is outside the system under consideration.
 - `ot_demo --large` creates a second demo plant of 35 zones and about 200 flows on its own site, to try the
   plugin at the size of a real plant ([#32](https://github.com/Packetflow-be/netbox-ot/pull/32)).
 

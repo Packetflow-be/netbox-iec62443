@@ -67,6 +67,13 @@ class ChecksTest(TestCase):
                             broker_zone=cls.office, access=['write'], conduit=conduit)
         Flow.objects.create(name='old', source_zone=cls.cell, destination_zone=cls.office,
                             last_seen=timezone.now() - datetime.timedelta(days=365))
+        # Straight from the office into the safety zone: an undecided write and an allowed read
+        Flow.objects.create(name='office writes safety', source_zone=cls.office, destination_zone=cls.sub,
+                            access=['read', 'write'])
+        Flow.objects.create(name='office reads safety', source_zone=cls.office, destination_zone=cls.sub,
+                            access=['read'], allowed='yes', decided_by=cls.contact)
+        # A supplier is outside the system under consideration: no SL-T, owner or risk assessment asked
+        Zone.objects.create(name='Supplier', slug='supplier', site=cls.site, zone_type='external')
         RiskAssessment.objects.create(zone=cls.cell, assessed_on=TODAY - datetime.timedelta(days=400),
                                       status='approved', approved_on=TODAY - datetime.timedelta(days=399),
                                       residual_risk='high', tolerable_risk='medium', next_review=TODAY)
@@ -122,13 +129,48 @@ class ChecksTest(TestCase):
         self.assertEqual(len(self._found('expired-access')), 1)
         self.assertEqual(self._found('remote-access-without-expiry'),
                          {'supplier allows remote access with no end date'})
-        self.assertEqual(len(self._found('flow-without-conduit')), 2)
+        self.assertEqual(len(self._found('flow-without-conduit')), 4)
         self.assertEqual(self._found('verdict-without-decider'), {'supplier is marked yes without who decided it'})
         self.assertEqual(len(self._found('stale-flow')), 1)
         self.assertEqual(len(self._found('residual-above-tolerable')), 1)
         self.assertEqual(len(self._found('risk-assessment-due')), 1)
         self.assertEqual(self._found('no-risk-assessment'), {'Office has no approved risk assessment',
                                                              'Cell safety has no approved risk assessment'})
+
+    def test_exposure(self):
+        from netbox_ot.accessmap import access_map_flows, attention
+        from netbox_ot.filtersets import FlowFilterSet
+        self.assertEqual(self._found('undecided-into-control'), {
+            'office writes safety reaches control zone Cell safety (write; from the Enterprise zone Office) and nobody '
+            'decided whether it is allowed',
+        })
+        self.assertEqual(self._found('outside-into-control'), {
+            'office reads safety is allowed straight from the Enterprise zone Office into control zone Cell safety, '
+            'without passing a supervisory zone',
+        })
+        counts = attention(Flow.objects.filter(source_zone__site=self.site))
+        self.assertEqual((counts['undecided_into_control'], counts['outside_into_control']), (1, 1))
+        for name, expected in (('undecided_into_control', ['office writes safety']),
+                               ('outside_into_control', ['office reads safety'])):
+            qs = FlowFilterSet({name: True}, Flow.objects.all()).qs
+            self.assertEqual(list(qs.values_list('name', flat=True)), expected)
+        # The paperwork checks leave the external zone out
+        for check_id in ('no-sl-target', 'no-accountable', 'no-risk-assessment'):
+            self.assertFalse([m for m in self._found(check_id) if m.startswith('Supplier')], check_id)
+
+    def test_access_map_puts_writes_first_within_a_verdict(self):
+        from netbox_ot.accessmap import access_map_flows
+        site = Site.objects.create(name='Order', slug='order')
+        hmi = Zone.objects.create(name='HMI', slug='hmi', site=site, purdue_level='2')
+        plc = Zone.objects.create(name='PLC', slug='plc', site=site, purdue_level='1')
+        office = Zone.objects.create(name='Office', slug='office-o', site=site, purdue_level='4',
+                                     zone_type='enterprise')
+        Flow.objects.create(name='a hmi reads', source_zone=hmi, destination_zone=plc, access=['read'])
+        Flow.objects.create(name='b office reads', source_zone=office, destination_zone=plc, access=['read'])
+        Flow.objects.create(name='c hmi writes', source_zone=hmi, destination_zone=plc, access=['write'])
+        Flow.objects.create(name='d office writes', source_zone=office, destination_zone=plc, access=['write'])
+        self.assertEqual([f.name for f in access_map_flows(site=site)],
+                         ['d office writes', 'c hmi writes', 'b office reads', 'a hmi reads'])
 
     def test_a_clean_site_has_no_errors_or_warnings(self):
         site = Site.objects.create(name='Clean', slug='clean')

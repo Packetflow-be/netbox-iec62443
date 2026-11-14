@@ -543,7 +543,8 @@ class FlowFilterForm(PrimaryModelFilterSetForm):
                  name=_('Zones')),
         FieldSet('protocol', 'port', 'access', 'modifying', 'remote_access', name=_('Traffic')),
         FieldSet('connection', 'broker_zone_id', 'outbound_only', 'topics', name=_('Connection')),
-        FieldSet('allowed', 'decided_by_id', 'expired', 'review_due', 'stale', name=_('Verdict')),
+        FieldSet('allowed', 'decided_by_id', 'expired', 'review_due', 'stale', 'undecided_into_control',
+                 'outside_into_control', name=_('Verdict')),
         FieldSet('hop_device_id', 'hop_virtual_machine_id', 'hop_tunnel_id', name=_('Path')),
         FieldSet('owner_group_id', 'owner_id', name=_('Ownership')),
     )
@@ -589,6 +590,15 @@ class FlowFilterForm(PrimaryModelFilterSetForm):
     )
     stale = forms.NullBooleanField(
         label=_('Not seen recently'), required=False, widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
+    )
+    undecided_into_control = forms.NullBooleanField(
+        label=_('Undecided into a control zone'), required=False,
+        widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
+        help_text=_('Changes it, is remote access or comes from outside'),
+    )
+    outside_into_control = forms.NullBooleanField(
+        label=_('Allowed from outside into a control zone'), required=False,
+        widget=forms.Select(choices=BOOLEAN_WITH_BLANK_CHOICES),
     )
     hop_device_id = DynamicModelMultipleChoiceField(
         queryset=Device.objects.all(), required=False, label=_('Runs through device'),
