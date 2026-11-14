@@ -3,6 +3,9 @@
 **An OT asset and security register in NetBox: IEC 62443 zones, conduits and flows, who can reach your PLCs and
 who decided that is allowed.**
 
+Built and maintained by [Packetflow](https://packetflow.be/en/), industrial networks and OT infrastructure from
+Belgium.
+
 *Formerly **netbox-iec62443**: 0.3.0 takes an existing installation over in place, see
 [Upgrading from netbox-iec62443](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/installation.md#from-netbox-iec62443).*
 
@@ -156,3 +159,9 @@ note in the changelog.
 
 Code: Apache License 2.0, see [LICENSE](https://github.com/Packetflow-be/netbox-ot/blob/main/LICENSE). The icon (`docs/icon.svg`) is licensed under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+## AI assistance
+
+This code is written with heavy AI assistance (Claude, by Anthropic). I, Louis Declerck of
+[Packetflow](https://packetflow.be/en/), take full responsibility for all of it: what it does, its bugs and its
+security. Report problems as described above.
