@@ -33,9 +33,11 @@ type, delete what you do not want, and import with `--zone-map zones.csv`. An im
 zone prints the same list before it stops.
 
 ```
-Networks in the conn log (per /24):
-  10.10.10.0/24        4 host(s)    81234 connection(s), in no zone; serves s7comm (80911), tcp/80 (12)
-  192.168.88.0/24     11 host(s)    20877 connection(s), in no zone; serves modbus (17544), enip (2650), ...
+Networks in the conn log (per /24):        (the public 4SICS ICS lab capture, day 2)
+  10.10.10.0/24        3 host(s)    30350 connection(s), in no zone; serves tcp/102 (30336), s7comm (14)
+  192.168.88.0/24     21 host(s)     7599 connection(s), in no zone; serves http (5808), ssl (367), tcp/80 (325), ...
+  192.168.89.0/24      2 host(s)        2 connection(s), in no zone
+  plus 4 public address(es): they go to the outside zone unless the zone map names them
 ```
 
 ```

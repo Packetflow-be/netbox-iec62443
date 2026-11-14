@@ -5,7 +5,19 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 
 ## Unreleased
 
+### Enhancements
+
+- **First Zeek import without zones** is no longer a dead end. An import into a site without zones lists the
+  networks the conn log holds (per /24: hosts, connections, the services they answer) before it stops, and
+  `--suggest-zone-map zones.csv` writes a draft zone map with one line per network no zone holds yet, to edit and
+  pass as `--zone-map`. [docs/zeek.md](docs/zeek.md).
+
 ### Bug fixes
+
+- The **Zeek import's memory grew with the logs**: every record of every log was held in memory before it was
+  aggregated (1.15 GB for a 55 MB conn.log; day 2 of the 4SICS capture was killed at a 900 MB cap). The logs are
+  now read record by record and only the aggregates are kept: the same day 2 adds about 1 MB to NetBox's own
+  memory and takes 7 s.
 
 - A **risk assessment saved through the REST API** or a script got no risk level from its likelihood and impact:
   the matrix only filled the level in on the form. The level is now taken from the matrix on every save.

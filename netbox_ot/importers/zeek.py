@@ -427,7 +427,8 @@ def survey(logs, zone_map=None, top=4):
 
 
 def _services_text(row):
-    return ', '.join(f'{name} ({n})' for name, n in row['services']) or 'no answered service'
+    services = ', '.join(f'{name} ({n})' for name, n in row['services'])
+    return f'; serves {services}' if services else ''
 
 
 def survey_lines(rows, public):
@@ -437,7 +438,7 @@ def survey_lines(rows, public):
         placed = '' if not row['unplaced'] else (
             ', in no zone' if row['unplaced'] == row['hosts'] else f", {row['unplaced']} in no zone")
         lines.append(f"{row['network']:<18} {row['hosts']:>3} host(s) {row['connections']:>8} connection(s){placed}"
-                     f"; serves {_services_text(row)}")
+                     f"{_services_text(row)}")
     if public:
         lines.append(f'plus {public} public address(es): they go to the outside zone unless the zone map names them')
     return lines
@@ -461,8 +462,8 @@ def write_zone_map_draft(rows, path):
         for row in rows:
             if not row['unplaced']:
                 continue
-            f.write(f"# {row['network']}: {row['hosts']} host(s), {row['connections']} connection(s); "
-                    f"serves {_services_text(row)}\n")
+            f.write(f"# {row['network']}: {row['hosts']} host(s), {row['connections']} connection(s)"
+                    f"{_services_text(row)}\n")
             f.write(f"{row['network']},{row['network']},,\n")
             lines += 1
     return lines
