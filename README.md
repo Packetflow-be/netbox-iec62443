@@ -61,7 +61,7 @@ zone register.
 
 | Plugin | NetBox | Python |
 |---|---|---|
-| 0.4.x, 0.3.x (netbox-ot) | 4.7.0 and later 4.7 releases; 4.8 allowed | 3.12, 3.13 |
+| 0.5.x, 0.4.x, 0.3.x (netbox-ot) | 4.7.0 and later 4.7 releases; 4.8 allowed | 3.12, 3.13 |
 | 0.2.x, 0.1.x (as netbox-iec62443) | 4.7.0 and later 4.7 releases; 4.8 allowed | 3.12, 3.13 |
 
 CI runs the full test suite on NetBox 4.7.0, on the newest 4.7 release, and every week on NetBox's

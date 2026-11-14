@@ -3,7 +3,13 @@
 Each release opens with what kind of release it is. Breaking changes are listed under **Breaking Changes**.
 Numbers link to the issue or pull request on GitHub; entries without a number predate the public repository.
 
-## Unreleased
+## 0.5.0 (2026-11-14)
+
+Minor release: the OT overview per site, an access map that stays readable on a large plant, a risk matrix and
+the IEC 62443-3-2 steps on risk assessments, exposure checks that put undecided writes into control zones first,
+and importer fixes found on a real ICS capture. No breaking changes; upgrading from 0.4.x runs one migration
+(`0005_risk_matrix`, four optional fields). The plugin now ships static files: run `manage.py collectstatic`
+after upgrading (NetBox's `upgrade.sh` does).
 
 ### New features
 
