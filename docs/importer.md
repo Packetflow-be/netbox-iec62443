@@ -2,7 +2,8 @@
 
 ```
 manage.py ot_import <dir> --site <slug> [--vrf <name or RD>] [--user <name>] [--dry-run]
-    [--format auto|zeek|observations] [--zone-map CSV] [--unknown-report CSV] [--unknown-import DIR]
+    [--format auto|zeek|observations] [--zone-map CSV] [--suggest-zone-map CSV]
+    [--unknown-report CSV] [--unknown-import DIR]
     [--outside-zone NAME] [--split ZONE ... | --split-all]
 ```
 

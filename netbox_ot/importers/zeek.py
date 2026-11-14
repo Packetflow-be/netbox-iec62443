@@ -27,7 +27,7 @@ Multicast and broadcast destinations are skipped, as are IPv6 addresses (the imp
 import gzip
 import ipaddress
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -98,13 +98,33 @@ def read_log(path):
                 yield {k: (None if v in UNSET else v) for k, v in zip(fields, values)}
 
 
+class LogStream:
+    """
+    The records of one stream (conn, modbus, ...) across its files, read from disk each time it is iterated: a week
+    of plant traffic never sits in memory, only what the import aggregates from it. `count` is the number of
+    records the last complete pass read (None before one).
+    """
+
+    def __init__(self, paths):
+        self.paths = list(paths)
+        self.count = None
+
+    def __iter__(self):
+        count = 0
+        for path in self.paths:
+            for record in read_log(path):
+                count += 1
+                yield record
+        self.count = count
+
+
 def read_logs(directory):
-    """{stream: [records]} for the Zeek logs in `directory`."""
-    logs = defaultdict(list)
+    """{stream: LogStream} for the Zeek logs in `directory`; nothing is read until a stream is iterated."""
+    paths = defaultdict(list)
     for path in sorted(Path(directory).iterdir()):
         if path.is_file() and (path.name.endswith('.log') or path.name.endswith('.log.gz')):
-            logs[path.name.split('.')[0]].extend(read_log(path))
-    return dict(logs)
+            paths[path.name.split('.')[0]].append(path)
+    return {stream: LogStream(files) for stream, files in paths.items()}
 
 
 def is_zeek_directory(directory):
@@ -231,14 +251,22 @@ class ZoneMap:
 
 def to_observations(logs, zone_map, captures=None):
     """
-    Zeek logs ({stream: [records]}) to the observation format: (assets, flows, summary). `zone_map` places
-    addresses in zones; `captures` names the capture(s) in the evidence.
+    Zeek logs ({stream: records}, read_logs() or lists) to the observation format: (assets, flows, summary).
+    `zone_map` places addresses in zones; `captures` names the capture(s) in the evidence.
+
+    Memory grows with what is aggregated (address pairs, protocols, functions, ports), not with the number of
+    records: every stream is read once, record by record (opcua_binary twice), and conn.log last, keeping only the
+    uids of the connections a protocol log already covers.
     """
     requests = defaultdict(lambda: {'count': 0, 'first': None, 'last': None})
     covered = set()  # connection uids that have protocol-log requests
     open_ports = defaultdict(set)
     seen = set()
-    times = []
+    span = [None, None]  # first and last time seen in any log
+
+    def saw_time(t):
+        span[0] = min(span[0], t) if span[0] else t
+        span[1] = max(span[1], t) if span[1] else t
 
     def keep(src, dst):
         return src and dst and not dst.is_multicast and dst != ipaddress.IPv4Address('255.255.255.255') \
@@ -253,7 +281,7 @@ def to_observations(logs, zone_map, captures=None):
             if t:
                 entry['first'] = min(entry['first'], t) if entry['first'] else t
                 entry['last'] = max(entry['last'], t) if entry['last'] else t
-                times.append(t)
+                saw_time(t)
         seen.update(str(ip) for ip in (src, dst, broker) if ip)
 
     # OPC UA connections opened by the server (Reverse Connect): it sends a ReverseHello first
@@ -296,7 +324,7 @@ def to_observations(logs, zone_map, captures=None):
         port = int(port) if transport in ('tcp', 'udp') and port and str(port).isdigit() else None
         ts = _ts(record.get('ts'))
         if ts:
-            times.append(ts)
+            saw_time(ts)
         zone_pairs[(zone_map.zone_of(src), zone_map.zone_of(dst))] += 1
         if transport == 'tcp' and port:
             open_ports[str(dst)].add(port)
@@ -348,11 +376,97 @@ def to_observations(logs, zone_map, captures=None):
             for z in sorted(set(zone_map.types) | {z for z, v in zone_map.levels.items() if v not in (None, '')})
         ],
     }
-    if times:
-        start, end = min(times), max(times)
+    if span[0]:
+        start, end = span
         summary.update(start=start.isoformat(), end=end.isoformat(),
                        hours=round((end - start).total_seconds() / 3600, 1))
     return assets, flows, summary
+
+
+def survey(logs, zone_map=None, top=4):
+    """
+    The networks a capture holds, for a first import without zones: (networks, public) where networks is a list of
+    {network (/24), hosts, connections, services [(name, connections)], unplaced (hosts no zone of `zone_map`
+    holds)} sorted by network, and public is the number of public addresses seen. Hosts are originators and the
+    responders that answered; an unanswered TCP attempt (a scan) does not make a host.
+    """
+    networks = defaultdict(lambda: {'hosts': set(), 'connections': 0, 'services': Counter()})
+    public = set()
+    for record in logs.get('conn', []):
+        src, dst = _ipv4(record.get('id.orig_h')), _ipv4(record.get('id.resp_h'))
+        if not src or not dst or dst.is_multicast or dst == ipaddress.IPv4Address('255.255.255.255') or \
+                dst == ipaddress.ip_network(f'{dst}/24', strict=False).broadcast_address:
+            continue
+        transport = record.get('proto')
+        answered = transport != 'tcp' or record.get('conn_state') in ANSWERED
+        for ip in (src, dst) if answered else (src,):
+            if ip.is_private:
+                networks[ipaddress.ip_network(f'{ip}/24', strict=False)]['hosts'].add(ip)
+            else:
+                public.add(ip)
+        if answered and dst.is_private:
+            entry = networks[ipaddress.ip_network(f'{dst}/24', strict=False)]
+            entry['connections'] += 1
+            port = record.get('id.resp_p')
+            services = [x.strip() for x in (record.get('service') or '').split(',') if x.strip()]
+            if services:
+                entry['services'][next((x for x in services if protocol_value(x)), services[0])] += 1
+            elif transport in ('tcp', 'udp') and port and str(port).isdigit():
+                entry['services'][f'{transport}/{port}'] += 1
+    rows = []
+    for network, entry in sorted(networks.items()):
+        hosts = {h for h in entry['hosts'] if h not in (network.network_address, network.broadcast_address)}
+        if not hosts:
+            continue
+        rows.append({
+            'network': str(network), 'hosts': len(hosts), 'connections': entry['connections'],
+            'services': entry['services'].most_common(top),
+            'unplaced': sum(1 for h in hosts if not (zone_map and zone_map.zone_of(h))),
+        })
+    return rows, len(public)
+
+
+def _services_text(row):
+    services = ', '.join(f'{name} ({n})' for name, n in row['services'])
+    return f'; serves {services}' if services else ''
+
+
+def survey_lines(rows, public):
+    """The survey as text lines, one per network."""
+    lines = []
+    for row in rows:
+        placed = '' if not row['unplaced'] else (
+            ', in no zone' if row['unplaced'] == row['hosts'] else f", {row['unplaced']} in no zone")
+        lines.append(f"{row['network']:<18} {row['hosts']:>3} host(s) {row['connections']:>8} connection(s){placed}"
+                     f"{_services_text(row)}")
+    if public:
+        lines.append(f'plus {public} public address(es): they go to the outside zone unless the zone map names them')
+    return lines
+
+
+ZONE_MAP_DRAFT_HEADER = """\
+# Draft zone map written by ot_import --suggest-zone-map: one line per network seen that no zone holds yet.
+# Name the zone of each network (several networks may share a zone), give the zone's Purdue level (0-5, 3.5 for
+# a DMZ) and its type (ot, safety, dmz, enterprise, external), and delete the lines you do not want.
+# Address lines (e.g. 10.10.10.20,Cell A,2,) give one asset its own level: an HMI inside a level-1 cell.
+# Then: manage.py ot_import <logs> --site <site> --zone-map <this file> --dry-run
+network,zone,purdue_level,type
+"""
+
+
+def write_zone_map_draft(rows, path):
+    """A zone map to edit, for the networks of survey() with hosts in no zone; returns the number of lines."""
+    lines = 0
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(ZONE_MAP_DRAFT_HEADER)
+        for row in rows:
+            if not row['unplaced']:
+                continue
+            f.write(f"# {row['network']}: {row['hosts']} host(s), {row['connections']} connection(s)"
+                    f"{_services_text(row)}\n")
+            f.write(f"{row['network']},{row['network']},,\n")
+            lines += 1
+    return lines
 
 
 def topic_matches(topic_filter, topic):
