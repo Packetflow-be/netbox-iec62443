@@ -31,6 +31,9 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 
 ### Bug fixes
 
+- The **access map diagram cut off its lowest level** (the controllers) when the drawing was taller than the
+  view, and *Fit* did nothing: it only fitted the width. The diagram now fits width and height on first load
+  (no smaller than readable), and *Fit* always shows the whole drawing.
 - The **Zeek import's memory grew with the logs**: every record of every log was held in memory before it was
   aggregated (1.15 GB for a 55 MB conn.log; day 2 of the 4SICS capture was killed at a 900 MB cap). The logs are
   now read record by record and only the aggregates are kept: the same day 2 adds about 1 MB to NetBox's own
