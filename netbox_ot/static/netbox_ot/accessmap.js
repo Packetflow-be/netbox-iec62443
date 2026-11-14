@@ -45,20 +45,24 @@
       view.scrollLeft = x * scale - ax;
       view.scrollTop = y * scale - ay;
     }
-    function fit() {
-      // The whole width when the labels stay readable at that size, else as small as is readable
-      zoom(Math.min(1, Math.max(READABLE, (view.clientWidth - 2) / width)), 0, 0);
+    function fit(whole) {
+      // The whole drawing, width and height, inside the view (capped at 80vh by the stylesheet): the lowest
+      // level holds the controllers and must not be the part that is cut off. On first load no smaller than
+      // readable; the Fit button always shows everything.
+      const maxHeight = parseFloat(window.getComputedStyle(view).maxHeight) || window.innerHeight * 0.8;
+      const all = Math.min(1, (view.clientWidth - 2) / width, (maxHeight - 2) / height);
+      zoom(whole ? Math.max(MIN, all) : Math.max(Math.min(1, READABLE), all), 0, 0);
       view.scrollLeft = 0;
       view.scrollTop = 0;
     }
-    fit();
+    fit(false);
 
     card.querySelectorAll('[data-map]').forEach(function (button) {
       button.addEventListener('click', function () {
         const action = button.dataset.map;
         if (action === 'in') zoom(scale * 1.25);
         else if (action === 'out') zoom(scale / 1.25);
-        else if (action === 'fit') fit();
+        else if (action === 'fit') fit(true);
         else if (action === 'save') save();
       });
     });
