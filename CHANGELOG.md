@@ -3,6 +3,19 @@
 Each release opens with what kind of release it is. Breaking changes are listed under **Breaking Changes**.
 Numbers link to the issue or pull request on GitHub; entries without a number predate the public repository.
 
+## Unreleased
+
+### Bug fixes
+
+- A **risk assessment saved through the REST API** or a script got no risk level from its likelihood and impact:
+  the matrix only filled the level in on the form. The level is now taken from the matrix on every save.
+- The **flow form joined zones of two sites** without a word: the zone lists showed every site's zones without
+  the site ("Control room" twice). Zone and conduit choices on the flow and risk assessment forms now name their
+  site, a *Site* picker narrows the lists (preselected when editing), and a flow between zones of two different
+  sites is refused unless one of them is a DMZ, enterprise or external zone. The new check
+  `flow-between-sites` (error) finds such flows saved before. The REST API's brief zone and conduit
+  representations now include `site`.
+
 ## 0.5.0 (2026-11-14)
 
 Minor release: the OT overview per site, an access map that stays readable on a large plant, a risk matrix and

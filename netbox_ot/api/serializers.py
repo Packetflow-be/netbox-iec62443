@@ -123,7 +123,7 @@ class ZoneSerializer(PrimaryModelSerializer):
             'virtual_machines', 'prefixes', 'description', 'owner', 'comments', 'tags', 'custom_fields', 'created',
             'last_updated',
         )
-        brief_fields = ('id', 'url', 'display', 'name', 'slug', 'zone_type', 'purdue_level', 'description')
+        brief_fields = ('id', 'url', 'display', 'name', 'slug', 'site', 'zone_type', 'purdue_level', 'description')
 
 
 class ConduitSerializer(PrimaryModelSerializer):
@@ -149,7 +149,7 @@ class ConduitSerializer(PrimaryModelSerializer):
             'enforcing_devices', 'enforcing_virtual_machines', 'description', 'owner', 'comments', 'tags',
             'custom_fields', 'created', 'last_updated',
         )
-        brief_fields = ('id', 'url', 'display', 'name', 'description')
+        brief_fields = ('id', 'url', 'display', 'name', 'site', 'description')
 
     def validate_zones(self, value):
         if len(value) < 2:

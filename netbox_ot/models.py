@@ -450,6 +450,12 @@ class Flow(PrimaryModel):
 
         if self.source_zone_id and self.source_zone_id == self.destination_zone_id:
             raise ValidationError({'destination_zone': _('A flow runs between two different zones.')})
+        if self.source_zone_id and self.destination_zone_id and \
+                zones_at_different_sites(self.source_zone, self.destination_zone):
+            raise ValidationError({'destination_zone': _(
+                'This zone is at {dst_site}, the source zone at {src_site}. A flow between two sites runs from or '
+                'to a DMZ, enterprise or external zone; pick the zone of the right site, or give one of the two '
+                'that zone type.').format(dst_site=self.destination_zone.site, src_site=self.source_zone.site)})
         try:
             self.port_mappings = validate_port_mappings(self.port_mappings or [])
         except ValidationError as e:
@@ -909,6 +915,16 @@ class RiskAssessment(PrimaryModel):
                     'The risk matrix gives {level} for this likelihood and impact. Leave the level empty to take '
                     'it from the matrix.').format(level=risk.LEVEL_LABELS[level])})
 
+    def save(self, *args, **kwargs):
+        # clean() fills the level in on the instance it validates, but the REST API validates a copy and saves
+        # another instance: take the level from the matrix here as well, so every path stores it.
+        for which in ('unmitigated', 'residual'):
+            if not getattr(self, f'{which}_risk'):
+                level = risk.matrix_level(getattr(self, f'{which}_likelihood'), getattr(self, f'{which}_impact'))
+                if level:
+                    setattr(self, f'{which}_risk', level)
+        super().save(*args, **kwargs)
+
     def _place(self, which):
         likelihood, impact = getattr(self, f'{which}_likelihood'), getattr(self, f'{which}_impact')
         if not likelihood or not impact:
@@ -938,6 +954,21 @@ class RiskAssessment(PrimaryModel):
 
     def get_residual_risk_color(self):
         return RiskLevelChoices.colors.get(self.residual_risk)
+
+
+# Zones that may be shared between sites: a central DMZ or enterprise network, a supplier or the internet
+SHARED_ZONE_TYPES = (ZoneTypeChoices.DMZ, ZoneTypeChoices.ENTERPRISE, ZoneTypeChoices.EXTERNAL)
+
+
+def zones_at_different_sites(a, b):
+    """
+    True when the two zones sit at two different sites and neither is a DMZ, enterprise or external zone: a flow
+    between them joins two plants, which is almost always a zone picked from the wrong site.
+    """
+    return bool(
+        a is not None and b is not None and a.site_id and b.site_id and a.site_id != b.site_id
+        and a.zone_type not in SHARED_ZONE_TYPES and b.zone_type not in SHARED_ZONE_TYPES
+    )
 
 
 REQUIREMENT_IDENTIFIER = re.compile(r'^(SR|CR) (\d+)\.(\d+)(?: RE (\d+))?$')

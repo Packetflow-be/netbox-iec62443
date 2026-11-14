@@ -74,6 +74,18 @@ class FlowTest(TestCase):
         with self.assertRaisesRegex(ValidationError, 'does not join'):
             Flow(source_zone=self.dmz, destination_zone=self.cell, conduit=self.conduit).full_clean()
 
+    def test_zones_of_two_sites(self):
+        other = Site.objects.create(name='Site 2', slug='site-2')
+        control = Zone.objects.create(name='Control room', slug='control-room', site=other, purdue_level='2')
+        with self.assertRaisesRegex(ValidationError, 'This zone is at Site 2, the source zone at Site 1'):
+            Flow(source_zone=self.cell, destination_zone=control).full_clean()
+        # A central enterprise zone, a DMZ or an external zone may serve several sites; a zone without a site too
+        hq = Zone.objects.create(name='HQ', slug='hq', site=other, zone_type='enterprise')
+        Flow(source_zone=hq, destination_zone=self.cell).full_clean()
+        Flow(source_zone=self.dmz, destination_zone=control).full_clean()
+        siteless = Zone.objects.create(name='Vendor', slug='vendor', purdue_level='2')
+        Flow(source_zone=siteless, destination_zone=control).full_clean()
+
     def test_port_mappings_validated_and_normalised(self):
         flow = Flow(source_zone=self.office, destination_zone=self.cell, port_mappings=['TCP/0102'])
         flow.full_clean()

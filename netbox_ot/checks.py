@@ -14,14 +14,23 @@ import datetime
 from collections import defaultdict
 from dataclasses import dataclass
 
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from . import exposure, lifecycle, sl
 from .choices import AccessChoices, ConnectionChoices, FlowAllowedChoices, RiskAssessmentStatusChoices, ZoneTypeChoices
 from .customfields import get_purdue_level, get_sl_capability
-from .models import Conduit, Flow, RequirementStatus, RiskAssessment, SystemRequirement, Zone, stale_after_days
+from .models import (
+    Conduit,
+    Flow,
+    RequirementStatus,
+    RiskAssessment,
+    SystemRequirement,
+    Zone,
+    stale_after_days,
+    zones_at_different_sites,
+)
 from .requirements import open_requirements
 
 ERROR, WARNING, INFO = 'error', 'warning', 'info'
@@ -428,6 +437,18 @@ def brokered_write_without_topics(scope):
         if any(a in AccessChoices.MODIFYING for a in flow.access):
             yield flow, _('{flow} writes or controls through a broker, but its topics are not recorded').format(
                 flow=flow)
+
+
+@check('flow-between-sites', _('Flow between zones of two sites'), ERROR)
+def flow_between_sites(scope):
+    # Refused when saved since 0.5.1; flows saved before that (or written straight to the database) still show up
+    for flow in scope.flows.exclude(source_zone__site=F('destination_zone__site')).filter(
+            source_zone__site__isnull=False, destination_zone__site__isnull=False,
+    ).select_related('source_zone__site', 'destination_zone__site'):
+        if zones_at_different_sites(flow.source_zone, flow.destination_zone):
+            yield flow, _('{flow} joins {src} at {src_site} and {dst} at {dst_site}: probably a zone picked from '
+                          'the wrong site').format(flow=flow, src=flow.source_zone, src_site=flow.source_zone.site,
+                                                   dst=flow.destination_zone, dst_site=flow.destination_zone.site)
 
 
 @check('flow-without-conduit', _('Flow outside any conduit'), WARNING)
