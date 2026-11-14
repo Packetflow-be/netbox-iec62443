@@ -33,7 +33,7 @@ class DemoCommandTest(TestCase):
         self.assertEqual([str(h.hop) for h in remote.hops.all()],
                          ['IEC 62443 demo MSP IPsec', 'demo-jump-1', 'demo-fw-1'])
         self.assertTrue(IndustrialService.objects.filter(service__isnull=False).exists())
-        self.assertEqual(RiskAssessment.objects.count(), 3)
+        self.assertEqual(RiskAssessment.objects.count(), 4)
         # Firmware versions on the controllers, panel, gateway and firewall; none where nobody recorded one
         firmware = {d.name: d.custom_field_data.get('ot_firmware_version')
                     for d in Device.objects.filter(name__startswith='demo-')}

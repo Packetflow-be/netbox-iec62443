@@ -3,7 +3,8 @@
 1. [Installation and configuration](installation.md): from source or netbox-docker, settings, permissions,
    upgrading, removing.
 2. [Data model](data-model.md): zones, conduits, flows, risk assessments, Purdue levels and security levels,
-   and why they are modelled this way.
+   and why they are modelled this way. [Risk assessments](risk-assessments.md): the risk matrix and the steps
+   of an assessment.
 3. [Access map](access-map.md): who can reach the controllers, and whether that was decided.
 4. [Consistency checks and the zone register](checks-and-register.md): what is missing before an audit, and the
    register you hand over.
@@ -16,10 +17,10 @@
 9. [REST API, GraphQL and management commands](api.md).
 10. [OT overview](overview.md): where a site stands, as a radar chart of achieved against target security
     level, requirement statuses and risk.
-10. [Companion plugins](companions.md): netbox-lifecycle and netbox-inventory, the tested bundle, end of support,
+11. [Companion plugins](companions.md): netbox-lifecycle and netbox-inventory, the tested bundle, end of support,
     firmware versions, a licence note.
-11. [Working in a branch](branching.md): netbox-branching, `--branch` on the commands, a default branch for
+12. [Working in a branch](branching.md): netbox-branching, `--branch` on the commands, a default branch for
     imports and a guard for main.
-12. [Development](development.md): running the tests, CI, releasing, translations.
+13. [Development](development.md): running the tests, CI, releasing, translations.
 
 Release notes: [CHANGELOG.md](../CHANGELOG.md).

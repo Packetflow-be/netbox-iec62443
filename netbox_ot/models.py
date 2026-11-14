@@ -4,6 +4,7 @@ import re
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -11,7 +12,7 @@ from django.utils.translation import gettext_lazy as _
 
 from netbox.models import PrimaryModel
 
-from . import sl
+from . import risk, sl
 from .choices import (
     AccessChoices,
     ConnectionChoices,
@@ -836,6 +837,20 @@ class RiskAssessment(PrimaryModel):
         choices=RiskLevelChoices,
         blank=True,
     )
+    # Where the two risks sit on the organisation's risk matrix (the risk_matrix setting): 1 is the lowest
+    # likelihood or impact. Optional; with both given the matrix gives the risk level.
+    unmitigated_likelihood = models.PositiveSmallIntegerField(
+        verbose_name=_('unmitigated likelihood'), blank=True, null=True, validators=[MinValueValidator(1)],
+    )
+    unmitigated_impact = models.PositiveSmallIntegerField(
+        verbose_name=_('unmitigated impact'), blank=True, null=True, validators=[MinValueValidator(1)],
+    )
+    residual_likelihood = models.PositiveSmallIntegerField(
+        verbose_name=_('residual likelihood'), blank=True, null=True, validators=[MinValueValidator(1)],
+    )
+    residual_impact = models.PositiveSmallIntegerField(
+        verbose_name=_('residual impact'), blank=True, null=True, validators=[MinValueValidator(1)],
+    )
     tolerable_risk = models.CharField(
         verbose_name=_('tolerable risk'),
         max_length=20,
@@ -874,6 +889,49 @@ class RiskAssessment(PrimaryModel):
             raise ValidationError({'approved_on': _('An approved assessment has an approval date.')})
         if self.approved_on and self.approved_on < self.assessed_on:
             raise ValidationError({'approved_on': _('Approved before it was assessed.')})
+        # Likelihood and impact place a risk on the matrix, which then gives its level
+        for which in ('unmitigated', 'residual'):
+            likelihood, impact = getattr(self, f'{which}_likelihood'), getattr(self, f'{which}_impact')
+            if bool(likelihood) != bool(impact):
+                raise ValidationError({
+                    f'{which}_impact' if likelihood else f'{which}_likelihood':
+                        _('Likelihood and impact go together.'),
+                })
+            if not likelihood:
+                continue
+            level = risk.matrix_level(likelihood, impact)
+            if level is None:
+                raise ValidationError({f'{which}_likelihood': _('This is not on the risk matrix.')})
+            if not getattr(self, f'{which}_risk'):
+                setattr(self, f'{which}_risk', level)
+            elif getattr(self, f'{which}_risk') != level:
+                raise ValidationError({f'{which}_risk': _(
+                    'The risk matrix gives {level} for this likelihood and impact. Leave the level empty to take '
+                    'it from the matrix.').format(level=risk.LEVEL_LABELS[level])})
+
+    def _place(self, which):
+        likelihood, impact = getattr(self, f'{which}_likelihood'), getattr(self, f'{which}_impact')
+        if not likelihood or not impact:
+            return ''
+        matrix = risk.get_matrix()
+        try:
+            return (f'{likelihood} - {matrix["likelihood"][likelihood - 1]}, '
+                    f'{impact} - {matrix["impact"][impact - 1]}')
+        except IndexError:
+            return f'{likelihood}, {impact}'
+
+    @property
+    def unmitigated_place(self):
+        return self._place('unmitigated')
+
+    @property
+    def residual_place(self):
+        return self._place('residual')
+
+    @property
+    def current_step(self):
+        """The IEC 62443-3-2 step this assessment is at, by its own fields; empty when nothing is left."""
+        return risk.current_step(self)
 
     def get_status_color(self):
         return RiskAssessmentStatusChoices.colors.get(self.status)

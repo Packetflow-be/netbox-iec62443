@@ -196,18 +196,25 @@ class RiskAssessmentTable(PrimaryModelTable):
     unmitigated_risk = columns.ChoiceFieldColumn(verbose_name=_('Unmitigated'))
     residual_risk = columns.ChoiceFieldColumn(verbose_name=_('Residual'))
     tolerable_risk = columns.ChoiceFieldColumn(verbose_name=_('Tolerable'))
+    current_step = tables.Column(verbose_name=_('Step'), orderable=False, empty_values=(),
+                                 attrs={'td': {'class': 'text-nowrap'}})
     tags = columns.TagColumn(url_name='plugins:netbox_ot:riskassessment_list')
+
+    def render_current_step(self, value):
+        return value or '✓'
 
     class Meta(PrimaryModelTable.Meta):
         model = RiskAssessment
         fields = (
             'pk', 'id', 'subject', 'kind', 'status', 'assessed_on', 'assessed_by', 'approved_by', 'approved_on',
-            'next_review', 'method', 'unmitigated_risk', 'residual_risk', 'tolerable_risk', 'document', 'description',
+            'next_review', 'method', 'unmitigated_risk', 'residual_risk', 'tolerable_risk', 'current_step',
+            'unmitigated_likelihood', 'unmitigated_impact', 'residual_likelihood', 'residual_impact', 'document',
+            'description',
             'comments', 'tags', 'created', 'last_updated',
         )
         default_columns = (
             'pk', 'subject', 'kind', 'status', 'assessed_on', 'approved_by', 'unmitigated_risk', 'residual_risk',
-            'tolerable_risk', 'next_review',
+            'tolerable_risk', 'current_step', 'next_review',
         )
 
 

@@ -1,0 +1,86 @@
+{% extends 'ui/panels/_base.html' %}
+{% load i18n %}
+{% block panel_content %}
+  <style>
+    .ot-risk { border-collapse: separate; border-spacing: 3px; width: 100%; table-layout: fixed; }
+    .ot-risk th { font-weight: 400; font-size: .75rem; line-height: 1.15; padding: 2px 4px; }
+    .ot-risk thead th, .ot-risk tfoot th { text-align: center; vertical-align: bottom; }
+    .ot-risk tbody th { text-align: right; width: 24%; }
+    @media (max-width: 575px) { .ot-risk tbody th, .ot-risk thead th:first-child { width: 2.2rem; font-size: .7rem; } }
+    .ot-risk td { height: 2.6rem; text-align: center; vertical-align: middle; border-radius: 3px; font-size: .7rem;
+      color: #1f2933; border: 2px solid transparent; position: relative; }
+    .ot-risk .r-low { background: #cdeed3; }
+    .ot-risk .r-medium { background: #fff0b3; }
+    .ot-risk .r-high { background: #ffd0a1; }
+    .ot-risk .r-critical { background: #ffa8a8; }
+    /* Above the tolerable risk: hatched. The heavy line is where the tolerable risk ends. */
+    .ot-risk td.r-above { background-image: repeating-linear-gradient(45deg, rgba(0, 0, 0, .13) 0 2px, transparent 2px 7px); }
+    .ot-risk td.r-edge-top { border-top-color: #1f2933; }
+    .ot-risk td.r-edge-right { border-right-color: #1f2933; }
+    .ot-risk-mark { display: inline-block; min-width: 1.5rem; padding: 1px 5px; border-radius: 1rem; font-weight: 700;
+      font-size: .75rem; color: #fff; background: #1f2933; }
+    .ot-risk-mark.m-R { background: #206bc4; }
+    .ot-risk-mark.m-T { background: #fff; color: #1f2933; border: 2px solid #1f2933; }
+    .ot-risk-level { opacity: .75; }
+  </style>
+  <div class="card-body">
+    {% if matrix.placed %}
+      <table class="ot-risk" role="table" aria-label="{% trans 'Risk matrix: likelihood by impact' %}">
+        <thead>
+          <tr>
+            <th scope="col" class="text-muted"><span class="d-none d-sm-inline">{% trans "Likelihood" %} &darr; / {% trans "Impact" %} &rarr;</span></th>
+            {% for n, label in matrix.impact %}<th scope="col">{{ n }}<span class="d-none d-sm-inline"><br>{{ label }}</span></th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in matrix.rows %}
+            <tr>
+              <th scope="row">{{ row.value }}<span class="d-none d-sm-inline"> - {{ row.label }}</span></th>
+              {% for cell in row.cells %}
+                <td class="r-{{ cell.level }}{% if cell.above %} r-above{% endif %}{% if cell.edge_top %} r-edge-top{% endif %}{% if cell.edge_right %} r-edge-right{% endif %}"
+                    title="{{ cell.label }}{% if cell.above %} ({% trans 'above tolerable' %}){% endif %}">
+                  {% for mark in cell.marks %}<span class="ot-risk-mark m-{{ mark }}">{{ mark }}</span>{% empty %}<span class="ot-risk-level">{{ cell.label }}</span>{% endfor %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {# On a narrow screen the axes show numbers only; their labels go here #}
+      <div class="small text-muted mt-1 d-sm-none">
+        {% trans "Likelihood" %}: {% for row in matrix.rows reversed %}{{ row.value }} {{ row.label }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+        {% trans "Impact" %}: {% for n, label in matrix.impact %}{{ n }} {{ label }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+      </div>
+    {% else %}
+      <table class="ot-risk" role="table" aria-label="{% trans 'Risk levels' %}">
+        <tbody>
+          <tr>
+            {% for cell in matrix.scale %}
+              <td class="r-{{ cell.level }}{% if cell.above %} r-above{% endif %}">
+                <div class="ot-risk-level">{{ cell.label }}</div>
+                {% for mark in cell.marks %}<span class="ot-risk-mark m-{{ mark }}">{{ mark }}</span>{% endfor %}
+              </td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+      <div class="small text-muted mt-2">
+        {% trans "Record the likelihood and impact of the unmitigated and the residual risk to see them on the risk matrix." %}
+      </div>
+    {% endif %}
+    <div class="small mt-2">
+      <span class="ot-risk-mark m-U">U</span> {% trans "unmitigated risk" %}
+      <span class="ot-risk-mark m-R ms-2">R</span> {% trans "residual risk" %}
+      {% if not matrix.placed %}<span class="ot-risk-mark m-T ms-2">T</span> {% trans "tolerable risk" %}{% endif %}
+    </div>
+    <div class="small text-muted mt-1">
+      {% if matrix.tolerable %}
+        {% blocktrans with level=matrix.tolerable %}Tolerable risk: {{ level }}. Hatched cells are above it{% endblocktrans %}{% if matrix.placed %}{% trans "; the heavy line is where it ends" %}{% endif %}.
+      {% else %}
+        {% trans "No tolerable risk recorded yet: without it nothing says whether a risk is acceptable." %}
+      {% endif %}
+      {% if matrix.method %}{% trans "Method" %}: {{ matrix.method }}.{% endif %}
+      {% if matrix.placed and matrix.default %}{% trans "This is the plugin's default 5 x 5 matrix; the risk_matrix setting replaces it with your own." %}{% endif %}
+    </div>
+  </div>
+{% endblock %}

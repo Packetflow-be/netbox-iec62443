@@ -404,7 +404,8 @@ class RiskAssessmentFilterSet(PrimaryModelFilterSet):
 
     class Meta:
         model = RiskAssessment
-        fields = ('id', 'assessed_on', 'approved_on', 'next_review', 'method', 'description')
+        fields = ('id', 'assessed_on', 'approved_on', 'next_review', 'method', 'description',
+                  'unmitigated_likelihood', 'unmitigated_impact', 'residual_likelihood', 'residual_impact')
 
     def search(self, queryset, name, value):
         if not value.strip():

@@ -5,6 +5,17 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 
 ## Unreleased
 
+### New features
+
+- Visual aids on a risk assessment ([#33](https://github.com/Packetflow-be/netbox-ot/pull/33)): a **risk
+  matrix** (likelihood by impact) that shows where the unmitigated and the residual risk sit and where the
+  tolerable risk ends, and the **steps** of an IEC 62443-3-2 assessment with the one the assessment is at and
+  what is still missing. Likelihood and impact are four new optional fields (migration `0005_risk_matrix`, which
+  only adds them); with both given the matrix gives the risk level. The matrix is the organisation's own: the
+  `risk_matrix` setting replaces the default 5 x 5. The list of risk assessments has a *Step* column and the
+  API a read-only `current_step`. Assessments without likelihood and impact stay valid and show their levels
+  on a plain scale. [docs/risk-assessments.md](docs/risk-assessments.md).
+
 ### Enhancements
 
 - **OT overview**: a tab on every site with zones that shows where the site stands. A radar chart of achieved

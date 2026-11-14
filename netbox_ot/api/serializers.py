@@ -258,15 +258,17 @@ class RiskAssessmentSerializer(PrimaryModelSerializer):
     residual_risk = ChoiceField(choices=RiskLevelChoices, allow_blank=True, required=False)
     tolerable_risk = ChoiceField(choices=RiskLevelChoices, allow_blank=True, required=False)
     residual_above_tolerable = serializers.BooleanField(read_only=True)
+    current_step = serializers.CharField(read_only=True)
 
     class Meta:
         model = RiskAssessment
         fields = (
             'id', 'url', 'display_url', 'display', 'zone', 'conduit', 'kind', 'status', 'assessed_on', 'assessed_by',
             'approved_on', 'approved_by', 'next_review', 'method', 'document', 'threats', 'vulnerabilities',
-            'consequences', 'unmitigated_risk', 'countermeasures', 'residual_risk', 'tolerable_risk',
-            'residual_above_tolerable', 'description', 'owner', 'comments', 'tags', 'custom_fields', 'created',
-            'last_updated',
+            'consequences', 'unmitigated_likelihood', 'unmitigated_impact', 'unmitigated_risk', 'countermeasures',
+            'residual_likelihood', 'residual_impact', 'residual_risk', 'tolerable_risk',
+            'residual_above_tolerable', 'current_step', 'description', 'owner', 'comments', 'tags', 'custom_fields',
+            'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'kind', 'status', 'assessed_on', 'description')
 
