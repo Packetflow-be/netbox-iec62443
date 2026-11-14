@@ -29,6 +29,7 @@ from .models import (
     SystemRequirement,
     Zone,
 )
+from .overview import build_overview
 from .register import build_register, register_csv
 from .rules import build_rules, rules_csv
 
@@ -1002,6 +1003,41 @@ class SiteRegisterView(generic.ObjectView):
             'register': build_register(instance, user=request.user),
             # The register holds display labels; the page leaves out the default one
             'default_connection': ConnectionChoices.label(ConnectionChoices.CLIENT_SERVER),
+        }
+
+
+class _QuietTab(ViewTab):
+    """A tab that hides when its badge is empty, without showing the badge."""
+
+    def render(self, instance):
+        attrs = super().render(instance)
+        return {**attrs, 'badge': None} if attrs else attrs
+
+
+@register_model_view(Site, name='ot_overview', path='ot-overview')
+class SiteOverviewView(generic.ObjectView):
+    """Where a site stands: security levels per foundational requirement, requirements, risk and checks."""
+    queryset = Site.objects.all()
+    template_name = 'netbox_ot/site_overview.html'
+    tab = _QuietTab(
+        label=_('OT overview'),
+        badge=_register_badge,
+        permission='netbox_ot.view_zone',
+        weight=2090,
+        hide_if_empty=True,
+    )
+
+    def get_extra_context(self, request, instance):
+        zone = None
+        if request.GET.get('zone', '').isdigit():
+            zone = Zone.objects.restrict(request.user, 'view').filter(
+                site=instance, pk=int(request.GET['zone'])).first()
+        return {
+            'overview': build_overview(instance, user=request.user, zone=zone),
+            'requirement_states': (
+                ('met', _('Met')), ('compensated', _('Compensated')), ('not-applicable', _('Not applicable')),
+                ('not-met', _('Not met')), ('open', _('No status')),
+            ),
         }
 
 

@@ -7,6 +7,12 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 
 ### Enhancements
 
+- **OT overview**: a tab on every site with zones that shows where the site stands. A radar chart of achieved
+  against target security level per foundational requirement (site average, or one zone), a table of every
+  zone and conduit sorted by how far below target it is, requirement statuses per foundational requirement,
+  risk before and after countermeasures with what is still above the tolerable risk, and the number of check
+  findings. Printable, drawn on the server without scripts, and also as `GET overview/?site_id=<id>` in the
+  API. No migrations ([#31](https://github.com/Packetflow-be/netbox-ot/pull/31)).
 - The access map stays readable on a large plant ([#32](https://github.com/Packetflow-be/netbox-ot/pull/32)).
   The diagram is a layered layout: a Purdue level with many zones wraps into several rows, arrows that skip a
   level run between the zones instead of behind them, zones are ordered to keep crossings down, and an arrow

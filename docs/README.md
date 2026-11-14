@@ -14,6 +14,8 @@
 8. [Importer](importer.md): Zeek logs ([zeek.md](zeek.md)) and observation files
    ([import-format.md](import-format.md)).
 9. [REST API, GraphQL and management commands](api.md).
+10. [OT overview](overview.md): where a site stands, as a radar chart of achieved against target security
+    level, requirement statuses and risk.
 10. [Companion plugins](companions.md): netbox-lifecycle and netbox-inventory, the tested bundle, end of support,
     firmware versions, a licence note.
 11. [Working in a branch](branching.md): netbox-branching, `--branch` on the commands, a default branch for

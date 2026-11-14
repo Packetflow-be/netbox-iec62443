@@ -1,0 +1,250 @@
+{% extends 'generic/object.html' %}
+{% load i18n l10n %}
+
+{% block content %}
+  <style>
+    .ot-radar { width: 100%; max-width: 560px; height: auto; display: block; margin: 0 auto; }
+    .ot-radar .ring { fill: none; stroke: var(--tblr-border-color, #dce1e7); stroke-width: 1; }
+    .ot-radar .spoke { stroke: var(--tblr-border-color, #dce1e7); stroke-width: 1; }
+    .ot-radar .tick { fill: var(--tblr-secondary, #6c7a91); font-size: 10px; }
+    .ot-radar .achieved { fill: var(--tblr-primary, #206bc4); fill-opacity: .22; stroke: var(--tblr-primary, #206bc4); stroke-width: 2; stroke-linejoin: round; }
+    .ot-radar .target { fill: none; stroke: var(--tblr-body-color, #1d273b); stroke-width: 1.5; stroke-dasharray: 5 4; stroke-linejoin: round; }
+    .ot-radar .dot { fill: var(--tblr-primary, #206bc4); stroke: var(--tblr-bg-surface, #fff); stroke-width: 2; }
+    .ot-radar .dot.gap { fill: var(--tblr-red, #d63939); }
+    .ot-radar .axis { fill: var(--tblr-body-color, #1d273b); font-size: 13px; font-weight: 600; }
+    .ot-radar .value { fill: var(--tblr-secondary, #6c7a91); font-size: 12px; }
+    .ot-radar .value.gap { fill: var(--tblr-red, #d63939); font-weight: 600; }
+    .ot-key { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: .35rem; }
+    .ot-key.achieved { border-top: 10px solid var(--tblr-primary, #206bc4); opacity: .45; }
+    .ot-key.target { border-top: 2px dashed var(--tblr-body-color, #1d273b); }
+    .ot-bar { display: flex; gap: 2px; height: 14px; min-width: 120px; }
+    .ot-bar > span { display: block; height: 100%; border-radius: 2px; }
+    .ot-bar .met { background: var(--tblr-green, #2fb344); }
+    .ot-bar .compensated { background: var(--tblr-teal, #0ca678); }
+    .ot-bar .not-applicable { background: var(--tblr-gray-400, #9ba9be); }
+    .ot-bar .not-met { background: var(--tblr-red, #d63939); }
+    .ot-bar .open { background: transparent; border: 1px dashed var(--tblr-secondary, #6c7a91); }
+    .ot-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: .3rem; }
+    .ot-swatch.met { background: var(--tblr-green, #2fb344); }
+    .ot-swatch.compensated { background: var(--tblr-teal, #0ca678); }
+    .ot-swatch.not-applicable { background: var(--tblr-gray-400, #9ba9be); }
+    .ot-swatch.not-met { background: var(--tblr-red, #d63939); }
+    .ot-swatch.open { border: 1px dashed var(--tblr-secondary, #6c7a91); }
+    .ot-count { display: flex; align-items: center; gap: .5rem; }
+    .ot-count > span:first-child { min-width: 1.5rem; text-align: right; font-variant-numeric: tabular-nums; }
+    .ot-count > span:last-child { display: block; height: 10px; border-radius: 2px; min-width: 2px; }
+    .ot-count .before { background: var(--tblr-gray-400, #9ba9be); }
+    .ot-count .after { background: var(--tblr-primary, #206bc4); }
+    .ot-levels td, .ot-levels th { font-variant-numeric: tabular-nums; }
+    .ot-stat { font-size: 1.75rem; font-weight: 600; line-height: 1.1; }
+    @media print { .ot-bar > span, .ot-count > span, .ot-swatch, .ot-key { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
+
+  <div class="mb-3 d-print-none">
+    <a href="{% url 'plugins-api:netbox_ot-api:overview' %}?site_id={{ object.pk }}{% if overview.focus %}&zone_id={{ overview.focus.pk }}{% endif %}" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-code-json"></i> JSON</a>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="mdi mdi-printer"></i> {% trans "Print" %}</button>
+  </div>
+  <div class="card">
+    <div class="card-body small text-muted">
+      {% blocktrans with site=object generated=overview.generated|date:"Y-m-d H:i" version=overview.version %}OT overview of {{ site }}, generated {{ generated }} by netbox-ot {{ version }}. Everything here is derived from the zones, conduits, risk assessments and requirement statuses; nothing is entered on this page.{% endblocktrans %}
+    </div>
+  </div>
+
+  {# Headline numbers #}
+  <div class="row row-cards mb-3">
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-secondary small">{% trans "Zones at their target level" %}</div>
+        <div class="ot-stat">{{ overview.zones.at_target }} <span class="text-secondary fs-4 fw-normal">{% trans "of" %} {{ overview.zones.with_target }}</span></div>
+        <div class="small text-secondary">
+          {% if overview.zones.below_target %}{% blocktrans count n=overview.zones.below_target %}{{ n }} below target{% plural %}{{ n }} below target{% endblocktrans %}{% endif %}{% if overview.zones.below_target and overview.zones.not_assessed %}, {% endif %}{% if overview.zones.not_assessed %}{% blocktrans count n=overview.zones.not_assessed %}{{ n }} without an achieved level{% plural %}{{ n }} without an achieved level{% endblocktrans %}{% endif %}
+          {% if not overview.zones.with_target %}{% trans "No zone has a target level yet" %}{% endif %}
+        </div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-secondary small">{% trans "Requirements satisfied" %}</div>
+        <div class="ot-stat">{% if overview.requirements.percent is not None %}{{ overview.requirements.percent }}%{% else %}{{ ''|placeholder }}{% endif %}</div>
+        <div class="small text-secondary">
+          {% if overview.requirements.total %}{% blocktrans with satisfied=overview.requirements.satisfied total=overview.requirements.total %}{{ satisfied }} of {{ total }}{% endblocktrans %}{% if overview.requirements.not_met %}, {% blocktrans with n=overview.requirements.not_met %}{{ n }} not met{% endblocktrans %}{% endif %}{% if overview.requirements.open %}, {% blocktrans with n=overview.requirements.open %}{{ n }} without a status{% endblocktrans %}{% endif %}{% else %}{% trans "No requirement statuses yet" %}{% endif %}
+        </div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-secondary small">{% trans "Residual risk above tolerable" %}</div>
+        <div class="ot-stat{% if overview.risk.above_tolerable %} text-danger{% endif %}">{{ overview.risk.above_tolerable|length }}</div>
+        <div class="small text-secondary">{% blocktrans with assessed=overview.risk.assessed subjects=overview.risk.subjects %}{{ assessed }} of {{ subjects }} zones and conduits have an approved assessment{% endblocktrans %}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-secondary small">{% trans "Check findings" %}</div>
+        <div class="ot-stat">{{ overview.findings.total }}</div>
+        <div class="small text-secondary">
+          {% blocktrans with errors=overview.findings.error warnings=overview.findings.warning %}{{ errors }} errors, {{ warnings }} warnings{% endblocktrans %}
+          <a href="{% url 'plugins:netbox_ot:checks' %}?site_id={{ object.pk }}" class="d-print-none">{% trans "Open the checks" %}</a>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  {# Security levels #}
+  <div class="row row-cards mb-3" id="levels">
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <h2 class="card-header">{% trans "Security levels per foundational requirement" %}</h2>
+        <div class="card-body">
+          {% if overview.chart %}
+            <div class="small text-secondary mb-2">
+              {% if overview.focus %}
+                {% blocktrans with zone=overview.focus.name %}Zone {{ zone }}.{% endblocktrans %}
+                <a href="{{ request.path }}#levels" class="d-print-none">{% trans "Show the site average" %}</a>
+              {% else %}
+                {% blocktrans count n=overview.axes.0.measured %}Average over {{ n }} zone with a target and an achieved level.{% plural %}Average over {{ n }} zones with a target and an achieved level.{% endblocktrans %}
+                {% trans "Pick a zone in the table for its own chart." %}
+              {% endif %}
+            </div>
+            {{ overview.chart }}
+            <div class="small mt-2 text-center">
+              <span class="me-3"><span class="ot-key achieved"></span>{% trans "Achieved (SL-A)" %}</span>
+              <span class="me-3"><span class="ot-key target"></span>{% trans "Target (SL-T)" %}</span>
+              <span class="text-danger fw-bold">▼</span> {% trans "below target" %}
+            </div>
+            <p class="small text-secondary mt-3 mb-0">
+              {% if overview.furthest %}
+                {% blocktrans with label=overview.furthest.label %}Furthest from target: {{ label }}.{% endblocktrans %}
+                {% if not overview.focus %}{% blocktrans count n=overview.furthest.below with measured=overview.furthest.measured %}{{ n }} of {{ measured }} zones is below target there.{% plural %}{{ n }} of {{ measured }} zones are below target there.{% endblocktrans %}{% endif %}
+              {% elif overview.axes.0.achieved is not None %}
+                {% trans "No foundational requirement is below its target." %}
+              {% else %}
+                {% trans "No achieved level recorded yet." %}
+              {% endif %}
+              {% trans "These are security levels 0 to 4 (IEC 62443-3-3), not maturity levels." %}
+            </p>
+          {% else %}
+            <p class="text-secondary mb-0">{% trans "Nothing to draw yet: give a zone a target security level (SL-T), and an achieved level (SL-A) once it is assessed." %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <div class="card h-100">
+        <h2 class="card-header">{% trans "Achieved / target per zone and conduit" %} <span class="badge text-bg-secondary ms-1">{{ overview.levels|length }}</span></h2>
+        <div class="table-responsive">
+          <table class="table table-hover table-sm ot-levels">
+            <thead><tr>
+              <th>{% trans "Zone or conduit" %}</th>
+              {% for a in overview.axes %}<th class="text-center" title="{{ a.label }}">{{ a.fr }}</th>{% endfor %}
+              <th class="text-end" title="{% trans 'Levels short of target, summed over the foundational requirements' %}">{% trans "Short" %}</th>
+            </tr></thead>
+            <tbody>
+              {% for row in overview.levels %}
+                <tr{% if overview.focus and row.kind == 'zone' and row.object.pk == overview.focus.pk %} class="table-active"{% endif %}>
+                  <td>
+                    {% if row.kind == 'zone' %}<a href="?zone={{ row.object.pk }}#levels" title="{% trans 'Show this zone in the chart' %}">{{ row.name }}</a>
+                    {% else %}<i class="mdi mdi-pipe text-secondary" title="{% trans 'Conduit' %}"></i> {{ row.name }}{% endif %}
+                    <a href="{{ row.object.get_absolute_url }}" class="text-secondary d-print-none" title="{% trans 'Open' %}"><i class="mdi mdi-open-in-new"></i></a>
+                  </td>
+                  {% if row.state == 'no-target' %}
+                    <td colspan="7" class="text-center text-secondary small">{% trans "No target level (SL-T)" %}</td>
+                    <td class="text-end">{{ ''|placeholder }}</td>
+                  {% else %}
+                    {% for cell in row.cells %}
+                      <td class="text-center text-nowrap">{% if cell.gap %}<span class="text-danger fw-bold" title="{% trans 'Below SL-T' %}">{{ cell.achieved }}/{{ cell.target }}</span>{% elif cell.achieved is None %}<span class="text-secondary">?/{{ cell.target }}</span>{% else %}{{ cell.achieved }}/{{ cell.target }}{% endif %}</td>
+                    {% endfor %}
+                    <td class="text-end">{% if row.state == 'gap' %}<span class="text-danger fw-bold">{{ row.gap }}</span>{% elif row.state == 'met' %}<i class="mdi mdi-check text-success" title="{% trans 'At target' %}"></i>{% else %}<span class="text-secondary" title="{% trans 'No achieved level (SL-A) recorded' %}">?</span>{% endif %}</td>
+                  {% endif %}
+                </tr>
+              {% empty %}
+                <tr><td colspan="9" class="text-secondary">{% trans "No zones or conduits at this site." %}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer small text-secondary">{% trans "Sorted by how far below target. ? means no achieved level is recorded." %}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row row-cards mb-3">
+    {# Requirements #}
+    <div class="col-lg-7">
+      <div class="card h-100">
+        <h2 class="card-header">{% trans "Requirement statuses per foundational requirement" %}</h2>
+        {% if overview.requirements.total %}
+          <div class="table-responsive">
+            <table class="table table-hover table-sm ot-levels">
+              <thead><tr>
+                <th>{% trans "Foundational requirement" %}</th>
+                <th style="width: 30%"></th>
+                {% for state, label in requirement_states %}<th class="text-end d-none d-md-table-cell" title="{{ label }}"><span class="ot-swatch {{ state }}"></span><span class="visually-hidden">{{ label }}</span></th>{% endfor %}
+                <th class="text-end">{% trans "Satisfied" %}</th>
+              </tr></thead>
+              <tbody>
+                {% for fr in overview.requirements.per_fr %}
+                  <tr>
+                    <td title="{{ fr.label }}">{{ fr.fr }}</td>
+                    <td class="align-middle">{% if fr.total %}<div class="ot-bar">{% for part in fr.bar %}<span class="{{ part.state }}" style="width: {{ part.width|unlocalize }}%" title="{{ part.count }}"></span>{% endfor %}</div>{% endif %}</td>
+                    {% for n in fr.cells %}<td class="text-end d-none d-md-table-cell">{% if n %}{{ n }}{% else %}<span class="text-secondary">0</span>{% endif %}</td>{% endfor %}
+                    <td class="text-end">{% if fr.percent is not None %}{{ fr.percent }}%{% else %}{{ ''|placeholder }}{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="card-body small py-2">
+            {% for state, label in requirement_states %}<span class="me-3 text-nowrap"><span class="ot-swatch {{ state }}"></span>{{ label }}</span> {% endfor %}
+          </div>
+          <div class="card-footer small text-secondary">{% trans "Satisfied counts met, met by a compensating countermeasure and not applicable. No status: a requirement that applies at the target level and has no status yet (only known once the levels from your copy of the standard are loaded)." %}</div>
+        {% else %}
+          <div class="card-body text-secondary">{% trans "No requirement statuses yet. Record per zone or conduit where it stands against a system requirement, and they are counted here." %}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Risk #}
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <h2 class="card-header">{% trans "Risk, before and after countermeasures" %}</h2>
+        {% if overview.risk.assessed %}
+          <div class="table-responsive">
+            <table class="table table-sm ot-levels">
+              <thead><tr><th>{% trans "Risk level" %}</th><th style="width: 38%">{% trans "Unmitigated" %}</th><th style="width: 38%">{% trans "Residual" %}</th></tr></thead>
+              <tbody>
+                {% for level in overview.risk.levels %}
+                  <tr>
+                    <td><span class="badge text-bg-{{ level.color }}">{{ level.label }}</span></td>
+                    <td><div class="ot-count"><span>{{ level.unmitigated }}</span>{% if level.unmitigated %}<span class="before" style="width: {{ level.unmitigated_width|unlocalize }}%"></span>{% endif %}</div></td>
+                    <td><div class="ot-count"><span>{{ level.residual }}</span>{% if level.residual %}<span class="after" style="width: {{ level.residual_width|unlocalize }}%"></span>{% endif %}</div></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+        <div class="card-body">
+          {% if not overview.risk.assessed %}<p class="text-secondary">{% trans "No approved risk assessment yet." %}</p>{% endif %}
+          {% if overview.risk.above_tolerable %}
+            <div class="fw-bold mb-1">{% trans "Residual risk above tolerable" %}</div>
+            <ul class="list-unstyled mb-3">
+              {% for item in overview.risk.above_tolerable %}
+                <li><a href="{{ item.assessment.get_absolute_url }}">{{ item.name }}</a>: <span class="badge text-bg-{{ item.residual_color }}">{{ item.residual_risk }}</span> <span class="text-secondary">{% blocktrans with tolerable=item.tolerable_risk %}tolerable: {{ tolerable }}{% endblocktrans %}</span></li>
+              {% endfor %}
+            </ul>
+          {% elif overview.risk.assessed %}
+            <p><i class="mdi mdi-check text-success"></i> {% trans "No residual risk above the tolerable risk." %}</p>
+          {% endif %}
+          {% if overview.risk.without_assessment %}
+            <div class="fw-bold mb-1">{% trans "Without an approved assessment" %} <span class="badge text-bg-secondary">{{ overview.risk.without_assessment|length }}</span></div>
+            <div class="small">
+              {% for item in overview.risk.without_shown %}<a href="{{ item.object.get_absolute_url }}">{{ item.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}{% if overview.risk.without_more %} {% blocktrans with n=overview.risk.without_more %}and {{ n }} more{% endblocktrans %}{% endif %}
+            </div>
+          {% endif %}
+        </div>
+        <div class="card-footer small text-secondary">{% trans "From the latest approved assessment of each zone and conduit. The levels are the assessor's, by the method named on the assessment." %}</div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
