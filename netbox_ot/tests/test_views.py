@@ -294,6 +294,20 @@ class FlowFormTest(TestCase):
         self.assertEqual(flow.port_mappings, ['tcp/44818', 'udp/2222'])
         self.assertEqual(flow.name, 'Office -> Cell EtherNet/IP (CIP)')
 
+    @override_settings(EXEMPT_VIEW_PERMISSIONS=['*'])
+    def test_zones_name_their_site(self):
+        # Zone names repeat from plant to plant: the form shows the site of each zone and starts on the flow's site
+        self.add_permissions('netbox_ot.change_flow')
+        plant = Site.objects.create(name='Plant A', slug='plant-a')
+        Site.objects.create(name='Plant B', slug='plant-b')
+        office = Zone.objects.create(name='Office', slug='office', site=plant, purdue_level='3')
+        cell = Zone.objects.create(name='Control room', slug='control-room', site=plant, purdue_level='1')
+        flow = Flow.objects.create(source_zone=office, destination_zone=cell)
+        response = self.client.get(reverse('plugins:netbox_ot:flow_edit', kwargs={'pk': flow.pk}))
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, 'data-parent="Plant A"')
+        self.assertRegex(response.content.decode(), rf'<option value="{plant.pk}"\s+selected\s*>Plant A<')
+
 
 
 class RiskAssessmentViewTest(PluginURLMixin, ViewTestCases.PrimaryObjectViewTestCase):

@@ -42,20 +42,24 @@ FLOW_HOPS = ('hops__device', 'hops__virtual_machine', 'hops__tunnel')
 
 
 class ZoneViewSet(NetBoxModelViewSet):
-    queryset = Zone.objects.select_related('parent', 'accountable').prefetch_related(
+    queryset = Zone.objects.select_related('site', 'tenant', 'parent', 'accountable').prefetch_related(
         'devices', 'virtual_machines', 'prefixes', 'tags')
     serializer_class = ZoneSerializer
     filterset_class = filtersets.ZoneFilterSet
 
 
 class ConduitViewSet(NetBoxModelViewSet):
-    queryset = Conduit.objects.prefetch_related('zones', 'enforcing_devices', 'enforcing_virtual_machines', 'tags')
+    queryset = Conduit.objects.select_related('site').prefetch_related(
+        'zones__site', 'enforcing_devices', 'enforcing_virtual_machines', 'tags',
+    )
     serializer_class = ConduitSerializer
     filterset_class = filtersets.ConduitFilterSet
 
 
 class FlowViewSet(NetBoxModelViewSet):
-    queryset = Flow.objects.select_related('conduit', 'source_zone', 'destination_zone', 'broker_zone', 'decided_by') \
+    queryset = Flow.objects.select_related(
+        'conduit__site', 'source_zone__site', 'destination_zone__site', 'broker_zone__site', 'decided_by',
+    ) \
         .prefetch_related('tags', *FLOW_HOPS)
     serializer_class = FlowSerializer
     filterset_class = filtersets.FlowFilterSet
@@ -75,21 +79,21 @@ class SystemRequirementViewSet(NetBoxModelViewSet):
 
 class RequirementStatusViewSet(NetBoxModelViewSet):
     queryset = RequirementStatus.objects.select_related(
-        'zone', 'conduit', 'requirement', 'risk_assessment', 'assessed_by',
+        'zone__site', 'conduit__site', 'requirement', 'risk_assessment', 'assessed_by',
     ).prefetch_related('tags')
     serializer_class = RequirementStatusSerializer
     filterset_class = filtersets.RequirementStatusFilterSet
 
 
 class RiskAssessmentViewSet(NetBoxModelViewSet):
-    queryset = RiskAssessment.objects.select_related('zone', 'conduit', 'assessed_by', 'approved_by') \
+    queryset = RiskAssessment.objects.select_related('zone__site', 'conduit__site', 'assessed_by', 'approved_by') \
         .prefetch_related('tags')
     serializer_class = RiskAssessmentSerializer
     filterset_class = filtersets.RiskAssessmentFilterSet
 
 
 class FieldbusViewSet(NetBoxModelViewSet):
-    queryset = Fieldbus.objects.select_related('site', 'zone', 'gateway').prefetch_related('tags')
+    queryset = Fieldbus.objects.select_related('site', 'zone__site', 'gateway').prefetch_related('tags')
     serializer_class = FieldbusSerializer
     filterset_class = filtersets.FieldbusFilterSet
 

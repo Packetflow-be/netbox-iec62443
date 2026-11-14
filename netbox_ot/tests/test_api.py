@@ -12,7 +12,7 @@ class ZoneAPITest(APIViewTestCases.APIViewTestCase):
     model = Zone
     view_namespace = 'plugins-api:netbox_ot'
     graphql_base_name = 'ot_zone'
-    brief_fields = ['description', 'display', 'id', 'name', 'purdue_level', 'slug', 'url', 'zone_type']
+    brief_fields = ['description', 'display', 'id', 'name', 'purdue_level', 'site', 'slug', 'url', 'zone_type']
     bulk_update_data = {
         'purdue_level': '3.5',
         'zone_type': 'dmz',
@@ -46,7 +46,7 @@ class ConduitAPITest(APIViewTestCases.APIViewTestCase):
     view_namespace = 'plugins-api:netbox_ot'
     graphql_base_name = 'ot_conduit'
     user_permissions = ('netbox_ot.view_zone', 'dcim.view_device')
-    brief_fields = ['description', 'display', 'id', 'name', 'url']
+    brief_fields = ['description', 'display', 'id', 'name', 'site', 'url']
     bulk_update_data = {
         'sl_target': [3, 3, 3, 2, 3, 2, 2],
     }
@@ -246,6 +246,28 @@ class RiskAssessmentAPITest(APIViewTestCases.APIViewTestCase):
              'approved_by': contact.pk, 'residual_risk': 'low', 'tolerable_risk': 'medium'},
             {'zone': office.pk, 'assessed_on': '2026-02-04', 'threats': 'phishing'},
         ]
+        cls.cell = cell
+
+    def test_level_from_the_matrix_is_stored(self):
+        # Likelihood and impact without a level: the matrix gives the level, through the API as in the UI
+        self.add_permissions('netbox_ot.add_riskassessment', 'netbox_ot.change_riskassessment')
+        url = reverse('plugins-api:netbox_ot-api:riskassessment-list')
+        data = {'zone': self.cell.pk, 'assessed_on': '2026-03-01', 'unmitigated_likelihood': 5,
+                'unmitigated_impact': 5, 'residual_likelihood': 1, 'residual_impact': 1, 'tolerable_risk': 'low'}
+        response = self.client.post(url, data, format='json', **self.header)
+        self.assertHttpStatus(response, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['unmitigated_risk']['value'], 'critical')
+        self.assertEqual(response.data['residual_risk']['value'], 'low')
+        assessment = RiskAssessment.objects.get(pk=response.data['id'])
+        self.assertEqual((assessment.unmitigated_risk, assessment.residual_risk), ('critical', 'low'))
+        # A changed likelihood with the old level cleared gives the new level
+        detail = reverse('plugins-api:netbox_ot-api:riskassessment-detail', kwargs={'pk': assessment.pk})
+        response = self.client.patch(detail, {'residual_likelihood': 5, 'residual_impact': 5, 'residual_risk': ''},
+                                     format='json', **self.header)
+        self.assertHttpStatus(response, status.HTTP_200_OK)
+        assessment.refresh_from_db()
+        self.assertEqual(assessment.residual_risk, 'critical')
+        self.assertTrue(assessment.residual_above_tolerable)
 
 
 class ChecksAndRegisterAPITest(APITestCase):

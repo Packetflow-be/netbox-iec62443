@@ -91,9 +91,26 @@ class ChecksTest(TestCase):
         sr11 = SystemRequirement.objects.create(identifier='SR 1.1', foundational_requirement='iac', security_level=1)
         SystemRequirement.objects.create(identifier='SR 1.2', foundational_requirement='iac', security_level=2)
         RequirementStatus.objects.create(zone=self.cell, requirement=sr11, status='not-met')
+        self._flow_into_other_plant()
         found = {f.check for f in run_checks(site=self.site)}
         # The end-of-support checks need netbox-lifecycle data: test_lifecycle.py
         self.assertEqual(found, set(CHECKS) - {'end-of-support', 'end-of-support-ahead'})
+
+    def _flow_into_other_plant(self):
+        # Saved before 0.5.1 refused it: objects.create skips clean()
+        other = Site.objects.create(name='Other plant', slug='other-plant')
+        control = Zone.objects.create(name='Control room', slug='control-room', site=other, purdue_level='2')
+        Flow.objects.create(name='wrong site', source_zone=self.cell, destination_zone=control)
+        # Into a shared zone type of another site: fine
+        hq = Zone.objects.create(name='HQ office', slug='hq-office', site=other, zone_type='enterprise')
+        Flow.objects.create(name='to hq', source_zone=self.cell, destination_zone=hq)
+
+    def test_flow_between_sites(self):
+        self._flow_into_other_plant()
+        self.assertEqual(self._found('flow-between-sites'), {
+            'wrong site joins Cell at Plant and Control room at Other plant: probably a zone picked from the wrong '
+            'site',
+        })
 
     def test_address_in_other_zone(self):
         self.assertEqual(self._found('address-in-other-zone'), {

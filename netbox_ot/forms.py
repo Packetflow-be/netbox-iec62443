@@ -403,12 +403,43 @@ class ConduitFilterForm(PrimaryModelFilterSetForm):
 # Flows
 #
 
+# Zone and conduit choices name their site ("Plant A / Control room"): zone names repeat from plant to plant
+SITE_CONTEXT = {'parent': 'site'}
+
+
+def zone_site_field():
+    """A site picker that is not stored: it narrows the zone (and conduit) lists of the form to one site."""
+    return DynamicModelChoiceField(
+        label=_('Site'), queryset=Site.objects.all(), required=False,
+        help_text=_('Narrows the lists below to this site; leave it empty to pick a zone of another site'),
+    )
+
+
+def initial_site(kwargs, *fields):
+    """Preselect the site picker with the site of the first zone or conduit the object already has."""
+    instance, initial = kwargs.get('instance'), kwargs.setdefault('initial', {})
+    if instance is None or not instance.pk or initial.get('site'):
+        return
+    for field in fields:
+        related = getattr(instance, field, None)
+        if related is not None and related.site_id:
+            initial['site'] = related.site_id
+            return
+
+
 class FlowForm(PrimaryModelForm):
-    source_zone = DynamicModelChoiceField(label=_('Source zone'), queryset=Zone.objects.all())
-    destination_zone = DynamicModelChoiceField(label=_('Destination zone'), queryset=Zone.objects.all())
+    site = zone_site_field()
+    source_zone = DynamicModelChoiceField(
+        label=_('Source zone'), queryset=Zone.objects.all(), query_params={'site_id': '$site'},
+        context=SITE_CONTEXT,
+    )
+    destination_zone = DynamicModelChoiceField(
+        label=_('Destination zone'), queryset=Zone.objects.all(), query_params={'site_id': '$site'},
+        context=SITE_CONTEXT,
+    )
     conduit = DynamicModelChoiceField(
         label=_('Conduit'), queryset=Conduit.objects.all(), required=False,
-        query_params={'zone_id': '$source_zone'},
+        query_params={'zone_id': '$source_zone'}, context=SITE_CONTEXT,
     )
     protocol = forms.ChoiceField(label=_('Protocol'), choices=add_blank_choice(FlowProtocolChoices), required=False)
     port_mappings = PortMappingField(
@@ -419,7 +450,7 @@ class FlowForm(PrimaryModelForm):
         help_text=Flow._meta.get_field('access').help_text,
     )
     broker_zone = DynamicModelChoiceField(
-        label=_('Broker zone'), queryset=Zone.objects.all(), required=False,
+        label=_('Broker zone'), queryset=Zone.objects.all(), required=False, context=SITE_CONTEXT,
         help_text=Flow._meta.get_field('broker_zone').help_text,
     )
     topics = SimpleArrayField(
@@ -429,7 +460,8 @@ class FlowForm(PrimaryModelForm):
     decided_by = DynamicModelChoiceField(label=_('Decided by'), queryset=Contact.objects.all(), required=False)
 
     fieldsets = (
-        FieldSet('name', 'source_zone', 'destination_zone', 'conduit', 'description', 'tags', name=_('Flow')),
+        FieldSet('name', 'site', 'source_zone', 'destination_zone', 'conduit', 'description', 'tags',
+                 name=_('Flow')),
         FieldSet('connection', 'broker_zone', 'topics', name=_('Connection')),
         FieldSet('protocol', 'port_mappings', 'access', 'remote_access', name=_('Traffic')),
         FieldSet('allowed', 'decided_by', 'decided_on', 'review_by', 'expires', name=_('Verdict')),
@@ -451,6 +483,10 @@ class FlowForm(PrimaryModelForm):
             'last_seen': DateTimePicker(),
             'evidence': forms.Textarea(attrs={'rows': 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        initial_site(kwargs, 'source_zone')
+        super().__init__(*args, **kwargs)
 
 
 class FlowBulkEditForm(PrimaryModelBulkEditForm):
@@ -685,13 +721,20 @@ class FlowHopFilterForm(PrimaryModelFilterSetForm):
 #
 
 class RiskAssessmentForm(PrimaryModelForm):
-    zone = DynamicModelChoiceField(label=_('Zone'), queryset=Zone.objects.all(), required=False)
-    conduit = DynamicModelChoiceField(label=_('Conduit'), queryset=Conduit.objects.all(), required=False)
+    site = zone_site_field()
+    zone = DynamicModelChoiceField(
+        label=_('Zone'), queryset=Zone.objects.all(), required=False, query_params={'site_id': '$site'},
+        context=SITE_CONTEXT,
+    )
+    conduit = DynamicModelChoiceField(
+        label=_('Conduit'), queryset=Conduit.objects.all(), required=False, query_params={'site_id': '$site'},
+        context=SITE_CONTEXT,
+    )
     assessed_by = DynamicModelChoiceField(label=_('Assessed by'), queryset=Contact.objects.all(), required=False)
     approved_by = DynamicModelChoiceField(label=_('Approved by'), queryset=Contact.objects.all(), required=False)
 
     fieldsets = (
-        FieldSet('zone', 'conduit', 'kind', 'status', 'description', 'tags', name=_('Risk assessment')),
+        FieldSet('site', 'zone', 'conduit', 'kind', 'status', 'description', 'tags', name=_('Risk assessment')),
         FieldSet('assessed_on', 'assessed_by', 'approved_on', 'approved_by', 'next_review', 'method', 'document',
                  name=_('Record')),
         FieldSet('threats', 'vulnerabilities', 'consequences', 'unmitigated_likelihood', 'unmitigated_impact',
@@ -701,6 +744,7 @@ class RiskAssessmentForm(PrimaryModelForm):
     )
 
     def __init__(self, *args, **kwargs):
+        initial_site(kwargs, 'zone', 'conduit')
         super().__init__(*args, **kwargs)
         # Likelihood and impact are picked from the organisation's risk matrix
         for name in ('unmitigated_likelihood', 'unmitigated_impact', 'residual_likelihood', 'residual_impact'):
