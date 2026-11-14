@@ -38,6 +38,26 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 - `ot_demo --large` creates a second demo plant of 35 zones and about 200 flows on its own site, to try the
   plugin at the size of a real plant ([#32](https://github.com/Packetflow-be/netbox-ot/pull/32)).
 
+### Bug fixes
+
+Found by importing a real ICS lab capture (the public 4SICS captures) with Zeek and the CISA ICSNPP parsers
+([#PR](https://github.com/Packetflow-be/netbox-ot/pull/PR)):
+
+- **Traffic inside a zone is no longer lost without a word.** The import reports the industrial requests
+  between assets of the same zone, with the writes and who sent them, and how to put them on the access map.
+  `--split` says why a zone was not split.
+- **`--split` works on Zeek logs.** The level on an address line of the zone map is that asset's level, and an
+  asset without one takes the level its NetBox device or VM already has; before, every asset of a zone got the
+  zone's level, so a zone never counted as mixed.
+- **A zone's level is no longer written onto its devices.** The level on a network line of the zone map is the
+  zone's own (summary.json `zones` takes an optional `purdue_level` for the same); the import sets a device's
+  or VM's level only from that asset's own level. Before, an HMI in a level 1 cell became a level 1 device.
+- A flow's evidence starts with that flow's own request count. The connection count of the zone pair (every
+  protocol between the two zones) is a labelled second line; before, it opened every flow of the pair, so all
+  of them showed the same number.
+- ICMP in Zeek's conn log no longer turns into TCP ports: Zeek writes an ICMP message's type and code in the
+  port fields, which became flows and services on `tcp/3` or `tcp/14`.
+
 ### Documentation
 
 - The menu and the panel on device and VM pages are called *OT* in the README and the docs, as in the plugin

@@ -1,4 +1,5 @@
 import csv
+import ipaddress
 import json
 from contextlib import nullcontext
 from pathlib import Path
@@ -18,8 +19,10 @@ from netbox_ot.importers.observations import (
     UNKNOWN_IMPORT_FILES,
     apply_plan,
     build_plan,
+    inside_zone_advice,
     unknown_assets,
     unknown_import_rows,
+    with_netbox_levels,
 )
 
 
@@ -88,6 +91,10 @@ class Command(BranchCommand):
             except (OSError, ValueError) as e:
                 raise CommandError(f'Cannot read input: {e}')
         user = changelog_user(options['user'])
+        if isinstance(data.get('assets'), list) and all(isinstance(a, dict) for a in data['assets']):
+            data['assets'], from_netbox = with_netbox_levels(data['assets'], site, vrf)
+            if from_netbox:
+                self.stdout.write(f'Purdue levels from NetBox for {from_netbox} asset(s) the input gives none for')
 
         try:
             plan = build_plan(data['assets'], data['flows'], data['summary'], outside_zone=options['outside_zone'],
@@ -101,6 +108,19 @@ class Command(BranchCommand):
                               'under "services" in assets.json, or add the service by hand):')
             for op in plan.unidentified_ports:
                 self.stdout.write(f"  {op.ip} port {op.port}: {' or '.join(op.candidates)}?")
+        for zone, why in plan.not_split.items():
+            self.stdout.write(self.style.WARNING(f'--split "{zone}": not split, {why}'))
+        if plan.inside:
+            self.stdout.write('Industrial traffic inside a zone (flows run between zones, so this is not on the '
+                              'access map):')
+            for iz in plan.inside.values():
+                senders = len(iz.senders)
+                line = f'  {iz.zone}: {iz.requests} request(s) from {senders} host(s)'
+                if iz.modifying:
+                    who = ', '.join(sorted(iz.modifying_senders, key=ipaddress.ip_address)[:5])
+                    line += f', {iz.modifying} of them write/control/program (from {who})'
+                self.stdout.write(self.style.WARNING(line) if iz.modifying else line)
+                self.stdout.write(f'    {inside_zone_advice(iz)}')
 
         # A dry run skips event tracking: no change log entries and no webhooks for rolled-back work
         tracking = nullcontext() if options['dry_run'] else change_logging(user)

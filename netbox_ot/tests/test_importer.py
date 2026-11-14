@@ -315,6 +315,24 @@ class ImportCommandTest(TestCase):
         self._run('--dry-run')
         self.assertEqual(Zone.objects.count(), 0)
 
+    def test_traffic_inside_a_zone_and_a_split_that_cannot_happen_are_reported(self):
+        out = self._run('--split', 'Z5 Office')
+        self.assertIn('--split "Z5 Office": not split, its assets with a Purdue level are all in one band', out)
+        self.assertIn('Z1 Cell A: 500 request(s) from 1 host(s)', out)
+        self.assertIn('--split "Z1 Cell A" turns this traffic into flows', out)
+
+    def test_levels_from_netbox_count_for_split(self):
+        """A level set in NetBox (by hand, or by an earlier import) lets --split work without one in the input."""
+        from dcim.models import Device
+        for ip, level in (('10.10.10.10', '1'), ('10.10.10.20', '2')):
+            device = Device.objects.get(name=f'dev-{ip}')
+            device.custom_field_data[PURDUE_CF_NAME] = level
+            device.save()
+        assets = [{k: v for k, v in a.items() if k != 'purdue_level'} for a in ASSETS]
+        out = self._run('--split', 'Z1 Cell A', assets=assets)
+        self.assertIn('Purdue levels from NetBox for 2 asset(s)', out)
+        self.assertTrue(Flow.objects.filter(source_zone__name=SUPERVISORY, destination_zone__name=CONTROL).exists())
+
     def test_import_and_rerun(self):
         prefixes_before = Prefix.objects.count()
         out = self._run('--split', 'Z1 Cell A')

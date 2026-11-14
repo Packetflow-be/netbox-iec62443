@@ -128,6 +128,20 @@ class HostPlan:
 
 
 @dataclass
+class InsideZone:
+    """
+    Industrial requests between two assets of the same zone. Flows run between zones, so these are not on the
+    access map; the import reports them so that a cell's engineering station writing to its PLC is not lost.
+    """
+    zone: str
+    requests: int = 0
+    senders: set = field(default_factory=set)
+    modifying: int = 0  # write, control and program requests
+    modifying_senders: set = field(default_factory=set)
+    levels: dict = field(default_factory=dict)  # sender or receiver ip -> Purdue level ('' when unknown)
+
+
+@dataclass
 class ImportPlan:
     zones: dict
     flows: list
@@ -135,6 +149,8 @@ class ImportPlan:
     services: list = field(default_factory=list)
     unidentified_ports: list = field(default_factory=list)
     hosts: dict = field(default_factory=dict)  # ip -> HostPlan
+    inside: dict = field(default_factory=dict)  # zone name -> InsideZone, largest first
+    not_split: dict = field(default_factory=dict)  # zone asked to be split -> why it was not
 
 
 @dataclass
@@ -255,9 +271,15 @@ def validate(assets, flows, summary):
     _timestamp(summary.get('start'), 'summary.json start')
     _timestamp(summary.get('end'), 'summary.json end')
     for i, z in enumerate(summary.get('zones') or []):
-        if not isinstance(z, dict) or not z.get('name') or z.get('type') not in ZoneTypeChoices.values():
-            raise ValueError(f'summary.json zones[{i}]: "name" and a "type" of '
-                             f'{", ".join(ZoneTypeChoices.values())} are required')
+        if not isinstance(z, dict) or not z.get('name'):
+            raise ValueError(f'summary.json zones[{i}]: "name" is required')
+        if z.get('type') not in (None, '') and z['type'] not in ZoneTypeChoices.values():
+            raise ValueError(f'summary.json zones[{i}]: "type" is one of {", ".join(ZoneTypeChoices.values())}')
+        if z.get('purdue_level') not in (None, ''):
+            try:
+                float(z['purdue_level'])
+            except (TypeError, ValueError):
+                raise ValueError(f'summary.json zones[{i}]: purdue_level {z["purdue_level"]!r} is not a number')
 
 
 def _level(value):
@@ -296,13 +318,23 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
     validate(assets, flows, summary)
     by_ip = {a['ip']: a for a in assets}
     base_of_ip = {a['ip']: a['zone'] for a in assets}
-    declared_types = {z['name']: z['type'] for z in summary.get('zones') or []}
+    declared_types = {z['name']: z['type'] for z in summary.get('zones') or [] if z.get('type')}
+    declared_levels = {z['name']: _level(z['purdue_level']) for z in summary.get('zones') or []
+                       if z.get('purdue_level') not in (None, '')}
 
     bands = defaultdict(set)
     for a in assets:
         bands[a['zone']].add(_band(a.get('purdue_level')))
     wanted = set(bands) if split_zones is True else set(split_zones or ())
     split = {z for z, b in bands.items() if z in wanted and len(b - {None}) > 1}
+    not_split = {}
+    for z in sorted(wanted - split) if split_zones is not True else ():
+        if z not in bands:
+            not_split[z] = 'no asset of the input is in this zone'
+        else:
+            known = sorted(b for b in bands[z] if b)
+            not_split[z] = (f"its assets with a Purdue level are all in one band ({known[0]})" if known
+                            else 'none of its assets has a Purdue level')
 
     def zone_of(ip):
         if ip not in by_ip:
@@ -322,6 +354,8 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
     for name, z in zones.items():
         levels = [float(by_ip[ip]['purdue_level']) for ip in z.member_ips
                   if by_ip[ip].get('purdue_level') not in (None, '')]
+        if declared_levels.get(name):  # the zone's own level (a split part has its own name, so none)
+            levels.append(float(declared_levels[name]))
         z.purdue_level = _level(min(levels)) if levels else ''
         z.zone_type = _zone_type(z.purdue_level, declared_types.get(name) or declared_types.get(base_of_zone[name]))
     # The most critical part of each split zone gets traffic that can't be pinned to one part
@@ -362,10 +396,23 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
 
     # OT requests between zones, keyed by (source zone, destination zone, protocol, connection, broker zone)
     ot = defaultdict(list)
+    industrial = set(IndustrialProtocolChoices.values())
+    inside = {}
     for r in requests:
         zs, zd = zone_of(r.src), zone_of(r.dst)
         if zs != zd:
             ot[(zs, zd, r.protocol, r.connection, zone_of(r.broker) if r.broker else '')].append(r)
+        elif zs != outside_zone and (r.protocol in industrial or r.access in MODIFYING):
+            # Not a flow (flows run between zones), but reported: a cell's own writes matter most
+            iz = inside.setdefault(zs, InsideZone(zone=zs))
+            iz.requests += r.count
+            iz.senders.add(r.src)
+            if r.access in MODIFYING:
+                iz.modifying += r.count
+                iz.modifying_senders.add(r.src)
+            for ip in (r.src, r.dst):
+                iz.levels[ip] = _level(by_ip.get(ip, {}).get('purdue_level'))
+    inside = dict(sorted(inside.items(), key=lambda kv: (-kv[1].modifying, -kv[1].requests, kv[0])))
     ot_pairs = {(key[0], key[1]) for key in ot}
 
     # Connection counts per directed zone pair, from zone_pairs
@@ -433,7 +480,24 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
     services = _plan_services(assets, requests, seen_in)
     return ImportPlan(zones=zones, flows=plans, asset_levels=asset_levels, services=services,
                       unidentified_ports=_unidentified_ports(assets, services),
-                      hosts=_plan_hosts(assets, requests, {a['ip']: zone_of(a['ip']) for a in assets}))
+                      hosts=_plan_hosts(assets, requests, {a['ip']: zone_of(a['ip']) for a in assets}),
+                      inside=inside, not_split=not_split)
+
+
+def inside_zone_advice(iz):
+    """One line of advice for traffic inside a zone: how to put it on the access map."""
+    levels = iz.levels
+    unknown = sorted((ip for ip, level in levels.items() if not level), key=ipaddress.ip_address)
+    bands = {_band(level) for level in levels.values() if level}
+    base = iz.zone
+    if len(bands) > 1:
+        return (f'its assets are at Purdue levels {", ".join(sorted({v for v in levels.values() if v}))}: '
+                f'--split "{base}" turns this traffic into flows')
+    if unknown:
+        shown = ', '.join(unknown[:5]) + (f' (+{len(unknown) - 5})' if len(unknown) > 5 else '')
+        return (f'no Purdue level for {shown}: give them one (an address line in the zone map, or in NetBox) and '
+                f'use --split "{base}", or put the senders in a zone of their own')
+    return 'all in one Purdue band: put the senders in a zone of their own to see this traffic as flows'
 
 
 def _plan_hosts(assets, requests, zone_of_ip):
@@ -476,6 +540,37 @@ def _plan_hosts(assets, requests, zone_of_ip):
     for a in assets:
         host(a['ip']).open_ports.update(a.get('open_ports') or [])
     return hosts
+
+
+def with_netbox_levels(assets, site, vrf=None):
+    """
+    The assets, where the input gives no Purdue level, with the level NetBox already holds for the device or VM
+    with that primary IPv4 at `site` in `vrf` (only when exactly one matches). So a level set by hand in NetBox
+    counts for --split and for the zone's level. Returns (assets, how many levels came from NetBox).
+    """
+    from dcim.models import Device
+    from virtualization.models import VirtualMachine
+
+    from ..customfields import PURDUE_CF_NAME
+
+    wanted = {a['ip'] for a in assets if a.get('purdue_level') in (None, '')}
+    if not wanted:
+        return assets, 0
+    found = defaultdict(list)
+    for model in (Device, VirtualMachine):
+        for address, data in model.objects.filter(site=site, primary_ip4__vrf=vrf).values_list(
+                'primary_ip4__address', 'custom_field_data'):
+            ip = str(address.ip)
+            if ip in wanted:
+                found[ip].append((data or {}).get(PURDUE_CF_NAME))
+    result, count = [], 0
+    for a in assets:
+        levels = found.get(a['ip'], [])
+        if len(levels) == 1 and levels[0] not in (None, ''):
+            a = {**a, 'purdue_level': levels[0]}
+            count += 1
+        result.append(a)
+    return result, count
 
 
 def unknown_assets(plan, site, vrf=None):

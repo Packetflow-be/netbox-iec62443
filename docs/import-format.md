@@ -48,7 +48,7 @@ have it).
 | Field | Meaning |
 |---|---|
 | `zone_pairs` | List of `{"from": zone, "to": zone, "count": n}`: all traffic between zones, not only identified requests. A pair with no identified request still becomes a flow, without a protocol. A zone name not in assets.json means the outside zone |
-| `zones` | List of `{"name": zone, "type": type}` with the type of zones the importer creates: `ot`, `safety`, `dmz`, `enterprise` or `external`. Default: 3.5 is a DMZ, 4 and 5 enterprise, other levels OT, the outside zone external. Existing zones keep their type |
+| `zones` | List of `{"name": zone, "type": type, "purdue_level": level}` (both optional) for the zones the importer creates. `type` is `ot`, `safety`, `dmz`, `enterprise` or `external`; default: 3.5 is a DMZ, 4 and 5 enterprise, other levels OT, the outside zone external. `purdue_level` is the zone's own level when its assets give none lower; it is never copied onto the assets. Existing zones keep their type and level |
 | `captures` | List of capture names, quoted in the evidence |
 | `hours` | Capture duration in hours, quoted in the evidence |
 | `start`, `end` | The capture window; the first/last seen of flows that give none |

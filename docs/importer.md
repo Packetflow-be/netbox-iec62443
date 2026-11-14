@@ -64,9 +64,29 @@ level and services. Rename them in NetBox afterwards; the files name them `unkno
   `ZONE (control)` (levels 0-1), `ZONE (supervisory)` (2) and `ZONE (operations)` (3 and up), so the
   paths between them become flows (e.g. an engineering laptop writing to a PLC in the same cell).
   Traffic counted for the whole zone goes to the part its OT requests point at, else to the most
-  critical part. `--split-all` does this for every mixed zone.
+  critical part. `--split-all` does this for every mixed zone. A split needs the assets' own levels: from
+  assets.json, an address line in the zone map, or the level the NetBox device or VM already has. When a zone
+  cannot be split, the import says why.
 - `--dry-run` shows what would change and writes nothing.
 - `--user NAME` records the changes in the change log under that user (default: the first superuser).
+
+## Traffic inside a zone
+
+Flows run between zones, so requests between two assets of the same zone are not flows and not on the access
+map. The import still counts the industrial ones and reports them per zone, with the write, control and
+program requests and who sent them, and how to put them on the map:
+
+```
+Industrial traffic inside a zone (flows run between zones, so this is not on the access map):
+  S7 cell: 105217 request(s) from 3 host(s), 72 of them write/control/program (from 10.10.10.30)
+    its assets are at Purdue levels 1, 2: --split "S7 cell" turns this traffic into flows
+```
+
+## Purdue levels
+
+An asset's level comes from the input (assets.json `purdue_level`, an address line in the zone map) or, when
+the input gives none, from the level its NetBox device or VM already has. The import sets a level on a device
+or VM only when it has none yet, and only from an asset's own level, never from its zone's.
 
 ## Re-running
 
