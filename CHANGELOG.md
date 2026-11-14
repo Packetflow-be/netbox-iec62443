@@ -19,7 +19,8 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 ### Enhancements
 
 - **OT overview**: a tab on every site with zones that shows where the site stands. A radar chart of achieved
-  against target security level per foundational requirement (site average, or one zone), a table of every
+  against target security level per foundational requirement (for the site, the weakest zone per foundational
+  requirement; or one zone), a table of every
   zone and conduit sorted by how far below target it is, requirement statuses per foundational requirement,
   risk before and after countermeasures with what is still above the tolerable risk, and the number of check
   findings. Printable, drawn on the server without scripts, and also as `GET overview/?site_id=<id>` in the
@@ -63,6 +64,10 @@ Found by importing a real ICS lab capture (the public 4SICS captures) with Zeek 
 - A flow's evidence starts with that flow's own request count. The connection count of the zone pair (every
   protocol between the two zones) is a labelled second line; before, it opened every flow of the pair, so all
   of them showed the same number.
+- The OT overview's radar no longer averages security levels over zones (it showed levels like 1.5, which do
+  not exist, and hid a weak zone behind strong ones). For the site, each foundational requirement shows the
+  weakest zone: the one furthest below its target. The chart names those zones, and the API gives each axis
+  its `zone`.
 - ICMP in Zeek's conn log no longer turns into TCP ports: Zeek writes an ICMP message's type and code in the
   port fields, which became flows and services on `tcp/3` or `tcp/14`.
 

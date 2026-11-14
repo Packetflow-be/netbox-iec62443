@@ -100,9 +100,9 @@
             <div class="small text-secondary mb-2">
               {% if overview.focus %}
                 {% blocktrans with zone=overview.focus.name %}Zone {{ zone }}.{% endblocktrans %}
-                <a href="{{ request.path }}#levels" class="d-print-none">{% trans "Show the site average" %}</a>
+                <a href="{{ request.path }}#levels" class="d-print-none">{% trans "Show the whole site" %}</a>
               {% else %}
-                {% blocktrans count n=overview.axes.0.measured %}Average over {{ n }} zone with a target and an achieved level.{% plural %}Average over {{ n }} zones with a target and an achieved level.{% endblocktrans %}
+                {% blocktrans count n=overview.axes.0.measured %}Per foundational requirement, the weakest of {{ n }} zone with a target and an achieved level: the one furthest below its target sets the site's level.{% plural %}Per foundational requirement, the weakest of {{ n }} zones with a target and an achieved level: the one furthest below its target sets the site's level.{% endblocktrans %}
                 {% trans "Pick a zone in the table for its own chart." %}
               {% endif %}
             </div>
@@ -112,9 +112,15 @@
               <span class="me-3"><span class="ot-key target"></span>{% trans "Target (SL-T)" %}</span>
               <span class="text-danger fw-bold">▼</span> {% trans "below target" %}
             </div>
+            {% if overview.weakest and not overview.focus %}
+              <div class="small text-secondary text-center mt-1">
+                {% trans "Weakest zone" %}:
+                {% for zone, frs in overview.weakest %}{{ zone }} ({{ frs|join:", " }}){% if not forloop.last %} · {% endif %}{% endfor %}
+              </div>
+            {% endif %}
             <p class="small text-secondary mt-3 mb-0">
               {% if overview.furthest %}
-                {% blocktrans with label=overview.furthest.label %}Furthest from target: {{ label }}.{% endblocktrans %}
+                {% if overview.furthest.zone %}{% blocktrans with label=overview.furthest.label zone=overview.furthest.zone %}Furthest from target: {{ label }}, in zone {{ zone }}.{% endblocktrans %}{% else %}{% blocktrans with label=overview.furthest.label %}Furthest from target: {{ label }}.{% endblocktrans %}{% endif %}
                 {% if not overview.focus %}{% blocktrans count n=overview.furthest.below with measured=overview.furthest.measured %}{{ n }} of {{ measured }} zones is below target there.{% plural %}{{ n }} of {{ measured }} zones are below target there.{% endblocktrans %}{% endif %}
               {% elif overview.axes.0.achieved is not None %}
                 {% trans "No foundational requirement is below its target." %}

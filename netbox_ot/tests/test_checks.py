@@ -138,7 +138,7 @@ class ChecksTest(TestCase):
                                                              'Cell safety has no approved risk assessment'})
 
     def test_exposure(self):
-        from netbox_ot.accessmap import access_map_flows, attention
+        from netbox_ot.accessmap import attention
         from netbox_ot.filtersets import FlowFilterSet
         self.assertEqual(self._found('undecided-into-control'), {
             'office writes safety reaches control zone Cell safety (write; from the Enterprise zone Office) and nobody '

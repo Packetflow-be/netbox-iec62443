@@ -12,8 +12,11 @@ The radar chart has one spoke per foundational requirement of IEC 62443 (IAC, UC
 dashed outline is the target level (SL-T), the filled shape the achieved level (SL-A). Where the shape stays
 inside the outline, the site is below target; those spokes are marked in red with their numbers.
 
-- For the site, both are the average over the zones that have a target and an achieved level. The text under
-  the chart names the foundational requirement furthest from target and how many zones are below it there.
+- For the site, each spoke shows the weakest zone in that foundational requirement: of the zones that have a
+  target and an achieved level, the one furthest below its target (then the one with the lowest achieved
+  level). Security levels are whole numbers, and an attacker picks the weakest zone, so the site is never an
+  average. The line under the chart names the zone behind each spoke, and the text names the foundational
+  requirement furthest from target, in which zone, and how many zones are below target there.
 - Pick a zone in the table next to it for the chart of that zone alone.
 - The outer ring is the highest level drawn (at least SL 2), so a plant with SL-T 2 fills the chart.
 

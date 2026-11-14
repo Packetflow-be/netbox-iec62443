@@ -51,11 +51,15 @@ class OverviewTest(TestCase):
         overview = build_overview(self.site)
         self.assertEqual(overview['zones'], {
             'total': 4, 'with_target': 3, 'at_target': 1, 'below_target': 1, 'not_assessed': 1})
-        # The average is over the two zones with a target and an achieved level
+        # Per FR the weakest of the two zones with a target and an achieved level: whole levels, never an average
         axes = {a['fr']: a for a in overview['axes']}
         self.assertEqual((axes['IAC']['target'], axes['IAC']['achieved'], axes['IAC']['below']), (2, 2, 0))
-        self.assertEqual((axes['UC']['target'], axes['UC']['achieved'], axes['UC']['below']), (2, 1.5, 1))
-        self.assertEqual((axes['DC']['target'], axes['DC']['achieved']), (1.5, 1.5))
+        self.assertEqual((axes['UC']['target'], axes['UC']['achieved'], axes['UC']['below'], axes['UC']['zone']),
+                         (2, 1, 1, 'Cell'))
+        # Both meet DC; Cell is the weaker one there (1 against Control's 2)
+        self.assertEqual((axes['DC']['target'], axes['DC']['achieved'], axes['DC']['zone']), (1, 1, 'Cell'))
+        self.assertEqual(axes['SI']['zone'], 'Cell')  # a tie on everything goes by name
+        self.assertEqual(overview['weakest'], [('Cell', ['IAC', 'UC', 'SI', 'DC', 'RDF', 'TRE', 'RA'])])
         self.assertEqual(axes['RDF']['measured'], 2)
         self.assertEqual(overview['furthest']['fr'], 'UC')
         # Furthest below target first, then not assessed, no target, and at target last
@@ -117,7 +121,8 @@ class OverviewTest(TestCase):
         self.assertEqual(svg.count('class="spoke"'), 7)
         self.assertEqual(svg.count('class="ring"'), 2)  # the highest level drawn is SL 2
         self.assertEqual(svg.count('<circle'), 7)
-        self.assertIn('1.5 / 2 ▼', svg)
+        self.assertIn('1 / 2 ▼', svg)
+        self.assertIn('(zone Cell)', svg)
         self.assertNotIn('<script', svg)
         # A target without an achieved level draws the outline only
         svg = radar_svg(build_overview(self.site, zone=Zone.objects.get(slug='dmz'))['axes'])
@@ -154,19 +159,20 @@ class OverviewViewTest(TestCase):
         response = self.client.get(url)
         self.assertHttpStatus(response, 200)
         self.assertContains(response, '<svg class="ot-radar"')
-        self.assertContains(response, 'Average over 2 zones')
-        self.assertContains(response, 'Furthest from target: FR 2 Use control (UC).')
+        self.assertContains(response, 'the weakest of 2 zones')
+        self.assertContains(response, 'Furthest from target: FR 2 Use control (UC), in zone Cell.')
+        self.assertContains(response, 'Weakest zone')
         self.assertContains(response, '75%')
         self.assertContains(response, 'Without an approved assessment')
         response = self.client.get(f'{url}?zone={self.cell.pk}')
         self.assertHttpStatus(response, 200)
         self.assertContains(response, 'Zone Cell.')
-        self.assertContains(response, 'Show the site average')
-        # Anything but a zone of this site falls back to the site average
+        self.assertContains(response, 'Show the whole site')
+        # Anything but a zone of this site falls back to the whole site
         for value in ('abc', '999999'):
             response = self.client.get(f'{url}?zone={value}')
             self.assertHttpStatus(response, 200)
-            self.assertContains(response, 'Average over 2 zones')
+            self.assertContains(response, 'the weakest of 2 zones')
 
     @override_settings(EXEMPT_VIEW_PERMISSIONS=[])
     def test_tab_shows_on_a_site_with_zones_only(self):
@@ -203,7 +209,8 @@ class OverviewAPITest(APITestCase):
         self.assertHttpStatus(response, status.HTTP_200_OK)
         self.assertEqual(response.data['site']['name'], 'Site 1')
         self.assertEqual(response.data['zones']['at_target'], 1)
-        self.assertEqual(response.data['security_levels'][1]['achieved'], 1.5)
+        self.assertEqual(response.data['security_levels'][1]['achieved'], 1)
+        self.assertEqual(response.data['security_levels'][1]['zone'], 'Cell')
         self.assertEqual(response.data['requirements']['percent'], 75)
         self.assertEqual(len(response.data['risk']['above_tolerable']), 1)
         self.assertIsNone(response.data['zone'])

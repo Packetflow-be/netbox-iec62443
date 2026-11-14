@@ -55,33 +55,53 @@ def _level_row(kind, obj):
     }
 
 
-def _mean(values):
-    return round(sum(values) / len(values), 2) if values else None
+def _weakest(measured, i):
+    """
+    The zone that sets the site's level in foundational requirement `i`: the one furthest below its target, then
+    the one with the lowest achieved level. Security levels are whole numbers and an attacker picks the weakest
+    zone, so the site is never shown as an average.
+    """
+    return min(measured, key=lambda z: (z.sl_achieved[i] - z.sl_target[i], z.sl_achieved[i], z.name))
 
 
 def _axes(zones, focus=None):
     """
-    Per foundational requirement: the target and achieved level to draw. Of one zone (`focus`), or the average
-    over the zones that have both a target and an achieved level, with how many of them are below target.
+    Per foundational requirement: the target and achieved level to draw. Of one zone (`focus`), or of the weakest
+    zone in that requirement among the zones that have both a target and an achieved level (`zone` names it), with
+    how many of them are below target.
     """
     labels = _fr_labels()
+    weakest = [None] * sl.FR_COUNT
     if focus is not None:
         measured = [focus] if focus.sl_target else []
         target = focus.sl_target
         achieved = focus.sl_achieved
     else:
         measured = [z for z in zones if z.sl_target and z.sl_achieved]
-        target = [_mean([z.sl_target[i] for z in measured]) for i in range(sl.FR_COUNT)] if measured else None
-        achieved = [_mean([z.sl_achieved[i] for z in measured]) for i in range(sl.FR_COUNT)] if measured else None
+        target = achieved = None
+        if measured:
+            weakest = [_weakest(measured, i) for i in range(sl.FR_COUNT)]
+            target = [weakest[i].sl_target[i] for i in range(sl.FR_COUNT)]
+            achieved = [weakest[i].sl_achieved[i] for i in range(sl.FR_COUNT)]
     axes = []
     for i in range(sl.FR_COUNT):
         below = sum(1 for z in measured if z.sl_achieved and z.sl_achieved[i] < z.sl_target[i])
         axes.append({
             'fr': sl.FR_SHORT[i], 'label': labels[i],
             'target': target[i] if target else None, 'achieved': achieved[i] if achieved else None,
+            'zone': weakest[i].name if weakest[i] is not None else None,
             'below': below, 'measured': len(measured),
         })
     return axes
+
+
+def _weakest_zones(axes):
+    """[(zone name, [FRs])]: which zone sets the site's level in which foundational requirements."""
+    frs = {}
+    for a in axes:
+        if a.get('zone'):
+            frs.setdefault(a['zone'], []).append(a['fr'])
+    return sorted(frs.items(), key=lambda item: (-len(item[1]), item[0]))
 
 
 def _furthest(axes):
@@ -166,7 +186,7 @@ def _risk(subjects):
 def build_overview(site, user=None, zone=None):
     """
     The overview of `site` as plain data. `zone` (a zone of the site) draws the radar chart for that zone
-    instead of the site average.
+    instead of the weakest zone per foundational requirement.
     """
     def visible(qs):
         return qs.restrict(user, 'view') if user is not None else qs
@@ -188,6 +208,7 @@ def build_overview(site, user=None, zone=None):
         'version': __version__,
         'focus': focus,
         'axes': axes,
+        'weakest': _weakest_zones(axes),
         'furthest': _furthest(axes),
         'chart': radar_svg(axes),
         'levels': level_rows,
@@ -291,6 +312,8 @@ def radar_svg(axes, size=360):
         value = _number(a['achieved']) if a['achieved'] is not None else '-'
         tip = _('%(label)s: achieved %(achieved)s, target %(target)s') % {
             'label': a['label'], 'achieved': value, 'target': target}
+        if a.get('zone'):
+            tip += ' ' + _('(zone %(zone)s)') % {'zone': a['zone']}
         if a['achieved'] is not None:
             x, y = point(i, a['achieved'])
             out.append(f'<circle class="dot{" gap" if gap else ""}" cx="{x:.1f}" cy="{y:.1f}" r="4.5">'
