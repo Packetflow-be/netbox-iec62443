@@ -12,10 +12,10 @@ from netbox.views import generic
 from utilities.views import ContentTypePermissionRequiredMixin, ViewTab, register_model_view
 
 from . import filtersets, forms, sl, tables
-from .accessmap import access_map_flows, access_map_svg, attention
+from .accessmap import access_map_diagram, access_map_flows, accessmap_labels, attention
 from .branching import branch_names, branching_installed
 from .checks import CHECKS, run_checks, summary
-from .choices import ConnectionChoices, PurdueLevelChoices
+from .choices import ConnectionChoices
 from .customfields import get_sl_capability
 from .models import (
     Conduit,
@@ -853,19 +853,49 @@ class IndustrialServiceBulkDeleteView(generic.BulkDeleteView):
 # Access map
 #
 
-def _access_map_context(request, site, max_level):
+def _access_map_context(request, site, form):
+    """The access map of a site (or of all sites, without the diagram) as the bound filter form asks for it."""
     visible = Flow.objects.restrict(request.user, 'view')
-    flows = list(access_map_flows(visible, site=site, max_level=max_level))
-    zones = Zone.objects.restrict(request.user, 'view').filter(site=site) if site else Zone.objects.none()
+    zone_queryset = Zone.objects.restrict(request.user, 'view')
+    chosen = form.cleaned_data if form.is_valid() else {}
+    max_level = chosen.get('max_level') or _default_max_level()
+    collapse = bool(chosen.get('collapse'))
+    zones = list(chosen.get('zone_id') or ())
+    if zones and collapse:
+        # A box of the collapsed diagram stands for a zone and everything below it
+        below = zones
+        while below:
+            below = list(zone_queryset.filter(parent__in=below).exclude(pk__in=[z.pk for z in zones]))
+            zones += below
+    filters = {
+        'verdict': chosen.get('verdict') or (),
+        'protocol': chosen.get('protocol') or (),
+        'connection': chosen.get('connection') or (),
+        'zones': zones,
+        'remote_access': chosen.get('remote_access'),
+    }
+    filtered = any(v not in ((), [], None) for v in filters.values())
+    flows = list(access_map_flows(visible, site=site, max_level=max_level, **filters))
     site_flows = visible.filter(Q(source_zone__site=site) | Q(destination_zone__site=site)) if site else visible
-    return {
+    context = {
+        'form': form,
         'flows': flows,
-        'svg': access_map_svg(flows, zones),
+        'flows_total': access_map_flows(visible, site=site, max_level=max_level).count() if filtered else len(flows),
+        'filtered': filtered,
         'attention': attention(site_flows),
         'max_level': max_level,
-        'max_level_label': dict(PurdueLevelChoices.CHOICES).get(max_level, max_level),
         'site': site,
     }
+    if site is not None:
+        # One diagram per site: the zones of several sites in one picture say nothing
+        site_zones = zone_queryset.filter(site=site)
+        drawn = {pk for f in flows for pk in (f.source_zone_id, f.destination_zone_id)}
+        context['diagram'] = access_map_diagram(
+            flows, site_zones if chosen.get('empty') else (), collapse=collapse, zone_queryset=zone_queryset,
+        )
+        context['diagram']['data']['labels'] = accessmap_labels()
+        context['zones_not_drawn'] = 0 if chosen.get('empty') else site_zones.exclude(pk__in=drawn).count()
+    return context
 
 
 class AccessMapView(ContentTypePermissionRequiredMixin, View):
@@ -875,19 +905,13 @@ class AccessMapView(ContentTypePermissionRequiredMixin, View):
         return 'netbox_ot.view_flow'
 
     def get(self, request):
-        max_level = _default_max_level()
-        form = forms.AccessMapFilterForm(request.GET or None, initial={'max_level': max_level})
-        site = None
-        if form.is_valid():
-            site = form.cleaned_data.get('site_id')
-            max_level = form.cleaned_data.get('max_level') or max_level
+        form = forms.AccessMapFilterForm(request.GET or None, initial={'max_level': _default_max_level()})
+        site = form.cleaned_data.get('site_id') if form.is_valid() else None
         if site is not None and not Site.objects.restrict(request.user, 'view').filter(pk=site.pk).exists():
             site = None
-        context = _access_map_context(request, site, max_level)
         return render(request, 'netbox_ot/accessmap.html', {
-            'form': form,
             'show_site': site is None,
-            **context,
+            **_access_map_context(request, site, form),
         })
 
 
@@ -906,13 +930,9 @@ class SiteAccessMapView(generic.ObjectView):
     )
 
     def get_extra_context(self, request, instance):
-        max_level = request.GET.get('max_level') or _default_max_level()
-        if max_level not in PurdueLevelChoices.values():
-            max_level = _default_max_level()
-        return {
-            'levels': PurdueLevelChoices.CHOICES,
-            **_access_map_context(request, instance, max_level),
-        }
+        form = forms.AccessMapFilterForm(request.GET or None, initial={'max_level': _default_max_level()},
+                                         site=instance)
+        return _access_map_context(request, instance, form)
 
 
 #

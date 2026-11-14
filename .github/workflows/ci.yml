@@ -239,6 +239,8 @@ jobs:
           import glob, zipfile
           names = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist()
           for needed in ('netbox_ot/templates/netbox_ot/accessmap.html',
+                         'netbox_ot/static/netbox_ot/accessmap.js',
+                         'netbox_ot/static/netbox_ot/accessmap.css',
                          'netbox_ot/templates/netbox_ot/inc/sl_panel.html',
                          'netbox_ot/migrations/0001_initial.py',
                          'netbox_ot/tests/query_counts.json',

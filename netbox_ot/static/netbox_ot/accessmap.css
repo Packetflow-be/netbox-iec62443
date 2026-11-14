@@ -1,0 +1,49 @@
+/* Access map diagram: the scrolling, zoomable view around the server-rendered SVG, and its detail panel. */
+.ot-map-view.ot-map-live {
+  overflow: auto;
+  max-height: 80vh;
+  cursor: grab;
+  border: 1px solid var(--tblr-border-color, rgba(128, 128, 128, .25));
+  border-radius: 4px;
+}
+.ot-map-view.ot-map-live.ot-map-drag {
+  cursor: grabbing;
+  user-select: none;
+}
+.ot-map-view.ot-map-live svg.ot-map {
+  display: block;
+  max-width: none;
+  margin: 0 auto;
+}
+.ot-map-panel {
+  margin-top: .75rem;
+  border: 1px solid var(--tblr-border-color, rgba(128, 128, 128, .25));
+  border-radius: 4px;
+}
+.ot-map-panel .ot-map-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  align-items: center;
+  padding: .5rem .75rem;
+}
+.ot-map-panel .ot-map-panel-head strong {
+  margin-right: auto;
+}
+.ot-map-panel .table {
+  margin-bottom: 0;
+}
+@media print {
+  .ot-map-view.ot-map-live {
+    overflow: visible;
+    max-height: none;
+    border: 0;
+  }
+  .ot-map-view.ot-map-live svg.ot-map {
+    width: 100% !important;
+    height: auto !important;
+  }
+  .ot-map-card {
+    break-inside: avoid;
+  }
+}
