@@ -20,7 +20,7 @@ your inventory. See at a glance who can reach the PLCs, including supplier remot
 TeamViewer, VPN or an MSP's jump host, and decide per flow whether that is allowed. Then hand an auditor the
 zone register.
 
-![The demo plant: the OT overview, the access map, a flow with its verdict and path, a zone with its security levels, and the zone register](https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/demo.gif)
+![The access map of the demo plant: what needs attention first, and every flow into the controller zones by Purdue level, coloured by its verdict](https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/access-map.png)
 
 ## Features
 
@@ -56,6 +56,26 @@ zone register.
   [Working in a branch](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/branching.md)
 - REST API, GraphQL, filters, bulk import/edit, change log and permissions like any NetBox object.
   [API](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/api.md)
+
+## Screenshots
+
+A flow with its verdict: allowed or not, decided by whom, until when, and the path it takes.
+
+![A flow from the MSP into the DMZ: RDP, remote access, allowed until a date by a named person, through a tunnel, a jump host and a firewall](https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/flow.png)
+
+The OT overview of a site: achieved against target security level per foundational requirement, with the weakest
+zone named, and every zone and conduit sorted by how far below target it is.
+
+![The OT overview: radar chart of achieved against target security level and the zones and conduits sorted by gap](https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/overview.png)
+
+A risk assessment: where it stands in the IEC 62443-3-2 steps, and the unmitigated, residual and tolerable risk on
+the organisation's risk matrix.
+
+![A risk assessment with the IEC 62443-3-2 steps and the risk matrix](https://raw.githubusercontent.com/Packetflow-be/netbox-ot/main/docs/risk-assessment.png)
+
+More in the docs: [zone](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/data-model.md),
+[zone register and checks](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/checks-and-register.md),
+[industrial services](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/industrial.md).
 
 ## Compatibility
 
