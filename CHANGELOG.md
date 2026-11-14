@@ -73,6 +73,11 @@ Found by importing a real ICS lab capture (the public 4SICS captures) with Zeek 
 
 ### Documentation
 
+- netbox-branching is marked as not recommended alongside netbox-ot: it works, but every release with a
+  migration leaves the branches with pending migrations, so they have to be rebuilt after each upgrade.
+  `ot_import --dry-run`, a separate site or a test NetBox are the lighter ways to try an import
+  ([#PR](https://github.com/Packetflow-be/netbox-ot/pull/PR)).
+
 - The menu and the panel on device and VM pages are called *OT* in the README and the docs, as in the plugin
   since 0.3.0; the API and installation pages list the system requirement objects of 0.4.0 and the firmware
   version custom field ([#30](https://github.com/Packetflow-be/netbox-ot/pull/30)).

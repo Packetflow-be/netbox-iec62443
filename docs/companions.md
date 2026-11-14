@@ -83,4 +83,6 @@ the [Diode](https://github.com/netboxlabs/diode-netbox-plugin) plugin and
 [netbox-custom-objects](https://github.com/netboxlabs/netbox-custom-objects) are under the *NetBox Limited Use
 License 1.0*: use inside your own organisation is allowed; redistributing them, or running them as a service
 that competes with NetBox Labs, is not. netbox-ot works beside them but never depends on them; check the licence before you put them
-in an image you hand out or a NetBox you run for others.
+in an image you hand out or a NetBox you run for others. netbox-branching is also not recommended alongside
+netbox-ot for a practical reason: its branches need rebuilding after every netbox-ot upgrade with a migration
+(see [Working in a branch](branching.md)).

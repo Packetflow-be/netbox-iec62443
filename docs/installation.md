@@ -216,6 +216,10 @@ Scripts and saved filters that name the old URLs, command names, custom fields o
 [netbox-branching](https://github.com/netboxlabs/netbox-branching), each branch shows *pending migrations*
 after the upgrade; migrating the branch takes over its copy of the tables the same way.
 
+netbox-branching is not recommended alongside netbox-ot for this reason: every release with a migration leaves
+the branches with pending migrations, and migrating a branch can take long and hold up NetBox. Merge or delete
+branches before upgrading, and rebuild the ones you still need afterwards ([Working in a branch](branching.md)).
+
 ## Removing
 
 Take `netbox_ot` out of `PLUGINS`, restart NetBox, then `pip uninstall netbox-ot` (and remove it
