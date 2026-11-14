@@ -20,6 +20,15 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   level" or "Without an approved assessment" (the checks have skipped them since 0.5.0). The REST overview has
   `exposure` and `next_steps`. New zone and conduit filters `has_sl_achieved` and `has_accountable`.
 
+- **Unknown-host import files** (`--unknown-import`) keep what the source knew and load for a second plant:
+  devices are named `unknown-<address>-<site slug>` (NetBox's interface and IP address import finds a device by
+  name across all sites, so a second plant on the same addresses matched the first plant's devices); the
+  source's role goes into the description, and into `role` when NetBox has a device role of that name; the
+  Purdue level into a new `cf_ot_purdue_level` column; new `--unknown-role` and `--unknown-device-type`
+  defaults; addresses the VRF already holds are left out of the IP address file and listed with the advice to
+  give each plant its own VRF. The output says the columns take names, not slugs. The unknown-host report has
+  `role` and `purdue_level` columns. README: a first import of your own capture, one VRF per plant.
+
 ### Bug fixes
 
 - The **Zeek import's memory grew with the logs**: every record of every log was held in memory before it was

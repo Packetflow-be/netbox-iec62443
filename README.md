@@ -113,6 +113,18 @@ site *IEC 62443 demo plant* (`--delete` removes it again):
 sudo venv/bin/python netbox/manage.py ot_demo
 ```
 
+For your own plant, start from a Zeek capture. Create a site, and a VRF for it if other plants in this NetBox
+use the same address ranges (one VRF per plant). Then let the import draft the zone map:
+
+```bash
+sudo venv/bin/python netbox/manage.py ot_import /captures/plant-a --site plant-a --vrf plant-a --suggest-zone-map zones.csv
+# name the zones in zones.csv, then:
+sudo venv/bin/python netbox/manage.py ot_import /captures/plant-a --site plant-a --vrf plant-a --zone-map zones.csv
+```
+
+The site's *OT overview* tab then says what to do next. See
+[docs/zeek.md](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/zeek.md).
+
 [netbox-docker](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/installation.md#netbox-docker), the settings, permissions, upgrading and removing are in
 [docs/installation.md](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/installation.md).
 

@@ -311,6 +311,25 @@ class ImportCommandTest(TestCase):
                 Path(tmp, f'{name}.json').write_text(json.dumps(data))
             return self._run_dir(tmp, *extra)
 
+    def test_unknown_import_keeps_what_the_source_knew(self):
+        import csv
+
+        from dcim.models import DeviceRole
+        DeviceRole.objects.create(name='Engineering station', slug='es')
+        assets = ASSETS + [
+            {'ip': '10.10.10.30', 'role': 'engineering station', 'purdue_level': 2, 'zone': 'Z1 Cell A'},
+            {'ip': '10.10.10.40', 'role': 'PLC (ControlLogix)', 'purdue_level': 1, 'zone': 'Z1 Cell A'},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            self._run('--unknown-import', tmp, assets=assets)
+            rows = {r['name']: r for r in csv.DictReader(Path(tmp, '1-devices.csv').open())}
+        # A role NetBox has (by name, any case) is filled in; any other stays in the description
+        es, plc = rows['unknown-10.10.10.30-demo'], rows['unknown-10.10.10.40-demo']
+        self.assertEqual((es['role'], es['cf_ot_purdue_level']), ('Engineering station', '2'))
+        self.assertEqual((plc['role'], plc['cf_ot_purdue_level']), ('', '1'))
+        self.assertTrue(plc['description'].startswith(
+            'Found by passive discovery. Role in the capture: PLC (ControlLogix), In zone Z1 Cell A'))
+
     def test_dry_run_saves_nothing(self):
         self._run('--dry-run')
         self.assertEqual(Zone.objects.count(), 0)

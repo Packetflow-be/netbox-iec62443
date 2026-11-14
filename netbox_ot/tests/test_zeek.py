@@ -291,9 +291,12 @@ class ZeekImportCommandTest(TestCase):
             files = {p.name: list(csv.DictReader(p.open())) for p in sorted(Path(tmp, 'import').iterdir())}
         self.assertEqual(list(files), ['1-devices.csv', '2-interfaces.csv', '3-ip-addresses.csv'])
         # The MSP laptop is in an external zone: not a device of the plant
-        self.assertEqual([d['name'] for d in files['1-devices.csv']], ['unknown-10.10.10.99', 'unknown-10.10.30.2'])
+        self.assertEqual([d['name'] for d in files['1-devices.csv']],
+                         ['unknown-10.10.10.99-plant', 'unknown-10.10.30.2-plant'])
         device = files['1-devices.csv'][0]
         self.assertEqual((device['role'], device['device_type'], device['site']), ('', '', 'Plant'))
+        self.assertIn('fill in role, manufacturer, device_type in 1-devices.csv (names as NetBox shows them',
+                      out.getvalue())
         self.assertIn('In zone Cell', device['description'])
         self.assertIn('serves icmp, tcp/445', device['description'])
         # The mask of the prefix NetBox has, else /32
@@ -311,8 +314,52 @@ class ZeekImportCommandTest(TestCase):
                 form = form_class(row)
                 self.assertTrue(form.is_valid(), form.errors)
                 form.save()
-        created = Device.objects.get(name='unknown-10.10.10.99')
+        created = Device.objects.get(name='unknown-10.10.10.99-plant')
         self.assertEqual(str(created.primary_ip4), '10.10.10.99/24')
+
+    def test_unknown_import_for_a_second_plant(self):
+        """A second plant on the same addresses: unique names, defaults for role and type, known addresses left out."""
+        from dcim.forms import DeviceImportForm, InterfaceImportForm
+        from dcim.models import Device
+        from ipam.forms import IPAddressImportForm
+
+        Site.objects.create(name='Plant 2', slug='plant-2')
+        role, device_type = self.plc.role, self.plc.device_type
+        with tempfile.TemporaryDirectory() as tmp:
+            write_logs(tmp)
+            Path(tmp, 'zones.csv').write_text('10.10.10.0/24,Cell,1,ot\n10.10.20.0/24,Control room,2,ot\n'
+                                              '10.10.20.5,Control room,2,\n')
+            out = StringIO()
+            call_command('ot_import', tmp, '--site', 'plant-2', '--zone-map', str(Path(tmp, 'zones.csv')),
+                         '--unknown-import', str(Path(tmp, 'import')), '--unknown-role', role.slug,
+                         '--unknown-device-type', device_type.model, stdout=out)
+            files = {p.name: list(csv.DictReader(p.open())) for p in sorted(Path(tmp, 'import').iterdir())}
+            with self.assertRaisesRegex(CommandError, 'goes with --unknown-import'):
+                call_command('ot_import', tmp, '--site', 'plant-2', '--unknown-role', role.slug, stdout=StringIO())
+            with self.assertRaisesRegex(CommandError, 'not found in NetBox'):
+                call_command('ot_import', tmp, '--site', 'plant-2', '--unknown-import', tmp,
+                             '--unknown-device-type', 'nonexistent', stdout=StringIO())
+        devices = {d['name']: d for d in files['1-devices.csv']}
+        self.assertEqual(sorted(devices), ['unknown-10.10.10.10-plant-2', 'unknown-10.10.10.99-plant-2',
+                                           'unknown-10.10.20.5-plant-2'])
+        hmi = devices['unknown-10.10.20.5-plant-2']
+        self.assertEqual((hmi['role'], hmi['manufacturer'], hmi['device_type'], hmi['cf_ot_purdue_level']),
+                         (role.name, device_type.manufacturer.name, device_type.model, '2'))
+        self.assertNotIn('fill in', out.getvalue())
+        # The global table already holds the first plant's PLC and HMI addresses: left out, with the advice
+        self.assertEqual([a['address'] for a in files['3-ip-addresses.csv']], ['10.10.10.99/24'])
+        self.assertIn('2 address(es) already exist in the global table', out.getvalue())
+        self.assertIn('10.10.20.5: 10.10.20.5/24 on hmi-1', out.getvalue())
+        self.assertIn('Give each plant its own VRF and import with --vrf', out.getvalue())
+        # The files load as they are; the interface import finds the device of this plant, not of the first one
+        for form_class, name in ((DeviceImportForm, '1-devices.csv'), (InterfaceImportForm, '2-interfaces.csv'),
+                                 (IPAddressImportForm, '3-ip-addresses.csv')):
+            for row in files[name]:
+                form = form_class(row)
+                self.assertTrue(form.is_valid(), (name, form.errors))
+                form.save()
+        created = Device.objects.get(name='unknown-10.10.20.5-plant-2')
+        self.assertEqual((created.site.slug, created.custom_field_data.get('ot_purdue_level')), ('plant-2', '2'))
 
     def test_zeek_needs_zones(self):
         empty = Site.objects.create(name='Empty', slug='empty')
