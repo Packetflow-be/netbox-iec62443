@@ -56,7 +56,13 @@ class SecurityLevelFilterMixin(django_filters.FilterSet):
     has_sl_target = django_filters.BooleanFilter(
         field_name='sl_target', lookup_expr='isnull', exclude=True, label=_('Has an SL-T'),
     )
+    has_sl_achieved = django_filters.BooleanFilter(
+        field_name='sl_achieved', lookup_expr='isnull', exclude=True, label=_('Has an SL-A'),
+    )
     sl_gap = django_filters.BooleanFilter(method='filter_sl_gap', label=_('SL-A below SL-T'))
+    has_accountable = django_filters.BooleanFilter(
+        field_name='accountable', lookup_expr='isnull', exclude=True, label=_('Has an accountable person'),
+    )
     accountable_id = django_filters.ModelMultipleChoiceFilter(
         queryset=Contact.objects.all(),
         distinct=False,

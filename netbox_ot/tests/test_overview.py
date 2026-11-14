@@ -4,9 +4,9 @@ from rest_framework import status
 
 from dcim.models import Site
 from tenancy.models import Contact
-from utilities.testing import APITestCase, TestCase
+from utilities.testing import APITestCase, TestCase, create_test_device
 
-from netbox_ot.models import Conduit, RequirementStatus, RiskAssessment, SystemRequirement, Zone
+from netbox_ot.models import Conduit, Flow, RequirementStatus, RiskAssessment, SystemRequirement, Zone
 from netbox_ot.overview import build_overview, overview_json, radar_svg
 
 
@@ -138,6 +138,34 @@ class OverviewTest(TestCase):
         self.assertEqual(data['furthest_from_target'], 'UC')
         self.assertEqual(data['requirements']['per_fr'][0]['counts']['no-status'], 0)
 
+    def test_exposure_and_next_steps(self):
+        site = Site.objects.create(name='Fresh import', slug='fresh')
+        cell = Zone.objects.create(name='Cell', slug='cell', site=site, purdue_level='1')
+        office = Zone.objects.create(name='Office', slug='office', site=site, purdue_level='4', zone_type='enterprise')
+        vendor = Zone.objects.create(name='Vendor', slug='vendor', site=site, zone_type='external')
+        cell.devices.add(create_test_device('plc-1', site=site))
+        Flow.objects.create(source_zone=office, destination_zone=cell, access=['write'])
+        Flow.objects.create(source_zone=vendor, destination_zone=cell, remote_access=True, protocol='rdp')
+        Flow.objects.create(source_zone=cell, destination_zone=office, access=['read'])
+        overview = build_overview(site)
+        e = overview['exposure']
+        self.assertEqual((e['control_zones'], e['into_control'], e['undecided'], e['changes'], e['remote'],
+                          e['from_outside'], e['outside_allowed']), (1, 2, 2, 1, 1, 2, 0))
+        self.assertEqual([z.name for z in e['external_zones']], ['Vendor'])
+        steps = {s['key']: s for s in overview['next_steps']}
+        # Office has no devices; the cell has one. The external vendor zone counts nowhere.
+        self.assertEqual({k: s['left'] for k, s in steps.items()},
+                         {'devices': 1, 'decide': 2, 'levels': 2, 'conduits': 3, 'risk': 2})
+        self.assertEqual([s['key'] for s in overview['next_steps'] if s['now']], ['devices'])
+        self.assertIn('undecided_into_control=true', steps['decide']['url'])
+        self.assertIn('has_sl_target=false', steps['levels']['url'])
+        # External zones are outside the system under consideration: not in the levels or the risk lists
+        self.assertNotIn('Vendor', [r['name'] for r in overview['levels']])
+        self.assertNotIn('Vendor', [r['name'] for r in overview['risk']['without_assessment']])
+        data = overview_json(overview)
+        self.assertEqual(data['exposure']['external_zones'], ['Vendor'])
+        self.assertEqual(data['next_steps'][1]['left'], 2)
+
     def test_restricted_to_what_the_user_can_view(self):
         self.add_permissions('netbox_ot.view_conduit')
         overview = build_overview(self.site, user=self.user)
@@ -191,6 +219,10 @@ class OverviewViewTest(TestCase):
         self.assertContains(response, 'Nothing to draw yet')
         self.assertContains(response, 'No requirement statuses yet')
         self.assertContains(response, 'No approved risk assessment yet')
+        # Nothing assessed is not "0 above tolerable"
+        self.assertNotContains(response, '<div class="ot-stat">0</div>', html=False)
+        self.assertContains(response, 'Next steps')
+        self.assertContains(response, 'Exposure of the controllers')
 
 
 class OverviewAPITest(APITestCase):
