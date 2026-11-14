@@ -19,7 +19,8 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
 ### Enhancements
 
 - **OT overview**: a tab on every site with zones that shows where the site stands. A radar chart of achieved
-  against target security level per foundational requirement (site average, or one zone), a table of every
+  against target security level per foundational requirement (for the site, the weakest zone per foundational
+  requirement; or one zone), a table of every
   zone and conduit sorted by how far below target it is, requirement statuses per foundational requirement,
   risk before and after countermeasures with what is still above the tolerable risk, and the number of check
   findings. Printable, drawn on the server without scripts, and also as `GET overview/?site_id=<id>` in the
@@ -35,10 +36,47 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   left out unless asked for, and the page for all sites no longer draws the zones of every site in one
   picture. The plugin now ships static files: run `manage.py collectstatic` after upgrading (NetBox's
   `upgrade.sh` does).
+- **Exposure first** ([#34](https://github.com/Packetflow-be/netbox-ot/pull/34)). Two new checks:
+  `undecided-into-control` (error) for an undecided flow into a control zone (level 0-1 or safety) that writes,
+  controls or programs it, is remote access or comes from a DMZ, enterprise or external zone, and
+  `outside-into-control` (warning) for a flow allowed straight from such a zone into a control zone. Both lead
+  *Needs attention* on the access map and are flow filters of the same names. Within a verdict the access map
+  lists flows that change the controllers from outside first, and the diagram draws an arrow heavy when a flow
+  on it writes, controls or programs. The checks for a missing SL-T, accountable person or risk assessment leave
+  external zones out: a supplier or the internet is outside the system under consideration.
 - `ot_demo --large` creates a second demo plant of 35 zones and about 200 flows on its own site, to try the
   plugin at the size of a real plant ([#32](https://github.com/Packetflow-be/netbox-ot/pull/32)).
 
+### Bug fixes
+
+Found by importing a real ICS lab capture (the public 4SICS captures) with Zeek and the CISA ICSNPP parsers
+([#34](https://github.com/Packetflow-be/netbox-ot/pull/34)):
+
+- **Traffic inside a zone is no longer lost without a word.** The import reports the industrial requests
+  between assets of the same zone, with the writes and who sent them, and how to put them on the access map.
+  `--split` says why a zone was not split.
+- **`--split` works on Zeek logs.** The level on an address line of the zone map is that asset's level, and an
+  asset without one takes the level its NetBox device or VM already has; before, every asset of a zone got the
+  zone's level, so a zone never counted as mixed.
+- **A zone's level is no longer written onto its devices.** The level on a network line of the zone map is the
+  zone's own (summary.json `zones` takes an optional `purdue_level` for the same); the import sets a device's
+  or VM's level only from that asset's own level. Before, an HMI in a level 1 cell became a level 1 device.
+- A flow's evidence starts with that flow's own request count. The connection count of the zone pair (every
+  protocol between the two zones) is a labelled second line; before, it opened every flow of the pair, so all
+  of them showed the same number.
+- The OT overview's radar no longer averages security levels over zones (it showed levels like 1.5, which do
+  not exist, and hid a weak zone behind strong ones). For the site, each foundational requirement shows the
+  weakest zone: the one furthest below its target. The chart names those zones, and the API gives each axis
+  its `zone`.
+- ICMP in Zeek's conn log no longer turns into TCP ports: Zeek writes an ICMP message's type and code in the
+  port fields, which became flows and services on `tcp/3` or `tcp/14`.
+
 ### Documentation
+
+- netbox-branching is marked as not recommended alongside netbox-ot: it works, but every release with a
+  migration leaves the branches with pending migrations, so they have to be rebuilt after each upgrade.
+  `ot_import --dry-run`, a separate site or a test NetBox are the lighter ways to try an import
+  ([#34](https://github.com/Packetflow-be/netbox-ot/pull/34)).
 
 - The menu and the panel on device and VM pages are called *OT* in the README and the docs, as in the plugin
   since 0.3.0; the API and installation pages list the system requirement objects of 0.4.0 and the firmware

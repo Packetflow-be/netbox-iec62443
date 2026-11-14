@@ -14,7 +14,7 @@ from utilities.filtersets import register_filterset
 from virtualization.models import VirtualMachine
 from vpn.models import Tunnel
 
-from . import sl
+from . import exposure, sl
 from .choices import (
     AccessChoices,
     ConnectionChoices,
@@ -238,6 +238,13 @@ class FlowFilterSet(PrimaryModelFilterSet):
     expired = django_filters.BooleanFilter(method='filter_expired', label=_('Allowed, but expired'))
     review_due = django_filters.BooleanFilter(method='filter_review_due', label=_('Review due'))
     stale = django_filters.BooleanFilter(method='filter_stale', label=_('Not seen recently'))
+    undecided_into_control = django_filters.BooleanFilter(
+        method='filter_undecided_into_control',
+        label=_('Undecided, into a control zone, and changes it, is remote access or comes from outside'),
+    )
+    outside_into_control = django_filters.BooleanFilter(
+        method='filter_outside_into_control', label=_('Allowed straight from outside into a control zone'),
+    )
     hop_device_id = django_filters.ModelMultipleChoiceFilter(
         field_name='hops__device',
         queryset=Device.objects.all(),
@@ -323,6 +330,18 @@ class FlowFilterSet(PrimaryModelFilterSet):
         if value is None:
             return queryset
         q = Q(last_seen__lt=timezone.now() - datetime.timedelta(days=stale_after_days()))
+        return queryset.filter(q) if value else queryset.exclude(q)
+
+    def filter_undecided_into_control(self, queryset, name, value):
+        if value is None:
+            return queryset
+        q = exposure.undecided_into_control()
+        return queryset.filter(q) if value else queryset.exclude(q)
+
+    def filter_outside_into_control(self, queryset, name, value):
+        if value is None:
+            return queryset
+        q = exposure.outside_into_control()
         return queryset.filter(q) if value else queryset.exclude(q)
 
 

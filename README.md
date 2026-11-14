@@ -50,7 +50,9 @@ zone register.
   unsupported devices in secure zones, and a firmware version field on devices and modules.
   [Companion plugins](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/companions.md)
 - **Branches**: with netbox-branching (separately licensed, optional) the commands take `--branch`, and
-  *OT > Settings* sets a default branch for imports and can refuse imports into main.
+  *OT > Settings* sets a default branch for imports and can refuse imports into main. Not recommended:
+  branches have to be rebuilt after every netbox-ot upgrade with a migration; `ot_import --dry-run` is the
+  lighter way to try an import.
   [Working in a branch](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/branching.md)
 - REST API, GraphQL, filters, bulk import/edit, change log and permissions like any NetBox object.
   [API](https://github.com/Packetflow-be/netbox-ot/blob/main/docs/api.md)

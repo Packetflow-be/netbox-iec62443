@@ -9,6 +9,7 @@ from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from . import exposure
 from .accessdiagram import access_map_diagram, access_map_svg  # noqa: F401 (imported from here)
 from .choices import ConnectionChoices, FlowAllowedChoices, PurdueLevelChoices
 from .models import Flow, Zone, stale_after_days
@@ -59,18 +60,24 @@ def access_map_flows(queryset=None, site=None, max_level=PurdueLevelChoices.LEVE
     qs = qs.annotate(verdict_order=verdict_order())
     if verdict:
         qs = qs.filter(verdict_order__in=[VERDICTS.index(v) for v in verdict if v in VERDICTS])
-    return qs.order_by('verdict_order', 'destination_zone__purdue_level', 'destination_zone__name', 'name')
+    # Within a verdict, what changes the controllers or comes from outside first (exposure.py)
+    qs = qs.annotate(exposure_order=exposure.exposure_order())
+    return qs.order_by('verdict_order', 'exposure_order', 'destination_zone__purdue_level', 'destination_zone__name',
+                       'name')
 
 
 def attention(queryset):
     """
-    Counts of flows that need a person: allowed but expired, review due, not seen for a while, no conduit; and the
-    flows that reach their destination over a connection opened from its own side (reverse connect, a broker),
-    which a firewall rule on inbound traffic into that zone does not stop.
+    Counts of flows that need a person: undecided flows into a control zone that change it or come from outside,
+    flows allowed straight from outside into a control zone, allowed but expired, review due, not seen for a while,
+    no conduit; and the flows that reach their destination over a connection opened from its own side (reverse
+    connect, a broker), which a firewall rule on inbound traffic into that zone does not stop.
     """
     today = timezone.localdate()
     stale_before = timezone.now() - datetime.timedelta(days=stale_after_days())
     return {
+        'undecided_into_control': queryset.filter(exposure.undecided_into_control()).count(),
+        'outside_into_control': queryset.filter(exposure.outside_into_control()).count(),
         'expired': queryset.filter(allowed=FlowAllowedChoices.YES, expires__lt=today).count(),
         'review_due': queryset.filter(review_by__lte=today).count(),
         'stale': queryset.filter(last_seen__lt=stale_before).count(),

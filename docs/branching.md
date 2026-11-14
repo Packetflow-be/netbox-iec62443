@@ -1,5 +1,12 @@
 # Working in a branch
 
+> **Not recommended alongside netbox-ot.** It works, but every netbox-ot release that brings a database
+> migration leaves each existing branch with *pending migrations*. Migrating a branch can take long and hold
+> up NetBox while it runs, so in practice you delete your branches and rebuild them after every upgrade.
+> To try an import before it lands, use `ot_import --dry-run` (it shows every change and saves nothing), a
+> separate site, or a test NetBox instead. If you use branches anyway, keep them short-lived: merge or delete
+> them before you upgrade netbox-ot.
+
 With the [netbox-branching](https://github.com/netboxlabs/netbox-branching) plugin installed, a branch is the
 place to try an import: load a capture, look at the zones, the flows and the access map, then merge the branch
 or throw it away. The plugin's models are change-logged, so they are branched like NetBox's own.

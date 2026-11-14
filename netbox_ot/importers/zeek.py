@@ -155,15 +155,18 @@ class ZoneMap:
     """
     Which zone an address belongs to: an exact address (a zone member's primary IP) first, then the most
     specific network. `networks` and `addresses` are {network or address: zone name}; `levels` and `types` are
-    optional {zone name: Purdue level / zone type} for zones the import may create.
+    optional {zone name: Purdue level / zone type} for zones the import may create; `address_levels` is
+    {address: Purdue level} of single assets. A zone's level is never copied onto its assets: a cell at level 1
+    also holds HMIs and engineering stations, and only a per-address level says which is which.
     """
 
-    def __init__(self, networks=None, addresses=None, levels=None, types=None):
+    def __init__(self, networks=None, addresses=None, levels=None, types=None, address_levels=None):
         self.networks = sorted(((ipaddress.ip_network(n), z) for n, z in (networks or {}).items()),
                                key=lambda item: -item[0].prefixlen)
         self.addresses = {ipaddress.ip_address(a): z for a, z in (addresses or {}).items()}
         self.levels = levels or {}
         self.types = types or {}
+        self.address_levels = {str(ipaddress.ip_address(a)): v for a, v in (address_levels or {}).items()}
 
     def zone_of(self, ip):
         ip = ipaddress.ip_address(ip)
@@ -180,12 +183,16 @@ class ZoneMap:
 
     @classmethod
     def from_csv(cls, path, base=None):
-        """A zone map file: network or address, zone name, optional Purdue level, optional zone type."""
+        """
+        A zone map file: network or address, zone name, optional Purdue level, optional zone type. The level of an
+        address line is that asset's level; the level of a network line is the zone's level.
+        """
         import csv
         networks = dict(base.networks_dict()) if base else {}
         addresses = dict(base.addresses_dict()) if base else {}
         levels = dict(base.levels) if base else {}
         types = dict(base.types) if base else {}
+        address_levels = dict(base.address_levels) if base else {}
         with open(path, newline='', encoding='utf-8') as f:
             for i, row in enumerate(csv.reader(f), start=1):
                 if not row or row[0].strip().startswith('#') or row[0].strip().lower() in ('network', 'cidr'):
@@ -193,18 +200,27 @@ class ZoneMap:
                 if len(row) < 2 or not row[1].strip():
                     raise ValueError(f'{path} line {i}: expected "network,zone[,purdue_level][,type]"')
                 target, zone = row[0].strip(), row[1].strip()
+                level = row[2].strip() if len(row) > 2 else ''
+                if level:
+                    try:
+                        float(level)
+                    except ValueError:
+                        raise ValueError(f'{path} line {i}: Purdue level {level!r} is not a number')
                 try:
                     if '/' in target:
                         networks[str(ipaddress.ip_network(target, strict=False))] = zone
+                        if level:
+                            levels[zone] = level
                     else:
-                        addresses[str(ipaddress.ip_address(target))] = zone
+                        address = str(ipaddress.ip_address(target))
+                        addresses[address] = zone
+                        if level:
+                            address_levels[address] = level
                 except ValueError:
                     raise ValueError(f'{path} line {i}: {target!r} is not an address or network')
-                if len(row) > 2 and row[2].strip():
-                    levels[zone] = row[2].strip()
                 if len(row) > 3 and row[3].strip():
                     types[zone] = row[3].strip()
-        return cls(networks, addresses, levels, types)
+        return cls(networks, addresses, levels, types, address_levels)
 
     def networks_dict(self):
         return {str(n): z for n, z in self.networks}
@@ -276,7 +292,8 @@ def to_observations(logs, zone_map, captures=None):
         if transport == 'tcp' and record.get('conn_state') not in ANSWERED:
             continue
         port = record.get('id.resp_p')
-        port = int(port) if port and str(port).isdigit() else None
+        # Only TCP and UDP have ports: Zeek writes an ICMP message's type and code in the port fields
+        port = int(port) if transport in ('tcp', 'udp') and port and str(port).isdigit() else None
         ts = _ts(record.get('ts'))
         if ts:
             times.append(ts)
@@ -295,8 +312,9 @@ def to_observations(logs, zone_map, captures=None):
         zone = zone_map.zone_of(ip)
         if zone:
             asset = {'ip': ip, 'zone': zone}
-            if zone_map.levels.get(zone) not in (None, ''):
-                asset['purdue_level'] = zone_map.levels[zone]
+            # Only an address's own level: the zone's level goes to the zone (summary "zones"), not its assets
+            if zone_map.address_levels.get(ip) not in (None, ''):
+                asset['purdue_level'] = zone_map.address_levels[ip]
             if open_ports.get(ip):
                 asset['open_ports'] = sorted(open_ports[ip])
             assets.append(asset)
@@ -324,7 +342,11 @@ def to_observations(logs, zone_map, captures=None):
     summary = {
         'captures': list(captures or []),
         'zone_pairs': [{'from': a or '', 'to': b or '', 'count': n} for (a, b), n in zone_pairs.items() if a != b],
-        'zones': [{'name': z, 'type': t} for z, t in zone_map.types.items()],
+        'zones': [
+            {'name': z, **({'type': zone_map.types[z]} if z in zone_map.types else {}),
+             **({'purdue_level': zone_map.levels[z]} if zone_map.levels.get(z) not in (None, '') else {})}
+            for z in sorted(set(zone_map.types) | {z for z, v in zone_map.levels.items() if v not in (None, '')})
+        ],
     }
     if times:
         start, end = min(times), max(times)

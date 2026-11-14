@@ -33,6 +33,26 @@ network,zone,purdue_level,type
 A zone named only in the zone map is created by the import, with the type given (`ot`, `safety`, `dmz`,
 `enterprise`, `external`).
 
+The Purdue level means two different things depending on the line:
+
+- on a **network** line it is the **zone's** level (the zone's most critical one). It is not copied onto the
+  assets in that network: a cell at level 1 also holds its HMI and engineering station.
+- on an **address** line it is that **asset's** level. It is set on the NetBox device or VM (when its level is
+  still empty), and it is what `--split` uses to separate a cell's controllers from its supervisory assets.
+
+An asset without a level in the zone map takes the level NetBox already has for it, so a level you correct
+by hand in NetBox counts on the next import.
+
+```
+network,zone,purdue_level,type
+10.10.10.0/24,Cell A,1,ot
+10.10.10.20,Cell A,2,
+10.10.10.30,Cell A,2,
+```
+
+Here the PLCs and the HMI share zone *Cell A* (level 1); `--split "Cell A"` puts the HMI and the engineering
+station at .30 in *Cell A (supervisory)*, so their reads and writes to the PLCs become flows.
+
 ## What is read
 
 | Log | Protocol | Function from | Counted |

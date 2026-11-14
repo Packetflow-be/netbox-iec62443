@@ -1,9 +1,11 @@
 {% load i18n %}
 {% load static %}
-{% if attention.expired or attention.review_due or attention.stale or attention.no_conduit or attention.outbound_only %}
+{% if attention.undecided_into_control or attention.outside_into_control or attention.expired or attention.review_due or attention.stale or attention.no_conduit or attention.outbound_only %}
   <div class="alert alert-warning">
     <div class="fw-bold mb-1">{% trans "Needs attention" %}</div>
     <ul class="mb-0">
+      {% if attention.undecided_into_control %}<li class="fw-bold"><a href="{% url 'plugins:netbox_ot:flow_list' %}?undecided_into_control=true{% if site %}&site_id={{ site.pk }}{% endif %}">{% blocktrans count n=attention.undecided_into_control %}{{ n }} undecided flow into a control zone writes, controls or programs it, is remote access or comes from outside the plant: decide these first{% plural %}{{ n }} undecided flows into a control zone write, control or program it, are remote access or come from outside the plant: decide these first{% endblocktrans %}</a></li>{% endif %}
+      {% if attention.outside_into_control %}<li><a href="{% url 'plugins:netbox_ot:flow_list' %}?outside_into_control=true{% if site %}&site_id={{ site.pk }}{% endif %}">{% blocktrans count n=attention.outside_into_control %}{{ n }} flow is allowed straight from a DMZ, enterprise or external zone into a control zone{% plural %}{{ n }} flows are allowed straight from a DMZ, enterprise or external zone into a control zone{% endblocktrans %}</a></li>{% endif %}
       {% if attention.expired %}<li><a href="{% url 'plugins:netbox_ot:flow_list' %}?expired=true{% if site %}&site_id={{ site.pk }}{% endif %}">{% blocktrans count n=attention.expired %}{{ n }} allowed flow has expired{% plural %}{{ n }} allowed flows have expired{% endblocktrans %}</a></li>{% endif %}
       {% if attention.review_due %}<li><a href="{% url 'plugins:netbox_ot:flow_list' %}?review_due=true{% if site %}&site_id={{ site.pk }}{% endif %}">{% blocktrans count n=attention.review_due %}{{ n }} verdict is due for review{% plural %}{{ n }} verdicts are due for review{% endblocktrans %}</a></li>{% endif %}
       {% if attention.stale %}<li><a href="{% url 'plugins:netbox_ot:flow_list' %}?stale=true{% if site %}&site_id={{ site.pk }}{% endif %}">{% blocktrans count n=attention.stale with days=attention.stale_after_days %}{{ n }} flow not seen for {{ days }} days{% plural %}{{ n }} flows not seen for {{ days }} days{% endblocktrans %}</a></li>{% endif %}
@@ -34,7 +36,7 @@
       <div class="ot-map-panel d-print-none" hidden></div>
       {{ diagram.data|json_script:"ot-map-data" }}
       <div class="small text-muted mt-2">
-        {% trans "One arrow per zone pair, from the side that acts to the side acted upon; a number is how many flows it carries when more than one, per colour. Red: not allowed or expired, amber: unknown, green: allowed. Dashed: remote access. Dotted: the destination opens the connection itself (reverse connect, or both ends meet at a broker)." %}
+        {% trans "One arrow per zone pair, from the side that acts to the side acted upon; a number is how many flows it carries when more than one, per colour. Red: not allowed or expired, amber: unknown, green: allowed. Heavy: at least one flow writes, controls or programs. Dashed: remote access. Dotted: the destination opens the connection itself (reverse connect, or both ends meet at a broker)." %}
         <span class="d-print-none ot-map-hint" hidden>{% trans "Click a zone or an arrow for its flows; drag to move, Ctrl + scroll to zoom." %}</span>
       </div>
     </div>

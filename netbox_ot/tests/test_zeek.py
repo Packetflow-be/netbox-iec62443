@@ -34,6 +34,7 @@ CONN = [
     ('C7', '10.10.20.5', '10.10.10.255', 47808, 'udp', 'bacnet', 'S0'),  # broadcast: skipped
     ('C8', '10.10.20.5', '224.0.0.251', 5353, 'udp', 'dns', 'S0'),  # multicast: skipped
     ('C9', 'fe80::1', 'fe80::2', 22, 'tcp', 'ssh', 'SF'),  # IPv6: skipped
+    ('C10', '10.10.20.5', '10.10.10.99', 3, 'icmp', '-', 'OTH'),  # ICMP: type/code in the port fields
 ]
 MODBUS = [  # Zeek's own modbus.log: every record is a request
     ('C1', 'READ_HOLDING_REGISTERS'), ('C1', 'READ_HOLDING_REGISTERS'), ('C1', 'WRITE_SINGLE_REGISTER'),
@@ -95,7 +96,15 @@ class ReadLogsTest(SimpleTestCase):
         zones = zeek.ZoneMap.from_csv(f.name, base=ZONES)
         self.assertEqual(zones.zone_of('192.168.50.7'), 'MSP')
         self.assertEqual(zones.zone_of('10.10.30.2'), 'Historian')
-        self.assertEqual((zones.levels, zones.types), ({'Historian': '3'}, {'MSP': 'external'}))
+        # An address line's level is that asset's level, not its zone's
+        self.assertEqual((zones.levels, zones.address_levels, zones.types),
+                         ({}, {'10.10.30.2': '3'}, {'MSP': 'external'}))
+        Path(f.name).write_text('10.10.10.0/24,Cell,1\n10.10.10.20,Cell,2\n')
+        zones = zeek.ZoneMap.from_csv(f.name)
+        self.assertEqual((zones.levels, zones.address_levels), ({'Cell': '1'}, {'10.10.10.20': '2'}))
+        Path(f.name).write_text('10.10.10.0/24,Cell,high\n')
+        with self.assertRaisesRegex(ValueError, 'not a number'):
+            zeek.ZoneMap.from_csv(f.name)
         Path(f.name).write_text('not-a-network,X\n')
         with self.assertRaisesRegex(ValueError, 'not an address or network'):
             zeek.ZoneMap.from_csv(f.name)
@@ -124,6 +133,9 @@ class ToObservationsTest(SimpleTestCase):
         self.assertIn(('192.168.50.7', '10.10.20.5', 'rdp', ''), flows)  # from Zeek's payload detection
         self.assertIn(('10.10.10.10', '10.10.30.2', 'syslog', ''), flows)  # one-way UDP counts
         self.assertIn(('10.10.20.5', '10.10.10.99', 'tcp/445', ''), flows)  # no protocol guessed from the port
+        icmp = flows[('10.10.20.5', '10.10.10.99', 'icmp', '')]  # ICMP type/code are not ports
+        self.assertNotIn('port', icmp)
+        self.assertNotIn('transport', icmp)
         # connections covered by a protocol log are not counted twice; unanswered, broadcast, multicast and IPv6 skip
         self.assertNotIn(('10.10.20.5', '10.10.10.10', 'modbus', ''), flows)
         self.assertFalse({'10.10.10.11', '10.10.10.255', '224.0.0.251', 'fe80::2'} & {f['dst'] for f in self.flows})
@@ -146,6 +158,49 @@ class ToObservationsTest(SimpleTestCase):
         self.assertIn(('Outside', 'Control room', 'rdp'), flows)
         self.assertEqual(flows[('Control room', 'Cell', '')].port_mappings, ['tcp/445'])
         self.assertEqual(plan.hosts['10.10.10.99'].zone, 'Cell')
+
+
+class ZoneMapLevelsTest(SimpleTestCase):
+    """The HMI and the PLC in one zone map network: the cell's traffic is reported, and --split makes it flows."""
+
+    ZONES = zeek.ZoneMap(networks={'10.10.10.0/24': 'Cell', '10.10.20.0/24': 'Cell'}, levels={'Cell': '1'},
+                         address_levels={'10.10.10.10': '1', '10.10.20.5': '2'})
+
+    def setUp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_logs(tmp)
+            self.assets, self.flows, self.summary = zeek.to_observations(zeek.read_logs(tmp), self.ZONES)
+
+    def test_levels_go_to_addresses_and_zones(self):
+        levels = {a['ip']: a.get('purdue_level') for a in self.assets}
+        self.assertEqual(levels['10.10.20.5'], '2')
+        self.assertIsNone(levels['10.10.10.99'])  # the network's level is the zone's, not every asset's
+        self.assertIn({'name': 'Cell', 'purdue_level': '1'}, self.summary['zones'])
+        plan = build_plan(self.assets, self.flows, self.summary)
+        self.assertEqual(plan.zones['Cell'].purdue_level, '1')
+        self.assertNotIn('10.10.10.99', plan.asset_levels)
+
+    def test_traffic_inside_a_zone_is_reported(self):
+        from netbox_ot.importers.observations import inside_zone_advice
+        plan = build_plan(self.assets, self.flows, self.summary)
+        self.assertFalse([f for f in plan.flows if f.source == f.destination])
+        cell = plan.inside['Cell']
+        self.assertEqual((cell.requests, cell.modifying), (5, 2))  # Modbus 3 + S7comm 2; a write and PLC Stop
+        self.assertEqual(cell.modifying_senders, {'10.10.20.5'})
+        self.assertIn('--split "Cell"', inside_zone_advice(cell))
+
+    def test_split_from_zone_map_levels(self):
+        plan = build_plan(self.assets, self.flows, self.summary, split_zones=['Cell'])
+        flows = {(f.source, f.destination, f.protocol) for f in plan.flows}
+        self.assertIn(('Cell (supervisory)', 'Cell (control)', 's7comm'), flows)
+        self.assertIn(('Cell (supervisory)', 'Cell (control)', 'modbus-tcp'), flows)
+        self.assertEqual(plan.not_split, {})
+
+    def test_why_a_zone_is_not_split(self):
+        assets = [{k: v for k, v in a.items() if k != 'purdue_level'} for a in self.assets]
+        plan = build_plan(assets, self.flows, self.summary, split_zones=['Cell', 'Nowhere'])
+        self.assertEqual(plan.not_split, {'Cell': 'none of its assets has a Purdue level',
+                                          'Nowhere': 'no asset of the input is in this zone'})
 
 
 def asset(name, ip, site):
@@ -188,7 +243,7 @@ class ZeekImportCommandTest(TestCase):
                          '--unknown-report', str(report), stdout=out)
             rows = list(csv.DictReader(report.open()))
         output = out.getvalue()
-        self.assertIn('Zeek logs: conn (9), modbus (3), s7comm (3)', output)
+        self.assertIn('Zeek logs: conn (10), modbus (3), s7comm (3)', output)
         self.assertEqual(Zone.objects.get(name='MSP').zone_type, 'external')
         msp = Flow.objects.get(source_zone__name='MSP')
         self.assertEqual((msp.protocol, msp.remote_access, msp.port_mappings), ('rdp', True, ['tcp/3389']))
@@ -199,9 +254,22 @@ class ZeekImportCommandTest(TestCase):
         self.assertEqual(server.service.port_mappings, ['tcp/102'])
         # The unknown host in the cell comes first; the MSP laptop and the server are not in NetBox either
         self.assertEqual(rows[0]['ip'], '10.10.10.99')
-        self.assertEqual((rows[0]['zone'], rows[0]['serves']), ('Cell', 'tcp/445'))
+        self.assertEqual((rows[0]['zone'], rows[0]['serves']), ('Cell', 'icmp, tcp/445'))  # ICMP has no port
         self.assertEqual({r['ip'] for r in rows}, {'10.10.10.99', '10.10.30.2', '192.168.50.7'})
         self.assertIn('Observed hosts not in NetBox: 3 (3 inside a zone)', output)
+
+    def test_zone_level_is_not_copied_onto_devices(self):
+        """A network line's level is the zone's; only an address line sets a device's Purdue level."""
+        from netbox_ot.customfields import PURDUE_CF_NAME
+        with tempfile.TemporaryDirectory() as tmp:
+            write_logs(tmp)
+            Path(tmp, 'zones.csv').write_text('10.10.20.0/24,Control room,1\n10.10.10.10,Cell,1\n')
+            call_command('ot_import', tmp, '--site', 'plant', '--zone-map', str(Path(tmp, 'zones.csv')),
+                         stdout=StringIO())
+        self.hmi.refresh_from_db()
+        self.plc.refresh_from_db()
+        self.assertFalse(self.hmi.custom_field_data.get(PURDUE_CF_NAME))
+        self.assertEqual(self.plc.custom_field_data.get(PURDUE_CF_NAME), '1')
 
     def test_unknown_import_files(self):
         """The bulk-import files load in NetBox's own import forms once a person named role and device type."""
@@ -222,7 +290,7 @@ class ZeekImportCommandTest(TestCase):
         device = files['1-devices.csv'][0]
         self.assertEqual((device['role'], device['device_type'], device['site']), ('', '', 'Plant'))
         self.assertIn('In zone Cell', device['description'])
-        self.assertIn('serves tcp/445', device['description'])
+        self.assertIn('serves icmp, tcp/445', device['description'])
         # The mask of the prefix NetBox has, else /32
         self.assertEqual([a['address'] for a in files['3-ip-addresses.csv']], ['10.10.10.99/24', '10.10.30.2/32'])
         self.assertIn('Bulk-import files for 2 unknown host(s)', out.getvalue())

@@ -17,6 +17,7 @@ from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 
 from .choices import ConnectionChoices, PurdueLevelChoices, ZoneTypeChoices
+from .exposure import changes_flow
 
 WORST = ('no', 'expired', 'unknown', 'yes')
 # Three colours on the diagram: not allowed and expired are both red
@@ -220,6 +221,7 @@ def _flow_data(flow):
         'ports': flow.ports_display,
         'connection': '' if flow.connection == ConnectionChoices.CLIENT_SERVER else flow.get_connection_display(),
         'remote': flow.remote_access,
+        'changes': changes_flow(flow),
     }
 
 
@@ -324,6 +326,9 @@ def access_map_diagram(flows, zones=(), collapse=False, zone_queryset=None, per_
         pattern = {(True, False): '6 4', (False, True): '2 4', (True, True): '6 3 2 3'}.get((remote, outbound))
         dash = f' stroke-dasharray="{pattern}"' if pattern else ''
         thick = round(1.6 + 0.3 * min(len(e.flows), 6), 1)
+        # Heavy: a flow on this arrow writes, controls or programs its destination (the widest otherwise is 3.4)
+        if any(changes_flow(f) for f in e.flows):
+            thick = 4.5
         title = escape('\n'.join(_flow_title(f) for f in e.flows))
         attrs = f'data-edge="{e.key}" data-src="{e.src}" data-dst="{e.dst}"'
         lines.append(

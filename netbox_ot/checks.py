@@ -3,7 +3,8 @@ Consistency checks: what in the zone and conduit model contradicts itself, or is
 Each check has a stable id (for filters and CI) and a severity:
 
   error    the model says something that cannot be right (an address in another zone's prefix, a member below
-           its zone's level, expired access still marked allowed, residual risk above tolerable)
+           its zone's level, expired access still marked allowed, residual risk above tolerable), or a path into
+           the controllers that changes them or comes from outside and that nobody decided on yet
   warning  probably wrong or risky (an asset in no zone, a flow outside any conduit, an SL gap)
   info     not wrong, but missing for an audit (no SL-T, no accountable person, no risk assessment)
 
@@ -17,7 +18,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from . import lifecycle, sl
+from . import exposure, lifecycle, sl
 from .choices import AccessChoices, ConnectionChoices, FlowAllowedChoices, RiskAssessmentStatusChoices, ZoneTypeChoices
 from .customfields import get_purdue_level, get_sl_capability
 from .models import Conduit, Flow, RequirementStatus, RiskAssessment, SystemRequirement, Zone, stale_after_days
@@ -304,16 +305,24 @@ def conduit_without_enforcement(scope):
             yield conduit, _('{conduit} names no device or VM that enforces it').format(conduit=conduit)
 
 
+def _own(scope):
+    """
+    The zones and conduits that belong to the plant: external zones (a supplier, an MSP, the internet) are outside
+    the system under consideration of IEC 62443-3-2, so they need no SL-T, owner or risk assessment of their own.
+    """
+    return [z for z in scope.zones if z.zone_type != ZoneTypeChoices.EXTERNAL] + scope.conduits
+
+
 @check('no-sl-target', _('No SL-T'), INFO)
 def no_sl_target(scope):
-    for obj in scope.zones + scope.conduits:
+    for obj in _own(scope):
         if not obj.sl_target:
             yield obj, _('{obj} has no security level target').format(obj=obj)
 
 
 @check('no-accountable', _('No accountable person'), INFO)
 def no_accountable(scope):
-    for obj in scope.zones + scope.conduits:
+    for obj in _own(scope):
         if not obj.accountable_id:
             yield obj, _('{obj} has no accountable person').format(obj=obj)
 
@@ -322,6 +331,8 @@ def no_accountable(scope):
 def no_risk_assessment(scope):
     latest = scope.latest_assessments()
     for zone in scope.zones:
+        if zone.zone_type == ZoneTypeChoices.EXTERNAL:
+            continue
         if ('zone', zone.pk) not in latest:
             yield zone, _('{zone} has no approved risk assessment').format(zone=zone)
 
@@ -378,6 +389,24 @@ def requirement_not_met_for_sl_a(scope):
 #
 # Flows
 #
+
+@check('undecided-into-control', _('Undecided flow that changes a control zone or comes from outside'), ERROR)
+def undecided_into_control(scope):
+    # The first thing to decide after an import: who may write to the controllers, from where. See exposure.py.
+    for flow in scope.flows.filter(exposure.undecided_into_control()):
+        yield flow, _('{flow} reaches control zone {zone} ({why}) and nobody decided whether it is allowed').format(
+            flow=flow, zone=flow.destination_zone, why='; '.join(exposure.reasons(flow)))
+
+
+@check('outside-into-control', _('Allowed straight from outside into a control zone'), WARNING)
+def outside_into_control(scope):
+    # Allowed by a person, so not an error; but the path skips the supervisory and operations levels in between
+    for flow in scope.flows.filter(exposure.outside_into_control()):
+        yield flow, _('{flow} is allowed straight from the {type} zone {src} into control zone {dst}, without '
+                      'passing a supervisory zone').format(
+            flow=flow, type=flow.source_zone.get_zone_type_display(), src=flow.source_zone,
+            dst=flow.destination_zone)
+
 
 @check('expired-access', _('Allowed flow has expired'), ERROR)
 def expired_access(scope):

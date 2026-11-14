@@ -111,11 +111,15 @@ class BuildPlanTest(SimpleTestCase):
         self.assertIn('Write Variable x12 [write]', remote.evidence)
         self.assertIn('Changes the destination (write/control/program): Supplier 4G gateway (192.168.1.10)',
                       remote.evidence)
-        self.assertIn('12 connection(s) from Z4 External to Z1 Cell A', remote.evidence)
+        # The flow's own count first, the zone pair's total (all protocols) as a labelled second line
+        self.assertTrue(remote.evidence.startswith('Passively seen: 24 request(s) on this flow in captures cap1'))
+        self.assertIn('All traffic from Z4 External to Z1 Cell A: 12 connection(s)', remote.evidence)
         office = flows[('Z5 Office', CONTROL, '')]
         self.assertEqual(office.name, 'Z5 Office -> Z1 Cell A (control) (unidentified)')
         self.assertFalse(office.remote_access)
         self.assertEqual(office.access, [])
+        self.assertTrue(office.evidence.startswith('Passively seen: no identified request. All traffic from Z5 Office '
+                                                   'to Z1 Cell A: 300 connection(s)'))
         hmi = flows[(SUPERVISORY, CONTROL, 's7comm')]
         self.assertIn('Read Variable x500 [read]', hmi.evidence)
         self.assertEqual(hmi.access, ['read'])
@@ -310,6 +314,24 @@ class ImportCommandTest(TestCase):
     def test_dry_run_saves_nothing(self):
         self._run('--dry-run')
         self.assertEqual(Zone.objects.count(), 0)
+
+    def test_traffic_inside_a_zone_and_a_split_that_cannot_happen_are_reported(self):
+        out = self._run('--split', 'Z5 Office')
+        self.assertIn('--split "Z5 Office": not split, its assets with a Purdue level are all in one band', out)
+        self.assertIn('Z1 Cell A: 500 request(s) from 1 host(s)', out)
+        self.assertIn('--split "Z1 Cell A" turns this traffic into flows', out)
+
+    def test_levels_from_netbox_count_for_split(self):
+        """A level set in NetBox (by hand, or by an earlier import) lets --split work without one in the input."""
+        from dcim.models import Device
+        for ip, level in (('10.10.10.10', '1'), ('10.10.10.20', '2')):
+            device = Device.objects.get(name=f'dev-{ip}')
+            device.custom_field_data[PURDUE_CF_NAME] = level
+            device.save()
+        assets = [{k: v for k, v in a.items() if k != 'purdue_level'} for a in ASSETS]
+        out = self._run('--split', 'Z1 Cell A', assets=assets)
+        self.assertIn('Purdue levels from NetBox for 2 asset(s)', out)
+        self.assertTrue(Flow.objects.filter(source_zone__name=SUPERVISORY, destination_zone__name=CONTROL).exists())
 
     def test_import_and_rerun(self):
         prefixes_before = Prefix.objects.count()
