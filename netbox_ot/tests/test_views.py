@@ -305,7 +305,8 @@ class FlowFormTest(TestCase):
         flow = Flow.objects.create(source_zone=office, destination_zone=cell)
         response = self.client.get(reverse('plugins:netbox_ot:flow_edit', kwargs={'pk': flow.pk}))
         self.assertHttpStatus(response, 200)
-        self.assertContains(response, 'data-parent="Plant A"')
+        # The dropdown names each zone's site (later 4.7 releases also on the server-rendered option)
+        self.assertContains(response, 'ts-parent-field="site"')
         self.assertRegex(response.content.decode(), rf'<option value="{plant.pk}"\s+selected\s*>Plant A<')
 
 
