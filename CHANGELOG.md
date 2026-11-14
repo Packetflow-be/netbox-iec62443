@@ -3,7 +3,16 @@
 Each release opens with what kind of release it is. Breaking changes are listed under **Breaking Changes**.
 Numbers link to the issue or pull request on GitHub; entries without a number predate the public repository.
 
-## Unreleased
+## 0.5.1 (2026-11-14)
+
+Patch release with the fixes and usability changes from the second field review
+([#35](https://github.com/Packetflow-be/netbox-ot/issues/35); pull requests
+[#38](https://github.com/Packetflow-be/netbox-ot/pull/38) to [#43](https://github.com/Packetflow-be/netbox-ot/pull/43)):
+the Zeek import no longer runs out of memory on a day of plant traffic and helps on a first visit, the OT
+overview says what to do next right after an import, risk levels saved through the API are stored, and flows can
+no longer join zones of two plants by accident. No migration and no breaking change. Two behaviour changes to
+know about: a flow between OT zones of two different sites is refused (DMZ, enterprise and external zones may
+still join sites), and the unknown-host import files name devices `unknown-<address>-<site slug>`.
 
 ### Enhancements
 
