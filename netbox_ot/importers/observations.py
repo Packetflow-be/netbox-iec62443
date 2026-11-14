@@ -125,6 +125,7 @@ class HostPlan:
     serves: set = field(default_factory=set)  # protocols (and ports) it answered
     uses: set = field(default_factory=set)  # protocols it sent requests in
     open_ports: set = field(default_factory=set)
+    role: str = ''  # what the source called it (assets.json "role"), e.g. "PLC (ControlLogix)"
 
 
 @dataclass
@@ -539,6 +540,8 @@ def _plan_hosts(assets, requests, zone_of_ip):
         host(r.src).uses.add(label)
     for a in assets:
         host(a['ip']).open_ports.update(a.get('open_ports') or [])
+        if a.get('role'):
+            host(a['ip']).role = str(a['role'])
     return hosts
 
 
@@ -601,43 +604,66 @@ def unknown_assets(plan, site, vrf=None):
             'serves': ', '.join(sorted(h.serves)),
             'uses': ', '.join(sorted(h.uses)),
             'open_ports': ', '.join(str(p) for p in sorted(h.open_ports)),
+            'role': h.role,
+            'purdue_level': plan.asset_levels.get(ip, ''),
         })
     return sorted(rows, key=lambda r: (not r['zone'], r['private'] == 'no', ipaddress.ip_address(r['ip'])))
 
 
-UNKNOWN_COLUMNS = ('ip', 'zone', 'private', 'first_seen', 'last_seen', 'peers', 'serves', 'uses', 'open_ports')
+UNKNOWN_COLUMNS = ('ip', 'zone', 'role', 'purdue_level', 'private', 'first_seen', 'last_seen', 'peers', 'serves',
+                   'uses', 'open_ports')
 
 
 # The files of --unknown-import, in the order NetBox imports them, with their columns
 UNKNOWN_IMPORT_FILES = (
-    ('1-devices.csv', ('name', 'role', 'manufacturer', 'device_type', 'site', 'status', 'description')),
+    ('1-devices.csv', ('name', 'role', 'manufacturer', 'device_type', 'site', 'status', 'description',
+                       'cf_ot_purdue_level')),
     ('2-interfaces.csv', ('device', 'name', 'type')),
     ('3-ip-addresses.csv', ('address', 'vrf', 'status', 'device', 'interface', 'is_primary')),
 )
 UNKNOWN_IMPORT_INTERFACE = 'eth0'
 
 
-def unknown_import_rows(plan, site, vrf=None):
+def unknown_device_name(site, ip):
+    """
+    unknown-<address>-<site slug>: NetBox's interface and IP address import finds a device by name across all
+    sites, so a second plant on the same addresses must not get the same names. At most 64 characters.
+    """
+    return f'unknown-{ip}-{site.slug}'[:64]
+
+
+def unknown_import_rows(plan, site, vrf=None, role=None, device_type=None):
     """
     The unknown hosts that sit in a zone of the plant, as rows for NetBox's own bulk import of devices,
-    interfaces and IP addresses: {file name: rows}. The importer does not create devices: a capture shows an
-    address and what it talks, not what the machine is, so role, manufacturer and device type are left empty
-    for a person to fill in. Hosts outside every zone, in an external zone or with a public address are left
-    out. The mask comes from the most specific prefix NetBox has for the address in the VRF, else it is /32.
+    interfaces and IP addresses: ({file name: rows}, conflicts). The importer does not create devices: a capture
+    shows an address and what it talks, not what the machine is, so role, manufacturer and device type stay
+    empty for a person to fill in, unless `role` (a DeviceRole) or `device_type` (a DeviceType) give a default,
+    or a device role in NetBox has the exact name the source gave the host. What the source called a host goes
+    into the description, its Purdue level into cf_ot_purdue_level. Hosts outside every zone, in an external
+    zone or with a public address are left out. The mask comes from the most specific prefix NetBox has for the
+    address in the VRF, else it is /32.
+
+    conflicts lists (address, where NetBox already has it) for addresses the VRF already holds: NetBox would
+    refuse the whole IP address file over the first one (in the global table, or in a VRF that enforces unique
+    space), so these are left out of 3-ip-addresses.csv.
     """
-    from ipam.models import Prefix
+    from dcim.models import DeviceRole
+    from ipam.models import IPAddress, Prefix
 
     from netbox_ot.models import Zone
 
     zone_types = {z.name: z.zone_type for z in plan.zones.values()}
     zone_types.update(Zone.objects.filter(site=site).values_list('name', 'zone_type'))
-    devices, interfaces, addresses = [], [], []
+    roles = {name.lower(): name for name in DeviceRole.objects.values_list('name', flat=True)}
+    devices, interfaces, addresses, conflicts = [], [], [], []
     for row in unknown_assets(plan, site, vrf):
         if not row['zone'] or row['private'] != 'yes' or zone_types.get(row['zone']) == ZoneTypeChoices.EXTERNAL:
             continue
         ip = row['ip']
-        name = f'unknown-{ip}'
+        name = unknown_device_name(site, ip)
         seen = [f"In zone {row['zone']}"]
+        if row['role']:
+            seen.insert(0, f"Role in the capture: {row['role']}")
         if row['first_seen']:
             seen.append(f"seen {row['first_seen'][:10]}..{row['last_seen'][:10]}")
         if row['serves']:
@@ -645,15 +671,27 @@ def unknown_import_rows(plan, site, vrf=None):
         prefix = Prefix.objects.filter(vrf=vrf, prefix__net_contains_or_equals=ip).order_by(
             '-prefix__net_mask_length').first()
         devices.append({
-            'name': name, 'role': '', 'manufacturer': '', 'device_type': '', 'site': site.name, 'status': 'active',
+            'name': name,
+            'role': roles.get(row['role'].lower(), '') if row['role'] else '',
+            'manufacturer': device_type.manufacturer.name if device_type else '',
+            'device_type': device_type.model if device_type else '',
+            'site': site.name, 'status': 'active',
             'description': ('Found by passive discovery. ' + ', '.join(seen))[:200],
+            'cf_ot_purdue_level': row['purdue_level'],
         })
+        if not devices[-1]['role'] and role is not None:
+            devices[-1]['role'] = role.name
         interfaces.append({'device': name, 'name': UNKNOWN_IMPORT_INTERFACE, 'type': 'other'})
+        existing = IPAddress.objects.filter(vrf=vrf, address__net_host=ip).select_related('vrf').first()
+        if existing is not None:
+            holder = existing.assigned_object.parent_object if existing.assigned_object else None
+            conflicts.append((ip, f'{existing.address} on {holder}' if holder else str(existing.address)))
+            continue
         addresses.append({
             'address': f'{ip}/{prefix.prefix.prefixlen if prefix else 32}', 'vrf': vrf.name if vrf else '',
             'status': 'active', 'device': name, 'interface': UNKNOWN_IMPORT_INTERFACE, 'is_primary': 'true',
         })
-    return dict(zip((name for name, _ in UNKNOWN_IMPORT_FILES), (devices, interfaces, addresses)))
+    return dict(zip((name for name, _ in UNKNOWN_IMPORT_FILES), (devices, interfaces, addresses))), conflicts
 
 
 def _flow_name(src, dst, protocol, connection=ConnectionChoices.CLIENT_SERVER, broker_zone=''):

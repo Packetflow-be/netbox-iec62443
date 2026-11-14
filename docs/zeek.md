@@ -124,5 +124,6 @@ writes all of them with their zone, first/last seen, number of peers, what they 
 port), what they used, and their open ports.
 
 `--unknown-import DIR` writes those inside a zone of the plant as NetBox bulk-import files (devices,
-interfaces, IP addresses); see the README. On a first visit, when NetBox is still empty, this is how the
+interfaces, IP addresses), with `--unknown-role` and `--unknown-device-type` as defaults; see
+[importer.md](importer.md#hosts-netbox-does-not-know). Give each plant its own VRF and import with `--vrf`. On a first visit, when NetBox is still empty, this is how the
 capture becomes a device list: name what each host is, import the files, and run the import again.

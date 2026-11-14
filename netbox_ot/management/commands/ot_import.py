@@ -52,6 +52,12 @@ class Command(BranchCommand):
                             help='Write the unknown hosts inside a zone as NetBox bulk-import files (devices, '
                                  'interfaces, IP addresses) to this directory; fill in role and device type, then '
                                  'import them in NetBox')
+        parser.add_argument('--unknown-role', metavar='NAME',
+                            help='With --unknown-import: device role (name or slug) for the hosts whose role the '
+                                 'source does not name or names differently from NetBox')
+        parser.add_argument('--unknown-device-type', metavar='MODEL',
+                            help='With --unknown-import: device type (model or slug) for every host, e.g. a '
+                                 'placeholder type "Unknown" to replace later')
         parser.add_argument('--site', required=True, help='Slug of the site the zones belong to')
         parser.add_argument('--user', help='Username recorded in the change log (default: first superuser)')
         parser.add_argument('--dry-run', action='store_true', help='Show what would change, then roll back')
@@ -80,6 +86,7 @@ class Command(BranchCommand):
                 raise CommandError(f"VRF {options['vrf']!r} " + ('not found' if not vrfs else
                                                                  'is ambiguous; give its route distinguisher'))
             vrf = vrfs[0]
+        defaults = self._unknown_defaults(options)
         fmt = options['format']
         if fmt == 'auto':
             fmt = 'zeek' if zeek.is_zeek_directory(src) else 'observations'
@@ -138,7 +145,7 @@ class Command(BranchCommand):
                 transaction.set_rollback(True, using=self.db_alias)
         for k, v in sorted(stats.items()):
             self.stdout.write(f'{k}: {v}')
-        self._report_unknown(plan, site, vrf, options['unknown_report'], options['unknown_import'])
+        self._report_unknown(plan, site, vrf, options['unknown_report'], options['unknown_import'], defaults)
         self.stdout.write(self.style.WARNING('Dry run: nothing saved') if options['dry_run']
                           else self.style.SUCCESS(f'Done (change log user: {user})'))
 
@@ -191,7 +198,25 @@ class Command(BranchCommand):
         self.stdout.write(f'Zeek logs: {streams}')
         return {'assets': assets, 'flows': flows, 'summary': summary}
 
-    def _report_unknown(self, plan, site, vrf, path, import_dir):
+    def _unknown_defaults(self, options):
+        from dcim.models import DeviceRole, DeviceType
+
+        found = {}
+        for option, model, fields in (('unknown_role', DeviceRole, ('name', 'slug')),
+                                      ('unknown_device_type', DeviceType, ('model', 'slug'))):
+            value = options.get(option)
+            if not value:
+                continue
+            if not options.get('unknown_import'):
+                raise CommandError(f"--{option.replace('_', '-')} goes with --unknown-import")
+            matches = list(model.objects.filter(Q(**{fields[0]: value}) | Q(**{fields[1]: value}))[:2])
+            if len(matches) != 1:
+                raise CommandError(f"--{option.replace('_', '-')} {value!r}: " + (
+                    'not found in NetBox' if not matches else 'ambiguous; give the slug'))
+            found[option] = matches[0]
+        return found
+
+    def _report_unknown(self, plan, site, vrf, path, import_dir, defaults=None):
         rows = unknown_assets(plan, site, vrf)
         in_zones = [r for r in rows if r['zone']]
         self.stdout.write(f'Observed hosts not in NetBox: {len(rows)} ({len(in_zones)} inside a zone)')
@@ -208,7 +233,9 @@ class Command(BranchCommand):
                 writer.writerows(rows)
             self.stdout.write(f'Report written to {path}')
         if import_dir:
-            files = unknown_import_rows(plan, site, vrf)
+            defaults = defaults or {}
+            files, conflicts = unknown_import_rows(plan, site, vrf, role=defaults.get('unknown_role'),
+                                                   device_type=defaults.get('unknown_device_type'))
             target = Path(import_dir)
             target.mkdir(parents=True, exist_ok=True)
             for name, columns in UNKNOWN_IMPORT_FILES:
@@ -216,6 +243,23 @@ class Command(BranchCommand):
                     writer = csv.DictWriter(f, fieldnames=columns)
                     writer.writeheader()
                     writer.writerows(files[name])
-            self.stdout.write(f"Bulk-import files for {len(files['1-devices.csv'])} unknown host(s) written to "
-                              f'{target}: fill in role, manufacturer and device_type in 1-devices.csv, import the '
+            devices = files['1-devices.csv']
+            missing = [column for column in ('role', 'manufacturer', 'device_type')
+                       if any(not d[column] for d in devices)]
+            todo = (f"fill in {', '.join(missing)} in 1-devices.csv (names as NetBox shows them, not slugs; the "
+                    f"description says what the capture saw), " if missing else '')
+            if conflicts:
+                where = 'the global table' if vrf is None else f'VRF {vrf}'
+                self.stdout.write(self.style.WARNING(
+                    f'{len(conflicts)} address(es) already exist in {where} and are left out of 3-ip-addresses.csv '
+                    f'(NetBox refuses duplicates there):'))
+                for ip, holder in conflicts[:10]:
+                    self.stdout.write(f'  {ip}: {holder}')
+                if len(conflicts) > 10:
+                    self.stdout.write(f'  ... and {len(conflicts) - 10} more')
+                if vrf is None:
+                    self.stdout.write('  Is this another plant on the same addresses? Give each plant its own VRF and '
+                                      'import with --vrf.')
+            self.stdout.write(f"Bulk-import files for {len(devices)} unknown host(s) written to "
+                              f'{target}: {todo}import the '
                               f'files in order in NetBox, then run this import again')

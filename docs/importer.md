@@ -3,7 +3,7 @@
 ```
 manage.py ot_import <dir> --site <slug> [--vrf <name or RD>] [--user <name>] [--dry-run]
     [--format auto|zeek|observations] [--zone-map CSV] [--suggest-zone-map CSV]
-    [--unknown-report CSV] [--unknown-import DIR]
+    [--unknown-report CSV] [--unknown-import DIR [--unknown-role NAME] [--unknown-device-type MODEL]]
     [--outside-zone NAME] [--split ZONE ... | --split-all]
 ```
 
@@ -53,9 +53,23 @@ the point of passive discovery. Flows out of an external zone are marked as remo
 The importer never creates devices: a capture shows an address and what it talks, not what the machine is.
 `--unknown-import DIR` writes the unknown hosts inside a zone of the plant (not those in an external zone)
 as three files for NetBox's own bulk import: `1-devices.csv`, `2-interfaces.csv` and `3-ip-addresses.csv`.
-Fill in `role`, `manufacturer` and `device_type` in the first, import the three in that order (Devices,
-Interfaces, IP addresses > Import), and run the import again: the new devices now get their zone, Purdue
-level and services. Rename them in NetBox afterwards; the files name them `unknown-<address>`.
+Import the three in that order (Devices, Interfaces, IP addresses > Import) and run the import again: the
+new devices now get their zone, Purdue level and services.
+
+- The devices are named `unknown-<address>-<site slug>`, so a second plant on the same addresses gets other
+  names (NetBox's interface and IP address import finds a device by name across all sites). Rename them in
+  NetBox afterwards.
+- `role`, `manufacturer` and `device_type` take **names as NetBox shows them**, not slugs. What the source
+  called a host (assets.json `role`, e.g. "PLC (ControlLogix)") goes into the description, and into `role`
+  when NetBox has a device role of that exact name. Its Purdue level goes into `cf_ot_purdue_level`.
+- `--unknown-role NAME` and `--unknown-device-type MODEL` fill in the rest, e.g. a role "Unknown" and a
+  placeholder device type to replace later, so dozens of rows need not be filled in by hand.
+- Addresses NetBox already holds in the import's VRF are left out of `3-ip-addresses.csv` and listed: NetBox
+  refuses the whole file over the first duplicate in the global table.
+
+**One VRF per plant.** Plants reuse the same private ranges (192.168.0.0/24, 10.10.10.0/24). Give each plant
+its own VRF in NetBox and import with `--vrf`: devices, prefixes and addresses are then matched within that
+plant only, and the unknown-host files do not collide with another plant's addresses.
 
 ## Options
 
