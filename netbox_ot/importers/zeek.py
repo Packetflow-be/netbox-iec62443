@@ -276,7 +276,8 @@ def to_observations(logs, zone_map, captures=None):
         if transport == 'tcp' and record.get('conn_state') not in ANSWERED:
             continue
         port = record.get('id.resp_p')
-        port = int(port) if port and str(port).isdigit() else None
+        # Only TCP and UDP have ports: Zeek writes an ICMP message's type and code in the port fields
+        port = int(port) if transport in ('tcp', 'udp') and port and str(port).isdigit() else None
         ts = _ts(record.get('ts'))
         if ts:
             times.append(ts)

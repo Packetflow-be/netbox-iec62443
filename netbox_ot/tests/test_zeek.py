@@ -34,6 +34,7 @@ CONN = [
     ('C7', '10.10.20.5', '10.10.10.255', 47808, 'udp', 'bacnet', 'S0'),  # broadcast: skipped
     ('C8', '10.10.20.5', '224.0.0.251', 5353, 'udp', 'dns', 'S0'),  # multicast: skipped
     ('C9', 'fe80::1', 'fe80::2', 22, 'tcp', 'ssh', 'SF'),  # IPv6: skipped
+    ('C10', '10.10.20.5', '10.10.10.99', 3, 'icmp', '-', 'OTH'),  # ICMP: type/code in the port fields
 ]
 MODBUS = [  # Zeek's own modbus.log: every record is a request
     ('C1', 'READ_HOLDING_REGISTERS'), ('C1', 'READ_HOLDING_REGISTERS'), ('C1', 'WRITE_SINGLE_REGISTER'),
@@ -124,6 +125,9 @@ class ToObservationsTest(SimpleTestCase):
         self.assertIn(('192.168.50.7', '10.10.20.5', 'rdp', ''), flows)  # from Zeek's payload detection
         self.assertIn(('10.10.10.10', '10.10.30.2', 'syslog', ''), flows)  # one-way UDP counts
         self.assertIn(('10.10.20.5', '10.10.10.99', 'tcp/445', ''), flows)  # no protocol guessed from the port
+        icmp = flows[('10.10.20.5', '10.10.10.99', 'icmp', '')]  # ICMP type/code are not ports
+        self.assertNotIn('port', icmp)
+        self.assertNotIn('transport', icmp)
         # connections covered by a protocol log are not counted twice; unanswered, broadcast, multicast and IPv6 skip
         self.assertNotIn(('10.10.20.5', '10.10.10.10', 'modbus', ''), flows)
         self.assertFalse({'10.10.10.11', '10.10.10.255', '224.0.0.251', 'fe80::2'} & {f['dst'] for f in self.flows})
