@@ -29,6 +29,14 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   give each plant its own VRF. The output says the columns take names, not slugs. The unknown-host report has
   `role` and `purdue_level` columns. README: a first import of your own capture, one VRF per plant.
 
+- **Port scans no longer become a wall of ports.** A TCP connection that was answered but carried no data is a
+  probe, not traffic. A source that tried 100 or more TCP ports, with data on at most a fifth, is reported as a
+  port scan in the import output and in the evidence of the flows between the two zones; what it reached with
+  only conn.log to show for it becomes one *port scan* request per destination without ports, while its
+  protocol-log requests (S7, Modbus) stay. 4SICS day 2: the visitors' network went from eight flows (one with 55
+  ports) to three. The observation format has an optional `scans` summary field. Lists and the access map show
+  at most six ports of a flow and the total ("TCP/80, ... (58 ports)"); the flow page shows them all.
+
 ### Bug fixes
 
 - The **access map diagram cut off its lowest level** (the controllers) when the drawing was taller than the

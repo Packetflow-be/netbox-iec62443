@@ -218,7 +218,7 @@ def _flow_data(flow):
         'url': flow.get_absolute_url(),
         'verdict': _verdict(flow),
         'protocol': flow.get_protocol_display() if flow.protocol else '',
-        'ports': flow.ports_display,
+        'ports': flow.ports_short,
         'connection': '' if flow.connection == ConnectionChoices.CLIENT_SERVER else flow.get_connection_display(),
         'remote': flow.remote_access,
         'changes': changes_flow(flow),

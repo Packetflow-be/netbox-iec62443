@@ -86,6 +86,13 @@ class FlowTest(TestCase):
         siteless = Zone.objects.create(name='Vendor', slug='vendor', purdue_level='2')
         Flow(source_zone=siteless, destination_zone=control).full_clean()
 
+    def test_long_port_list_is_shortened_for_lists(self):
+        flow = Flow(source_zone=self.office, destination_zone=self.cell, port_mappings=['tcp/102', 'tcp/502'])
+        self.assertEqual(flow.ports_short, 'TCP/102, TCP/502')
+        flow.port_mappings = [f'tcp/{p}' for p in range(1, 59)]
+        self.assertEqual(flow.ports_short, 'TCP/1, TCP/2, TCP/3, TCP/4, TCP/5, TCP/6, ... (58 ports)')
+        self.assertEqual(flow.ports_display.count(','), 57)  # the flow page shows them all
+
     def test_port_mappings_validated_and_normalised(self):
         flow = Flow(source_zone=self.office, destination_zone=self.cell, port_mappings=['TCP/0102'])
         flow.full_clean()

@@ -193,6 +193,10 @@ class Command(BranchCommand):
                 f'and import with --zone-map zones.csv')
         assets, flows, summary = zeek.to_observations(logs, zone_map, captures=[src.name])
         # Streams the import does not use are never read
+        for scan in summary.get('scans', []):
+            self.stdout.write(self.style.WARNING(
+                f"Port scan: {scan['ip']} ({scan['from'] or 'no zone'}) tried {scan['ports']} TCP ports on "
+                f"{scan['hosts']} host(s) in {scan['to'] or 'no zone'}"))
         streams = ', '.join(f'{name} ({records.count})' for name, records in sorted(logs.items())
                             if records.count is not None)
         self.stdout.write(f'Zeek logs: {streams}')

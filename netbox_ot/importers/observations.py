@@ -433,6 +433,14 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
         for key in keys:
             headers.setdefault(key, line)
 
+    # Port scans per zone pair (Zeek: summary "scans"): a finding in itself, and why a flow may list many ports
+    scans = defaultdict(list)
+    for scan in summary.get('scans', []):
+        src, dst = base_name(scan.get('from') or outside_zone), base_name(scan.get('to') or outside_zone)
+        scans[(src, dst)].append(f"Port scan from {scan['ip']}: {scan['ports']} TCP ports tried on {scan['hosts']} "
+                                 f"host(s). What it reached counts as \"port scan\" requests without ports; its "
+                                 f"requests in a protocol log are listed as they are.")
+
     keys = list(ot) + [(s, d, '', ConnectionChoices.CLIENT_SERVER, '') for s, d in headers if (s, d) not in ot_pairs]
     plans = []
     for key in keys:
@@ -448,6 +456,7 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
                 lines.append(headers[(src, dst)])
         else:
             lines = [f'Passively seen: no identified request. {headers[(src, dst)]}']
+        lines += scans.get((base_of_zone.get(src, src), base_of_zone.get(dst, dst)), [])
         if connection == ConnectionChoices.BROKERED:
             brokers = ', '.join(dict.fromkeys(r.broker for r in crossing))
             lines.append(f'Through the broker {brokers} in {broker_zone}: {src} publishes, {dst} subscribes.')
@@ -460,7 +469,7 @@ def build_plan(assets, flows, summary, outside_zone='Outside', split_zones=None)
         if senders:
             lines.append('Changes the destination (write/control/program): ' + '; '.join(
                 f"{by_ip.get(ip, {}).get('role') or 'unknown'} ({ip})" for ip in senders))
-        unknown = sorted({r.proto for r in crossing if not r.protocol})
+        unknown = sorted({r.proto for r in crossing if not r.protocol and r.proto != 'port scan'})
         if unknown:
             lines.append(f"Protocol not recognised: {', '.join(unknown)}")
         times_first = [r.first_seen for r in crossing if r.first_seen] or [t for t in [window[0]] if t]

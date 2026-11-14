@@ -50,6 +50,7 @@ have it).
 | `zone_pairs` | List of `{"from": zone, "to": zone, "count": n}`: all traffic between zones, not only identified requests. A pair with no identified request still becomes a flow, without a protocol. A zone name not in assets.json means the outside zone |
 | `zones` | List of `{"name": zone, "type": type, "purdue_level": level}` (both optional) for the zones the importer creates. `type` is `ot`, `safety`, `dmz`, `enterprise` or `external`; default: 3.5 is a DMZ, 4 and 5 enterprise, other levels OT, the outside zone external. `purdue_level` is the zone's own level when its assets give none lower; it is never copied onto the assets. Existing zones keep their type and level |
 | `captures` | List of capture names, quoted in the evidence |
+| `scans` | List of `{"ip": source, "from": zone, "to": zone, "ports": n, "hosts": n}`: port scans the tool found, quoted in the evidence of the flows between the two zones (the Zeek reader fills it in) |
 | `hours` | Capture duration in hours, quoted in the evidence |
 | `start`, `end` | The capture window; the first/last seen of flows that give none |
 

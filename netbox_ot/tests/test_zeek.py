@@ -165,6 +165,47 @@ class ToObservationsTest(SimpleTestCase):
         self.assertEqual(plan.hosts['10.10.10.99'].zone, 'Cell')
 
 
+class PortScanTest(SimpleTestCase):
+    """A scanner tries 120 ports on a PLC; three answer with data, one only completes the handshake."""
+
+    def setUp(self):
+        def conn(uid, src, port, state, history, data=10):
+            return {'ts': T0, 'uid': uid, 'id.orig_h': src, 'id.resp_h': '10.10.10.10', 'id.resp_p': port,
+                    'proto': 'tcp', 'service': None, 'conn_state': state, 'history': history,
+                    'orig_bytes': data, 'resp_bytes': data}
+        records = [conn(f'R{p}', '10.10.20.9', p, 'REJ', 'Sr', 0) for p in range(1000, 1120)]
+        records += [conn('D1', '10.10.20.9', 80, 'SF', 'ShADadFf'), conn('D2', '10.10.20.9', 443, 'SF', 'ShADadFf'),
+                    conn('D3', '10.10.20.9', 102, 'SF', 'ShADadFf'), conn('P1', '10.10.20.9', 8080, 'RSTO', 'ShR', 0)]
+        # An ordinary client: a handshake without data to 8081 is a probe, its HTTP session is traffic
+        records += [conn('P2', '10.10.20.5', 8081, 'RSTO', 'ShR', 0), conn('H1', '10.10.20.5', 80, 'SF', 'ShADadFf')]
+        read = {'ts': T0, 'uid': 'D3', 'id.orig_h': '10.10.20.9', 'id.resp_h': '10.10.10.10', 'id.resp_p': 102,
+                'is_orig': True, 'function_name': 'Read Variable'}
+        logs = {'conn': records, 's7comm': [read]}
+        self.assets, self.flows, self.summary = zeek.to_observations(logs, ZONES)
+
+    def test_scan_is_reported_and_collapsed(self):
+        self.assertEqual(self.summary['scans'], [{'ip': '10.10.20.9', 'from': 'Control room', 'to': 'Cell PLCs',
+                                                  'ports': 124, 'hosts': 1}])
+        scanner = sorted((f['proto'], f.get('port'), f.get('func', '')) for f in self.flows
+                         if f['src'] == '10.10.20.9')
+        # Its S7 read stays; everything else it reached is one request without a port
+        self.assertEqual(scanner, [('port scan', None, ''), ('s7comm', 102, 'Read Variable')])
+        self.assertEqual(next(f['count'] for f in self.flows if f['proto'] == 'port scan'), 2)
+        client = sorted(f.get('port') for f in self.flows if f['src'] == '10.10.20.5')
+        self.assertEqual(client, [80])  # the probe to 8081 is not traffic
+        # Answered ports are open ports, probe or not
+        plc = next(a for a in self.assets if a['ip'] == '10.10.10.10')
+        self.assertEqual(plc['open_ports'], [80, 102, 443, 8080, 8081])
+
+    def test_plan_names_the_scan(self):
+        plan = build_plan(self.assets, self.flows, self.summary)
+        flow = next(f for f in plan.flows if f.source == 'Control room' and not f.protocol)
+        self.assertEqual(flow.port_mappings, ['tcp/80'])  # the ordinary client's session, none of the scanned ports
+        self.assertIn('Port scan from 10.10.20.9: 124 TCP ports tried on 1 host(s)', flow.evidence)
+        self.assertNotIn('Protocol not recognised: port scan', flow.evidence)
+        self.assertIn('Protocol not recognised: tcp/80', flow.evidence)
+
+
 class ZoneMapLevelsTest(SimpleTestCase):
     """The HMI and the PLC in one zone map network: the cell's traffic is reported, and --split makes it flows."""
 

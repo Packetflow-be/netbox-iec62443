@@ -10,8 +10,12 @@ import like any other source. No database access here: zones come in as a ZoneMa
             the parser names (Modbus function, S7 function, CIP service, DNP3 function code, ...).
   conn.log  connections whose uid has no protocol-log request: the protocol Zeek identified from the payload
             (the "service" field: rdp, ssh, ssl, modbus, ...), or else "tcp/<port>" (not identified; no protocol
-            is guessed from the port). TCP attempts that were never answered (S0, REJ, ...) are skipped; one-way
-            UDP counts. Answered TCP ports become the responder's open ports.
+            is guessed from the port). TCP attempts that were never answered (S0, REJ, ...) are skipped, and so
+            are answered TCP connections that carried no data (probes); one-way UDP counts. Answered TCP ports
+            become the responder's open ports.
+  scans     a source that tried SCAN_PORTS or more TCP ports, at most SCAN_DATA_SHARE of them with data, is
+            reported in the summary ("scans", per source and destination zone); what it reached with only
+            conn.log to show for it becomes one request "port scan" per destination, without ports.
   assets    every IPv4 address seen that the zone map places in a zone. Others go to the outside zone.
   OPC UA    a connection whose originator sent a ReverseHello (RHE) is a Reverse Connect: the server opened it
             and the client sends the requests, so its records count from the responder (the client) to the
@@ -57,6 +61,27 @@ STREAMS = {
 # conn.log states of a TCP connection that was answered
 ANSWERED = {'SF', 'S1', 'S2', 'S3', 'RSTO', 'RSTR'}
 UNSET = ('-', '(empty)', '', None)
+# A source that tried this many TCP ports, of which at most SCAN_DATA_SHARE carried data, is scanning
+SCAN_PORTS = 100
+SCAN_DATA_SHARE = 0.2
+
+
+def _probe(record):
+    """
+    A TCP connection that was answered but carried no data either way: a SYN scan's "SYN, SYN-ACK, RST" or a
+    connect scan's handshake. It shows an open port, not traffic. From Zeek's history (D and d are data) or, without
+    it, from the byte counts; when neither is there it counts as traffic.
+    """
+    history = record.get('history')
+    if history:
+        return 'D' not in history and 'd' not in history
+    sent, received = record.get('orig_bytes'), record.get('resp_bytes')
+    if sent is None and received is None:
+        return False
+    try:
+        return int(sent or 0) == 0 and int(received or 0) == 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _open(path):
@@ -283,6 +308,7 @@ def to_observations(logs, zone_map, captures=None):
                 entry['last'] = max(entry['last'], t) if entry['last'] else t
                 saw_time(t)
         seen.update(str(ip) for ip in (src, dst, broker) if ip)
+        return key
 
     # OPC UA connections opened by the server (Reverse Connect): it sends a ReverseHello first
     reverse_uids = {r['uid'] for r in logs.get('opcua_binary', []) if r.get('msg_type') == 'RHE' and r.get('uid')}
@@ -312,28 +338,47 @@ def to_observations(logs, zone_map, captures=None):
                 topic=topic, access='write' if _sparkplug_command(topic) else '', count=count, last=last)
 
     zone_pairs = defaultdict(int)
+    from_conn = set()  # request keys made from conn.log alone (no protocol-log request)
+    tried = defaultdict(set)  # source -> {(destination, port)} of every TCP attempt, answered or not
+    carried = defaultdict(set)  # source -> {(destination, port)} of TCP connections that carried data
     for record in logs.get('conn', []):
         src, dst = _ipv4(record.get('id.orig_h')), _ipv4(record.get('id.resp_h'))
         if not keep(src, dst):
             continue
         transport = record.get('proto')
-        if transport == 'tcp' and record.get('conn_state') not in ANSWERED:
-            continue
         port = record.get('id.resp_p')
         # Only TCP and UDP have ports: Zeek writes an ICMP message's type and code in the port fields
         port = int(port) if transport in ('tcp', 'udp') and port and str(port).isdigit() else None
+        if transport == 'tcp' and port:
+            tried[src].add((dst, port))
+        if transport == 'tcp' and record.get('conn_state') not in ANSWERED:
+            continue
         ts = _ts(record.get('ts'))
         if ts:
             saw_time(ts)
-        zone_pairs[(zone_map.zone_of(src), zone_map.zone_of(dst))] += 1
         if transport == 'tcp' and port:
             open_ports[str(dst)].add(port)
+            if _probe(record):
+                continue
+            carried[src].add((dst, port))
+        zone_pairs[(zone_map.zone_of(src), zone_map.zone_of(dst))] += 1
         if record.get('uid') in covered:
             continue
         services = [s.strip() for s in (record.get('service') or '').split(',') if s.strip()]
         service = next((s for s in services if protocol_value(s)), services[0] if services else '')
         proto = service or (f'{transport}/{port}' if port else transport or 'ip')
-        add(src, dst, proto, port, transport if transport in ('tcp', 'udp') else None, '', ts)
+        from_conn.add(add(src, dst, proto, port, transport if transport in ('tcp', 'udp') else None, '', ts))
+
+    # A scanner's connections are reconnaissance, not plant traffic: what it reached with only conn.log to show for
+    # it (nmap's version probes carry data too) becomes one request per destination without a port, so the flow
+    # says the path exists without a wall of ports. Its protocol-log requests (S7 or Modbus reads) stay as they are.
+    scans = _scans(tried, carried, zone_map)
+    scanners = {scan['ip'] for scan in scans}
+    for key in from_conn:
+        if key[0] in scanners:
+            entry = requests.pop(key)
+            add(ipaddress.IPv4Address(key[0]), ipaddress.IPv4Address(key[1]), 'port scan', None, None, '',
+                entry['first'], count=entry['count'], last=entry['last'])
 
     assets = []
     for ip in sorted(seen, key=ipaddress.ip_address):
@@ -369,6 +414,7 @@ def to_observations(logs, zone_map, captures=None):
         flows.append(flow)
     summary = {
         'captures': list(captures or []),
+        'scans': scans,
         'zone_pairs': [{'from': a or '', 'to': b or '', 'count': n} for (a, b), n in zone_pairs.items() if a != b],
         'zones': [
             {'name': z, **({'type': zone_map.types[z]} if z in zone_map.types else {}),
@@ -467,6 +513,27 @@ def write_zone_map_draft(rows, path):
             f.write(f"{row['network']},{row['network']},,\n")
             lines += 1
     return lines
+
+
+def _scans(tried, carried, zone_map):
+    """
+    Sources that scanned: [{ip, from, to, ports, hosts}] per source and destination zone ('' outside every zone),
+    for a source that tried SCAN_PORTS or more TCP ports with data on at most SCAN_DATA_SHARE of what it tried.
+    """
+    scans = []
+    for src, pairs in tried.items():
+        if len({port for _dst, port in pairs}) < SCAN_PORTS or \
+                len(carried.get(src, set()) & pairs) > SCAN_DATA_SHARE * len(pairs):
+            continue
+        per_zone = defaultdict(lambda: (set(), set()))
+        for dst, port in pairs:
+            ports, hosts = per_zone[zone_map.zone_of(dst) or '']
+            ports.add(port)
+            hosts.add(dst)
+        for zone, (ports, hosts) in sorted(per_zone.items()):
+            scans.append({'ip': str(src), 'from': zone_map.zone_of(src) or '', 'to': zone,
+                          'ports': len(ports), 'hosts': len(hosts)})
+    return sorted(scans, key=lambda s: (-s['ports'], s['ip'], s['to']))
 
 
 def topic_matches(topic_filter, topic):
