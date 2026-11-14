@@ -103,7 +103,7 @@ class FlowTable(PrimaryModelTable):
     connection = columns.ChoiceFieldColumn(verbose_name=_('Connection'))
     broker_zone = tables.Column(verbose_name=_('Broker zone'), linkify=True)
     topics = columns.ArrayColumn(verbose_name=_('Topics'), orderable=False)
-    ports = tables.Column(verbose_name=_('Ports'), accessor=tables.A('ports_display'), orderable=False)
+    ports = tables.Column(verbose_name=_('Ports'), accessor=tables.A('ports_short'), orderable=False)
     access = columns.TemplateColumn(verbose_name=_('Access'), template_code=ACCESS_BADGES, orderable=False)
     remote_access = columns.BooleanColumn(verbose_name=_('Remote access'))
     hops = columns.TemplateColumn(verbose_name=_('Through'), template_code=HOPS, orderable=False)

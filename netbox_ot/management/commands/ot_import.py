@@ -70,6 +70,9 @@ class Command(BranchCommand):
                             help='Split this zone per Purdue band: control (0-1), supervisory (2), operations (3+) '
                                  '(repeatable)')
         parser.add_argument('--split-all', action='store_true', help='Split every zone that mixes Purdue bands')
+        parser.add_argument('--move', action='store_true',
+                            help='When the input puts a device or VM in another zone than before, drop it from its '
+                                 'old zone (default: keep it there and report it)')
 
     def handle(self, *args, **options):
         src = Path(options['directory'])
@@ -140,7 +143,7 @@ class Command(BranchCommand):
         # A dry run skips event tracking: no change log entries and no webhooks for rolled-back work
         tracking = nullcontext() if options['dry_run'] else change_logging(user)
         with transaction.atomic(using=self.db_alias), tracking:
-            stats = apply_plan(plan, site, vrf=vrf, log=lambda m: self.stdout.write(f'  {m}'))
+            stats = apply_plan(plan, site, vrf=vrf, log=lambda m: self.stdout.write(f'  {m}'), move=options['move'])
             if options['dry_run']:
                 transaction.set_rollback(True, using=self.db_alias)
         for k, v in sorted(stats.items()):
@@ -193,6 +196,10 @@ class Command(BranchCommand):
                 f'and import with --zone-map zones.csv')
         assets, flows, summary = zeek.to_observations(logs, zone_map, captures=[src.name])
         # Streams the import does not use are never read
+        for scan in summary.get('scans', []):
+            self.stdout.write(self.style.WARNING(
+                f"Port scan: {scan['ip']} ({scan['from'] or 'no zone'}) tried {scan['ports']} TCP ports on "
+                f"{scan['hosts']} host(s) in {scan['to'] or 'no zone'}"))
         streams = ', '.join(f'{name} ({records.count})' for name, records in sorted(logs.items())
                             if records.count is not None)
         self.stdout.write(f'Zeek logs: {streams}')

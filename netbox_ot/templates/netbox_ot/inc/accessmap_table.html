@@ -77,7 +77,7 @@
               <td>{{ f.source_zone|linkify }}{% if f.source_zone.purdue_level %} {% badge f.source_zone.purdue_level bg_color=f.source_zone.get_purdue_level_color %}{% endif %}</td>
               <td>{{ f.destination_zone|linkify }}{% if f.destination_zone.purdue_level %} {% badge f.destination_zone.purdue_level bg_color=f.destination_zone.get_purdue_level_color %}{% endif %}</td>
               <td>
-                {{ f.get_protocol_display|placeholder }}{% if f.port_mappings %} <span class="text-muted small">{{ f.ports_display }}</span>{% endif %}
+                {{ f.get_protocol_display|placeholder }}{% if f.port_mappings %} <span class="text-muted small" title="{{ f.ports_display }}">{{ f.ports_short }}</span>{% endif %}
                 {% if f.connection != 'client-server' %}
                   <div class="small">
                     {% badge f.get_connection_display bg_color=f.get_connection_color %}

@@ -48,7 +48,12 @@ network,zone,purdue_level,type
 ```
 
 A zone named only in the zone map is created by the import, with the type given (`ot`, `safety`, `dmz`,
-`enterprise`, `external`).
+`enterprise`, `external`). A zone that already exists keeps the type NetBox has; when the zone map says
+otherwise, the import prints both and leaves the decision to you.
+
+A prefix that already sits in a zone of another site is not linked to this site's zone: unscoped prefixes
+(10.10.10.0/24 in the global table) would otherwise end up in the zones of every plant that uses the range.
+Scope prefixes to their site, or give each plant its own VRF.
 
 The Purdue level means two different things depending on the line:
 
@@ -111,8 +116,17 @@ unclassified. The clients' own connections to the broker remain ordinary flows f
 From `conn.log`, a connection that no protocol log covers becomes a request with the protocol Zeek identified
 from the payload (`rdp`, `ssh`, `ssl`, `modbus`, ...) or, when Zeek identified nothing, `tcp/<port>`: the
 port is kept, no protocol is guessed from it. A TCP connection that was never answered (`S0`, `REJ`, ...) is
-skipped; one-way UDP (syslog, SNMP traps) counts. The ports of answered TCP connections become the
-responder's open ports. Multicast and broadcast destinations and IPv6 addresses are skipped.
+skipped, and so is one that was answered but carried no data either way (a SYN scan's handshake); one-way UDP
+(syslog, SNMP traps) counts. The ports of answered TCP connections become the responder's open ports.
+Multicast and broadcast destinations and IPv6 addresses are skipped.
+
+**Port scans.** A source that tried 100 or more TCP ports, with data on at most a fifth of them, is a scanner.
+The import says so ("Port scan: 192.168.2.88 (Visitors) tried 1015 TCP ports on 17 host(s) in Lab devices"),
+the flows between the two zones carry it in their evidence, and what the scanner reached with only `conn.log`
+to show for it becomes one *port scan* request per destination without ports, instead of a flow with dozens of
+ports. Its requests in a protocol log (an S7 or Modbus read from a scan script) stay as they are: they did
+reach the controller. On the 4SICS day-2 capture this turns eight flows from the visitors' network, one with
+55 ports, into three.
 
 A flow from an external zone is marked as remote access.
 

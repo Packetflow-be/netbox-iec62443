@@ -29,8 +29,27 @@ Numbers link to the issue or pull request on GitHub; entries without a number pr
   give each plant its own VRF. The output says the columns take names, not slugs. The unknown-host report has
   `role` and `purdue_level` columns. README: a first import of your own capture, one VRF per plant.
 
+- **Port scans no longer become a wall of ports.** A TCP connection that was answered but carried no data is a
+  probe, not traffic. A source that tried 100 or more TCP ports, with data on at most a fifth, is reported as a
+  port scan in the import output and in the evidence of the flows between the two zones; what it reached with
+  only conn.log to show for it becomes one *port scan* request per destination without ports, while its
+  protocol-log requests (S7, Modbus) stay. 4SICS day 2: the visitors' network went from eight flows (one with 55
+  ports) to three. The observation format has an optional `scans` summary field. Lists and the access map show
+  at most six ports of a flow and the total ("TCP/80, ... (58 ports)"); the flow page shows them all.
+
+- The import **says when the zone map's type differs** from an existing zone's type in NetBox (it keeps
+  NetBox's; before, the difference passed silently).
+
+- **Re-imports report moved assets**: when the input puts a device or VM in another zone, the import lists the
+  zones it is still in, and the new `--move` drops the old membership (a parent or sub-zone does not count).
+- A **split says what will not hold**: hosts of a split part that are not devices in NetBox yet (their levels
+  live only in this input), and a split zone left without members, with the prefix it still holds.
+
 ### Bug fixes
 
+- An **unscoped prefix was linked into the zones of several sites**: the 4SICS imports into three sites linked
+  the same global 10.10.10.0/24 and 192.168.x prefixes to a zone of each. A prefix that already sits in a zone of
+  another site is no longer linked; the import says so and suggests scoping it or a VRF per plant.
 - The **access map diagram cut off its lowest level** (the controllers) when the drawing was taller than the
   view, and *Fit* did nothing: it only fitted the width. The diagram now fits width and height on first load
   (no smaller than readable), and *Fit* always shows the whole drawing.

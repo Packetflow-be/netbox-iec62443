@@ -500,6 +500,16 @@ class Flow(PrimaryModel):
     def ports_display(self):
         return ', '.join(m.upper() for m in self.port_mappings)
 
+    PORTS_SHOWN = 6
+
+    @property
+    def ports_short(self):
+        """The ports for lists and the access map: the first few, then how many in all ("TCP/80, ... (58 ports)")."""
+        if len(self.port_mappings) <= self.PORTS_SHOWN:
+            return self.ports_display
+        shown = ', '.join(m.upper() for m in self.port_mappings[:self.PORTS_SHOWN])
+        return f'{shown}, ... ({len(self.port_mappings)} ports)'
+
     @property
     def is_modifying(self):
         return any(a in AccessChoices.MODIFYING for a in self.access)
